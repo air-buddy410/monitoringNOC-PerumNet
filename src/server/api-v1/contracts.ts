@@ -132,7 +132,7 @@ export interface CrmServiceMappingResponse {
   syncStatus: "active" | "pending" | "error";
 }
 
-// --- Topologi (implementasi Fase 5) -----------------------------------------
+// --- Topologi (Fase 5) ------------------------------------------------------
 export type TopologyStatus = "draft" | "published";
 export interface TopologySummary {
   topologyId: string;
@@ -173,4 +173,81 @@ export interface TopologyDiscoverySuggestion {
   discoveredAt: string;
   payload: Record<string, unknown>;
   state: "pending" | "accepted" | "rejected";
+}
+
+// --- GET /api/v1/topologies -------------------------------------------------
+export interface TopologyListResponse {
+  topologies: TopologySummary[];
+  total: number;
+}
+
+// --- POST /api/v1/topologies ------------------------------------------------
+export interface CreateTopologyRequest {
+  name: string;
+}
+
+// --- PATCH /api/v1/topologies/:topologyId -----------------------------------
+// Aksi edit manual diterapkan berurutan dalam satu transaksi; error pada satu
+// aksi membatalkan seluruh patch.
+export type TopologyPatchAction =
+  | {
+      op: "addNode";
+      node: { assetId: string; x: number | null; y: number | null; label: string | null };
+    }
+  | { op: "moveNode"; nodeId: string; x: number; y: number }
+  | { op: "removeNode"; nodeId: string }
+  | {
+      op: "addLink";
+      link: {
+        sourceNodeId: string;
+        targetNodeId: string;
+        sourcePort?: string | null;
+        targetPort?: string | null;
+        mediaType?: string | null;
+        capacityMbps?: number | null;
+        direction?: "uni" | "bi";
+        status?: "up" | "down" | "unknown";
+        note?: string | null;
+      };
+    }
+  | {
+      op: "updateLink";
+      linkId: string;
+      sourcePort?: string | null;
+      targetPort?: string | null;
+      mediaType?: string | null;
+      capacityMbps?: number | null;
+      direction?: "uni" | "bi";
+      status?: "up" | "down" | "unknown";
+      note?: string | null;
+    }
+  | { op: "removeLink"; linkId: string };
+export interface TopologyPatchRequest {
+  name?: string;
+  actions?: TopologyPatchAction[];
+}
+export interface TopologyPatchResponse {
+  detail: TopologyDetailResponse;
+}
+
+// --- POST /api/v1/topologies/:topologyId/discovery --------------------------
+export interface DiscoveryRunResponse {
+  discovered: number;
+  suggested: number;
+  failedDevices: number;
+  ranAt: string;
+  suggestions: TopologyDiscoverySuggestion[];
+}
+
+// --- POST /api/v1/topologies/:topologyId/publish ----------------------------
+export interface PublishTopologyResponse {
+  topology: TopologySummary;
+}
+
+// --- POST /api/v1/topologies/:topologyId/discovery/:suggestionId/review -----
+export interface ReviewSuggestionRequest {
+  state: "accepted" | "rejected";
+}
+export interface ReviewSuggestionResponse {
+  suggestion: TopologyDiscoverySuggestion;
 }
