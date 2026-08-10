@@ -60,7 +60,11 @@ export default function NocShell({ children }: { children: ReactNode }) {
   const [menuOpen, setMenuOpen] = useState(false);
   const [profileOpen, setProfileOpen] = useState(false);
   const profileMenuRef = useRef<HTMLDivElement>(null);
-  const isPublicPage = pathname === "/login" || pathname === "/register";
+  const isPublicPage =
+    pathname === "/login" ||
+    pathname === "/register" ||
+    pathname.startsWith("/customer/") ||
+    pathname === "/customer";
 
   useEffect(() => {
     if (!menuOpen) return;

@@ -102,8 +102,35 @@ export interface LibrenmsStatusResponse {
   checkedAt: string;
 }
 
-// --- Customer (implementasi Fase 6) ----------------------------------------
-// GET /api/v1/customer/services/:serviceId/status
+// --- CRM eksternal (Fase 6) -------------------------------------------------
+// POST /api/v1/integrations/crm/service-mappings
+export interface CrmServiceMappingRequest {
+  externalCustomerId: string;
+  externalServiceId: string;
+  assetId?: string;
+  librenmsGroup?: string;
+}
+export interface CrmServiceMapping {
+  mappingId: string;
+  externalCustomerId: string;
+  externalServiceId: string;
+  assetId: string | null;
+  librenmsGroup: string | null;
+  syncStatus: "active" | "pending" | "error";
+  updatedAt: string;
+}
+export interface CrmServiceMappingResponse {
+  mapping: CrmServiceMapping;
+}
+export interface CrmServiceMappingListResponse {
+  mappings: CrmServiceMapping[];
+  total: number;
+}
+
+// --- GET /api/v1/customer/services/:serviceId/status (Fase 6) ---------------
+// Akses publik TERPOTENGSI deep-link: query wajib memuat customerId & token
+// (HMAC yang dihitung server). Response TIDAK pernah memuat data internal
+// (hostname, IP manajemen, topologi, metrik).
 export interface CustomerServiceStatusResponse {
   serviceId: string;
   status: "up" | "degraded" | "down" | "maintenance";
@@ -117,19 +144,6 @@ export interface CustomerServiceStatusResponse {
     summary: string;
   }[];
   supportContact: string;
-}
-
-// --- CRM eksternal (implementasi Fase 6) ------------------------------------
-// POST /api/v1/integrations/crm/service-mappings
-export interface CrmServiceMappingRequest {
-  externalCustomerId: string;
-  externalServiceId: string;
-  assetId?: string;
-  librenmsGroup?: string;
-}
-export interface CrmServiceMappingResponse {
-  mappingId: string;
-  syncStatus: "active" | "pending" | "error";
 }
 
 // --- Topologi (Fase 5) ------------------------------------------------------

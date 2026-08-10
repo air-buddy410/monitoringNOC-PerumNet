@@ -193,6 +193,18 @@ export interface IncidentFilters {
   limit?: number;
 }
 
+/** Baris incident mentah per ID — dipakai webhook outbound CRM. */
+export async function getIncidentById(
+  id: string,
+): Promise<IncidentRow | null> {
+  const [row] = await db
+    .select()
+    .from(incidents)
+    .where(eq(incidents.id, id))
+    .limit(1);
+  return row ?? null;
+}
+
 /**
  * Daftar incident dari tabel incidents (terbaru lebih dulu). Total dihitung
  * tanpa limit — dipakai untuk pagination klien.

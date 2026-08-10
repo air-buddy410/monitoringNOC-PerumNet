@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import type { LibrenmsAlertIngestResponse } from "@/server/api-v1/contracts";
-import { applyLibrenmsAlert } from "@/server/incident-store";
+import { notifyCrm } from "@/server/crm-webhook";
+import { applyLibrenmsAlert, getIncidentById } from "@/server/incident-store";
 import { parseLibrenmsAlert } from "@/server/librenms/alert";
 import { dispatchAlert } from "@/server/notifier";
 
@@ -76,6 +77,16 @@ export async function POST(request: Request) {
         ? `✅ PULIH: ${parsed.message}`
         : parsed.message,
   });
+
+  // Notifikasi outbound ke CRM (best-effort, fire-and-forget — kegagalan
+  // tidak memengaruhi respons ingress; retry internal di crm-webhook).
+  if (incident.incidentId) {
+    void getIncidentById(incident.incidentId).then((row) => {
+      if (row) {
+        void notifyCrm(row, incident.state === "resolved" ? "recovered" : "open");
+      }
+    });
+  }
 
   const body: LibrenmsAlertIngestResponse = {
     ok: true,
