@@ -70,6 +70,7 @@ export async function POST(request: Request) {
   const result = await dispatchAlert({
     librenmsAlertId: parsed.librenmsAlertId,
     deviceName: parsed.deviceName,
+    incidentId: incident.incidentId,
     message:
       parsed.state === "recovered"
         ? `✅ PULIH: ${parsed.message}`

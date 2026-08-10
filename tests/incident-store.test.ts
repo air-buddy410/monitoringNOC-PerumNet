@@ -13,7 +13,11 @@ const mocks = vi.hoisted(() => ({ db: undefined as unknown }));
 vi.mock("@/db", () => ({ get db() { return mocks.db; } }));
 
 import * as schema from "@/db/schema";
-import { applyLibrenmsAlert } from "@/server/incident-store";
+import {
+  acknowledgeIncident,
+  applyLibrenmsAlert,
+  listIncidents,
+} from "@/server/incident-store";
 import type { NormalizedLibrenmsAlert } from "@/server/librenms/alert";
 
 const MIGRATION_DIR = path.resolve(__dirname, "..", "drizzle", "pg");
@@ -29,6 +33,10 @@ beforeAll(async () => {
   client = new PGlite();
   await client.exec(migrationSql);
   mocks.db = drizzle(client, { schema });
+  await client.query(
+    'INSERT INTO "user" (id, name, email) VALUES ($1, $2, $3)',
+    ["user-test-1", "Test NOC", "test-noc@perumnet.id"],
+  );
 });
 
 const firing: NormalizedLibrenmsAlert = {
@@ -106,5 +114,94 @@ describe("applyLibrenmsAlert — idempotensi", () => {
     expect(result.created).toBe(false);
     expect(result.updated).toBe(false);
     expect(await countIncidents()).toBe(1);
+  });
+});
+
+describe("listIncidents & acknowledgeIncident", () => {
+  const ackAlert: NormalizedLibrenmsAlert = {
+    librenmsAlertId: "alert-ack-1",
+    librenmsDeviceId: 2,
+    deviceName: "olt-tebet-01",
+    severity: "warning",
+    state: "alerting",
+    message: "RX power low",
+    timestamp: "2026-08-10T08:00:00Z",
+  };
+
+  it("ack incident aktif → acknowledged + note + actor", async () => {
+    const created = await applyLibrenmsAlert(ackAlert);
+    expect(created.created).toBe(true);
+
+    const result = await acknowledgeIncident({
+      ref: ackAlert.librenmsAlertId,
+      acknowledgedBy: "user-test-1",
+      note: "  sedang dicek tim lapangan  ",
+    });
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.incident.state).toBe("acknowledged");
+    expect(result.incident.acknowledgedBy).toBe("user-test-1");
+    expect(result.incident.acknowledgedAt).not.toBeNull();
+    expect(result.incident.resolutionNote).toBe("sedang dicek tim lapangan");
+  });
+
+  it("ack dengan ID internal incident juga diterima", async () => {
+    const [row] = (
+      await client.query<{ id: string }>(
+        "SELECT id FROM incidents WHERE librenms_alert_id = $1",
+        [ackAlert.librenmsAlertId],
+      )
+    ).rows;
+    const result = await acknowledgeIncident({
+      ref: row.id,
+      acknowledgedBy: "user-test-1",
+    });
+    expect(result.ok).toBe(true);
+  });
+
+  it("ack incident tak dikenal → 404", async () => {
+    const result = await acknowledgeIncident({
+      ref: "alert-tidak-ada",
+      acknowledgedBy: "user-test-1",
+    });
+    expect(result).toEqual({
+      ok: false,
+      status: 404,
+      error: "Incident alert-tidak-ada tidak ditemukan.",
+    });
+  });
+
+  it("ack incident yang sudah resolved → 409", async () => {
+    await applyLibrenmsAlert({
+      ...ackAlert,
+      state: "recovered",
+      severity: "ok",
+      message: "RX power normal",
+    });
+    const result = await acknowledgeIncident({
+      ref: ackAlert.librenmsAlertId,
+      acknowledgedBy: "user-test-1",
+    });
+    expect(result.ok).toBe(false);
+    if (result.ok) return;
+    expect(result.status).toBe(409);
+  });
+
+  it("listIncidents membaca dari tabel + filter state/severity", async () => {
+    const all = await listIncidents({ limit: 10 });
+    expect(all.total).toBeGreaterThanOrEqual(2);
+
+    const resolved = await listIncidents({ state: "resolved" });
+    expect(resolved.incidents.every((item) => item.state === "resolved")).toBe(true);
+
+    const critical = await listIncidents({ severity: "critical" });
+    expect(critical.incidents.every((item) => item.severity === "critical")).toBe(true);
+  });
+
+  it("acknowledge menulis audit trail (incident.acknowledged)", async () => {
+    const result = await client.query<{ n: string }>(
+      "SELECT count(*) AS n FROM audit_logs WHERE action = 'incident.acknowledged'",
+    );
+    expect(Number(result.rows[0].n)).toBeGreaterThanOrEqual(2);
   });
 });

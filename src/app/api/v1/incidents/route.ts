@@ -1,27 +1,39 @@
 import { NextResponse } from "next/server";
-import type {
-  IncidentsResponse,
-  IncidentView,
-} from "@/server/api-v1/contracts";
-import type { AlertSeverity } from "@/server/librenms/alert";
-import { listLogs } from "@/server/notification-logs";
+import type { IncidentsResponse } from "@/server/api-v1/contracts";
+import { listIncidents } from "@/server/incident-store";
 import { withRole } from "@/server/rbac";
 
 export const dynamic = "force-dynamic";
 
-// INTERIM (sampai tabel incident tersedia di Fase 2): daftar incident
-// dipetakan dari log notifikasi. Konsekuensinya: state selalu "open",
-// acknowledgement belum tersedia, dan severity diinferensikan dari isi pesan.
-function inferSeverity(message: string): AlertSeverity {
-  if (message.includes("🔴") || /\bDOWN\b/i.test(message)) return "critical";
-  if (message.includes("🟡") || /\bWARNING\b/i.test(message)) return "warning";
-  return "ok";
-}
+const VALID_STATES = ["open", "acknowledged", "resolved"] as const;
+const VALID_SEVERITIES = ["ok", "warning", "critical"] as const;
 
-/** GET /api/v1/incidents — daftar incident, terbaru lebih dulu (perlu login). */
+/** GET /api/v1/incidents?state=&severity=&limit= — daftar incident (perlu login). */
 export const GET = withRole([], async (request) => {
   const { searchParams } = new URL(request.url);
-  const limitRaw = searchParams.get("limit") ?? "100";
+
+  const state = searchParams.get("state");
+  if (
+    state &&
+    !VALID_STATES.includes(state as (typeof VALID_STATES)[number])
+  ) {
+    return NextResponse.json(
+      { error: `state tidak valid: ${state}` },
+      { status: 400 },
+    );
+  }
+  const severity = searchParams.get("severity");
+  if (
+    severity &&
+    !VALID_SEVERITIES.includes(severity as (typeof VALID_SEVERITIES)[number])
+  ) {
+    return NextResponse.json(
+      { error: `severity tidak valid: ${severity}` },
+      { status: 400 },
+    );
+  }
+
+  const limitRaw = searchParams.get("limit") ?? "50";
   const limit = Number(limitRaw);
   if (!Number.isInteger(limit) || limit < 1 || limit > 200) {
     return NextResponse.json(
@@ -30,21 +42,15 @@ export const GET = withRole([], async (request) => {
     );
   }
 
-  const page = await listLogs({ limit });
-  const incidents: IncidentView[] = page.logs.map((log) => ({
-    id: log.id,
-    librenmsAlertId: log.librenmsAlertId,
-    assetId: null,
-    deviceName: log.deviceName,
-    severity: inferSeverity(log.messageContent),
-    state: "open",
-    message: log.messageContent,
-    triggeredAt: log.triggeredAt.toISOString(),
-    acknowledgedBy: null,
-    acknowledgedAt: null,
-    resolutionNote: log.resolutionNote,
-  }));
+  const page = await listIncidents({
+    state: state as "open" | "acknowledged" | "resolved" | undefined,
+    severity: severity as "ok" | "warning" | "critical" | undefined,
+    limit,
+  });
 
-  const body: IncidentsResponse = { incidents, total: page.total };
+  const body: IncidentsResponse = {
+    incidents: page.incidents,
+    total: page.total,
+  };
   return NextResponse.json(body);
 });

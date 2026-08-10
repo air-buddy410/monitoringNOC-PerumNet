@@ -10,9 +10,10 @@
 // Setiap buat/tutup dictatat ke audit_logs (aktor sistem, tanpa user).
 
 import { randomUUID } from "node:crypto";
-import { and, eq, ne } from "drizzle-orm";
+import { and, desc, eq, ne, or, sql } from "drizzle-orm";
 import { db } from "@/db";
 import { assets as assetsTable, auditLogs, incidents } from "@/db/schema";
+import type { IncidentView } from "@/server/api-v1/contracts";
 import type { NormalizedLibrenmsAlert } from "@/server/librenms/alert";
 
 export interface IncidentUpsertResult {
@@ -161,4 +162,130 @@ export async function applyLibrenmsAlert(
     severity: parsed.severity,
   });
   return { incidentId: id, state: "open", created: true, updated: false };
+}
+
+// ---------------------------------------------------------------------------
+// Baca & kelola incident (Fase 4) — daftar dari tabel incidents dan ack.
+// ---------------------------------------------------------------------------
+
+type IncidentRow = typeof incidents.$inferSelect;
+
+/** Baris tabel → kontrak IncidentView (string ISO, null dipertahankan). */
+export function toIncidentView(row: IncidentRow): IncidentView {
+  return {
+    id: row.id,
+    librenmsAlertId: row.librenmsAlertId,
+    assetId: row.assetId,
+    deviceName: row.deviceName,
+    severity: row.severity,
+    state: row.state,
+    message: row.message,
+    triggeredAt: row.triggeredAt.toISOString(),
+    acknowledgedBy: row.acknowledgedBy,
+    acknowledgedAt: row.acknowledgedAt?.toISOString() ?? null,
+    resolutionNote: row.resolutionNote,
+  };
+}
+
+export interface IncidentFilters {
+  state?: IncidentRow["state"];
+  severity?: IncidentRow["severity"];
+  limit?: number;
+}
+
+/**
+ * Daftar incident dari tabel incidents (terbaru lebih dulu). Total dihitung
+ * tanpa limit — dipakai untuk pagination klien.
+ */
+export async function listIncidents(
+  filters: IncidentFilters = {},
+): Promise<{ incidents: IncidentView[]; total: number }> {
+  const conditions = [];
+  if (filters.state) conditions.push(eq(incidents.state, filters.state));
+  if (filters.severity) conditions.push(eq(incidents.severity, filters.severity));
+  const where = conditions.length > 0 ? and(...conditions) : undefined;
+
+  const limit = Math.min(filters.limit ?? 50, 200);
+
+  const [countRows, rows] = await Promise.all([
+    db
+      .select({ n: sql<number>`count(*)::int` })
+      .from(incidents)
+      .where(where),
+    db
+      .select()
+      .from(incidents)
+      .where(where)
+      .orderBy(desc(incidents.triggeredAt))
+      .limit(limit),
+  ]);
+
+  return { incidents: rows.map(toIncidentView), total: countRows[0]?.n ?? 0 };
+}
+
+export type AcknowledgeResult =
+  | { ok: true; incident: IncidentView }
+  | { ok: false; status: 404 | 409; error: string };
+
+/**
+ * Acknowledge incident aktif (belum resolved). Penerima: `:alertId` pada
+ * route — mencocokkan librenmsAlertId ATAU ID internal tabel, agar klien
+ * yang memakai salah satunya tetap berfungsi.
+ */
+export async function acknowledgeIncident(input: {
+  ref: string;
+  acknowledgedBy: string;
+  note?: string;
+}): Promise<AcknowledgeResult> {
+  const match = or(
+    eq(incidents.id, input.ref),
+    eq(incidents.librenmsAlertId, input.ref),
+  );
+
+  const [active] = await db
+    .select()
+    .from(incidents)
+    .where(and(match, ne(incidents.state, "resolved")))
+    .limit(1);
+
+  if (!active) {
+    const [resolved] = await db
+      .select({ id: incidents.id })
+      .from(incidents)
+      .where(match)
+      .limit(1);
+    return resolved
+      ? { ok: false, status: 409, error: "Incident sudah berstatus resolved." }
+      : { ok: false, status: 404, error: `Incident ${input.ref} tidak ditemukan.` };
+  }
+
+  const note = input.note?.trim();
+  await db
+    .update(incidents)
+    .set({
+      state: "acknowledged",
+      acknowledgedBy: input.acknowledgedBy,
+      acknowledgedAt: new Date(),
+      resolutionNote: note || active.resolutionNote,
+      updatedAt: new Date(),
+    })
+    .where(eq(incidents.id, active.id));
+
+  await db.insert(auditLogs).values({
+    id: randomUUID(),
+    actorUserId: input.acknowledgedBy,
+    actorLabel: "user",
+    action: "incident.acknowledged",
+    entityType: "incident",
+    entityId: active.id,
+    detail: note ? { note } : undefined,
+    createdAt: new Date(),
+  });
+
+  const [updated] = await db
+    .select()
+    .from(incidents)
+    .where(eq(incidents.id, active.id))
+    .limit(1);
+  return { ok: true, incident: toIncidentView(updated) };
 }

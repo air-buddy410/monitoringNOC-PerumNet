@@ -44,8 +44,7 @@ export interface AssetDetailResponse {
 }
 
 // --- GET /api/v1/incidents --------------------------------------------------
-// CATATAN: sebelum tabel incident tersedia (Fase 2), daftar ini dipetakan
-// sementara dari log notifikasi sehingga acknowledgement belum tersedia.
+// Query: ?state=&severity=&limit= (default limit 50, maks 200).
 export type IncidentState = "open" | "acknowledged" | "resolved";
 export interface IncidentView {
   id: string;
@@ -66,6 +65,8 @@ export interface IncidentsResponse {
 }
 
 // --- POST /api/v1/incidents/:alertId/acknowledge ----------------------------
+// `:alertId` = ID internal incident atau librenmsAlertId. Body: { note? }.
+// Khusus peran admin/noc/engineer; resolved → 409.
 export interface AcknowledgeRequest {
   note?: string;
 }

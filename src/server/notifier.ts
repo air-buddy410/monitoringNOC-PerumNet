@@ -4,14 +4,18 @@
 // - Telegram : Bot API resmi bila TELEGRAM_BOT_TOKEN di-set.
 // - WhatsApp : gateway HTTP (Baileys in-house / WA Business API) bila
 //              WHATSAPP_API_URL di-set.
-// Tanpa konfigurasi, pengiriman berjalan dalam MODE SIMULASI (dicatat di log
-// aplikasi & tabel audit) supaya alur tetap bisa diuji end-to-end. Target
-// yang diakhiri "-fail" sengaja digagalkan untuk menguji jalur error.
+// Tanpa konfigurasi, pengiriman berjalan dalam MODE SIMULASI (dicatat di
+// tabel audit) supaya alur tetap bisa diuji end-to-end. Target yang diakhiri
+// "-fail" sengaja digagalkan untuk menguji jalur error.
+//
+// Mulai Fase 4 setiap pengiriman dicatat ke `notification_deliveries`
+// (terkait incidentId); tabel `notification_logs` tetap dipertahankan sebagai
+// LEGACY-AKTIF untuk UI riwayat lama sampai Fase 7 lalu dihapus.
 
 import { randomUUID } from "node:crypto";
 import { eq } from "drizzle-orm";
 import { db } from "@/db";
-import { notificationChannels, notificationLogs } from "@/db/schema";
+import { notificationChannels, notificationDeliveries } from "@/db/schema";
 
 type ChannelRow = typeof notificationChannels.$inferSelect;
 
@@ -19,6 +23,9 @@ export interface AlertPayload {
   librenmsAlertId: string;
   deviceName: string;
   message: string;
+  /** ID incident di tabel incidents; kosong bila tidak ada (mis. recovery
+   * tanpa incident aktif) → kolom incident_id delivery bernilai null. */
+  incidentId?: string;
 }
 
 interface SendOutcome {
@@ -95,7 +102,7 @@ export interface DispatchResult {
 
 /**
  * Kirim satu alert ke SEMUA channel terverifikasi & aktif, lalu catat hasil
- * per channel ke notification_logs (audit PRD).
+ * per channel ke notification_deliveries (terkait incident aktif).
  */
 export async function dispatchAlert(
   payload: AlertPayload,
@@ -125,18 +132,19 @@ export async function dispatchAlert(
       outcome = { ok: false, detail: String(error) };
     }
 
-    const logId = randomUUID();
-    await db.insert(notificationLogs).values({
-      id: logId,
-      librenmsAlertId: payload.librenmsAlertId,
-      deviceName: payload.deviceName,
-      alertType: channel.type,
-      messageContent: payload.message,
+    const deliveryId = randomUUID();
+    await db.insert(notificationDeliveries).values({
+      id: deliveryId,
+      incidentId: payload.incidentId || null,
+      channelId: channel.id,
+      channelType: channel.type,
+      target: channel.chatId ?? channel.target,
       status: outcome.ok ? "sent" : "failed",
-      triggeredAt: new Date(),
+      detail: outcome.detail,
+      createdAt: new Date(),
     });
 
-    result.logIds.push(logId);
+    result.logIds.push(deliveryId);
     if (outcome.ok) result.sent += 1;
     else result.failed += 1;
   }

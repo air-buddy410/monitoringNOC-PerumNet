@@ -13,7 +13,9 @@ services:
       POSTGRES_PASSWORD: perumnet
       POSTGRES_DB: perumnet
     ports:
-      - "5432:5432"
+      # 5433 (bukan 5432) agar tidak bentrok dengan Postgres lain di mesin
+      # dev (mis. perumnet-warehouse). Set DATABASE_URL sesuai port ini.
+      - "5433:5432"
     volumes:
       - perumnet-pgdata:/var/lib/postgresql/data
     healthcheck:
