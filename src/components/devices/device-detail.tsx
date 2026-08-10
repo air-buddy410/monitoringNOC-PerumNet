@@ -3,6 +3,7 @@
 import Link from "next/link";
 import CpuRamChart from "@/components/devices/cpu-ram-chart";
 import HistoryChart from "@/components/devices/history-chart";
+import LibrenmsGraph from "@/components/devices/librenms-graph";
 import OpticalHealth from "@/components/devices/optical-health";
 import PortBandwidth from "@/components/devices/port-bandwidth";
 import TemperatureCard from "@/components/devices/temperature-card";
@@ -86,6 +87,9 @@ export default function DeviceDetail({ deviceId }: { deviceId: string }) {
         )}
         <div className="lg:col-span-3">
           <HistoryChart deviceId={device.id} />
+        </div>
+        <div className="lg:col-span-3">
+          <LibrenmsGraph assetId={device.id} />
         </div>
       </section>
     </>
