@@ -2,13 +2,14 @@
 
 import Link from "next/link";
 import Image from "next/image";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import {
   useEffect,
   useRef,
   useState,
   type ReactNode,
 } from "react";
+import useSWR from "swr";
 import {
   Bell,
   BarChart3,
@@ -27,6 +28,28 @@ import {
 } from "lucide-react";
 import LogoutButton from "@/components/logout-button";
 import { useSession } from "@/hooks/use-session";
+import type { IncidentsResponse } from "@/server/api-v1/contracts";
+
+const fetcher = (url: string) => fetch(url).then((r) => r.json());
+
+function useLibrenmsLive(): { reachable: boolean; loading: boolean } {
+  const { data, isLoading } = useSWR<{ reachable: boolean }>(
+    "/api/v1/integrations/librenms/status",
+    fetcher,
+    { refreshInterval: 30_000, revalidateOnFocus: false, refreshWhenHidden: true },
+  );
+  return { reachable: data?.reachable ?? false, loading: isLoading };
+}
+
+function useActiveIncidentCount(): number {
+  const { session } = useSession();
+  const { data } = useSWR<IncidentsResponse>(
+    session ? "/api/v1/incidents?limit=50" : null,
+    fetcher,
+    { refreshInterval: 30_000, revalidateOnFocus: false, refreshWhenHidden: true },
+  );
+  return data?.incidents.filter((incident) => incident.state !== "resolved").length ?? 0;
+}
 
 const navigation = [
   { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
@@ -56,6 +79,7 @@ function currentPage(pathname: string) {
 
 export default function NocShell({ children }: { children: ReactNode }) {
   const pathname = usePathname();
+  const router = useRouter();
   const { session, isLoading: isSessionLoading } = useSession();
   const [menuOpen, setMenuOpen] = useState(false);
   const [profileOpen, setProfileOpen] = useState(false);
@@ -105,6 +129,9 @@ export default function NocShell({ children }: { children: ReactNode }) {
       window.removeEventListener("pointerdown", closeOnOutsidePress);
     };
   }, [profileOpen]);
+
+  const incidentCount = useActiveIncidentCount();
+  const librenmsLive = useLibrenmsLive();
 
   if (isPublicPage) return <>{children}</>;
 
@@ -175,7 +202,7 @@ export default function NocShell({ children }: { children: ReactNode }) {
               >
                 <Icon aria-hidden="true" />
                 <span>{label}</span>
-                {label === "Notifikasi" && <b>12</b>}
+                {label === "Notifikasi" && incidentCount > 0 && <b>{incidentCount}</b>}
               </Link>
             );
           })}
@@ -209,18 +236,29 @@ export default function NocShell({ children }: { children: ReactNode }) {
             <i>/</i>
             <strong>{title}</strong>
           </div>
-          <label className="noc-search">
+          <form
+            className="noc-search"
+            onSubmit={(event) => {
+              event.preventDefault();
+              const input = new FormData(event.currentTarget).get("search") as string;
+              if (input.trim()) {
+                router.push(`/devices?q=${encodeURIComponent(input.trim())}`);
+              } else {
+                router.push("/devices");
+              }
+            }}
+          >
             <Search aria-hidden="true" />
-            <input placeholder="Cari perangkat, lokasi, IP, atau ID" />
-          </label>
-          <div className="noc-topbar-status">
-            <span />
-            Live
+            <input name="search" placeholder="Cari perangkat, lokasi, IP, atau ID" />
+          </form>
+          <div className="noc-topbar-status" title={librenmsLive.reachable ? "LibreNMS terhubung" : librenmsLive.loading ? "Memeriksa..." : "LibreNMS tidak terjangkau"}>
+            <span style={{ background: librenmsLive.reachable ? "#22c55e" : "#94a3b8" }} />
+            {librenmsLive.loading ? "..." : librenmsLive.reachable ? "Live" : "Offline"}
           </div>
           <div className="noc-topbar-actions">
             <Link href="/notifications" aria-label="Notifikasi">
               <Bell aria-hidden="true" />
-              <b>12</b>
+              {incidentCount > 0 && <b>{incidentCount}</b>}
             </Link>
             <Link href="/reports" aria-label="Laporan">
               <BarChart3 aria-hidden="true" />

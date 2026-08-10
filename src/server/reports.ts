@@ -2,8 +2,9 @@
 //
 // Rekap bulanan disimpan di tabel cache sla_monthly / traffic_monthly.
 // DEVELOPMENT: saat sebuah periode belum punya rekap, tabel di-seed dari
-// generator fixture (deterministik per periode+aset). Pada Fase 3 seed ini
-// diganti agregasi dari data availability/port LibreNMS.
+// generator fixture (deterministik per periode+aset) — hanya bila mode
+// FIXTURE (LIBRENMS_URL/TOKEN tidak di-set). Produksi/terhubung: seed
+// tidak dijalankan; data harus diisi dari agregasi LibreNMS.
 
 import { randomUUID } from "node:crypto";
 import { asc, eq } from "drizzle-orm";
@@ -15,6 +16,7 @@ import {
   generateTrafficReport,
   SLA_TARGET_PERCENT,
 } from "@/lib/mock-reports";
+import { isLibrenmsConfigured } from "@/server/librenms";
 import type { Asset } from "@/types/asset";
 
 export const PERIOD_PATTERN = /^\d{4}-(0[1-9]|1[0-2])$/;
@@ -24,8 +26,12 @@ function legacyGroup(networkRole: string, vendor: string): string {
   return networkRole === "olt" ? "OLT" : vendor;
 }
 
-/** DEVELOPMENT SEED — mengisi tabel assets dari fixture bila belum ada. */
+/** DEVELOPMENT SEED — mengisi tabel assets dari fixture bila BELUM ADA dan
+ * mode FIXTURE (tidak terhubung ke LibreNMS). Produksi/terhubung: TIDAK
+ * menyentuh tabel assets. */
 export async function ensureAssetsSeed() {
+  // Jangan pernah menulis fixture ke DB produksi/terhubung.
+  if (isLibrenmsConfigured()) return;
   for (const asset of FIXTURE_ASSETS) {
     await db
       .insert(assets)

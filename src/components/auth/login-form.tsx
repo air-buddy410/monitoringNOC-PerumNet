@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { CircleAlert } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -10,6 +10,7 @@ import { ApiError, sendJson } from "@/lib/api/http";
 
 export default function LoginForm() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -21,7 +22,8 @@ export default function LoginForm() {
     setError(null);
     try {
       await sendJson("POST", "/api/auth/sign-in/email", { email, password });
-      router.push("/dashboard");
+      const callbackUrl = searchParams.get("callbackUrl");
+      router.push(callbackUrl ?? "/dashboard");
       router.refresh();
     } catch (err) {
       setError(
@@ -36,6 +38,8 @@ export default function LoginForm() {
   }
 
   return (
+    // Boolean() => render nothing during SSR (Suspense boundary needed)
+    // login page wraps LoginForm in <Suspense> — useSearchParams requires it.
     <form
       onSubmit={handleSubmit}
       className="hotspot-login-form flex flex-col"

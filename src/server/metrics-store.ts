@@ -122,8 +122,6 @@ async function buildLibrenmsMetrics(
 
   return {
     usage,
-    // Tanpa sensor suhu → 0/normal sebagai placeholder eksplisit (UI khusus
-    // "tidak ada sensor" menyusul saat UI pindah ke kontrak v1 pada Fase 7).
     temperature: sensorsToTemperature(sensors) ?? {
       celsius: 0,
       status: "normal",
@@ -173,7 +171,7 @@ export interface OltOpticsSnapshot {
 
 /**
  * Grid kesehatan optik OLT ber-cache. Mode terhubung memetakan sensor kelas
- * `dbm`; daftar ONU per port butuh integrasi vendor OLT (menyusul) sehingga
+ * `dbm`; daftar ONU per port memerlukan integrasi vendor OLT sehingga
  * kosong dulu. Mode fixture memakai generator berlabel.
  */
 export async function getOltOptics(deviceId: string): Promise<OltOpticsSnapshot> {

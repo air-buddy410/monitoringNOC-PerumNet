@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { getLatestDevices } from "@/server/device-store";
+import { withRole } from "@/server/rbac";
 
 export const dynamic = "force-dynamic";
 
@@ -9,7 +10,7 @@ export const dynamic = "force-dynamic";
  * langsung kompatibel dengan Leaflet/GIS lain. Status ikut di properties
  * untuk pewarnaan marker.
  */
-export async function GET() {
+export const GET = withRole([], async () => {
   const snapshot = await getLatestDevices();
 
   return NextResponse.json(
@@ -38,4 +39,4 @@ export async function GET() {
       },
     },
   );
-}
+});

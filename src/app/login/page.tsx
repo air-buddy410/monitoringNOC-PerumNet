@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { Suspense } from "react";
 import Image from "next/image";
 import { LogIn } from "lucide-react";
 import LoginForm from "@/components/auth/login-form";
@@ -44,7 +45,9 @@ export default function LoginPage() {
             Masuk Ke PerumNet Monitoring NOC System
           </h1>
           <p>Monitoring NOC Management System</p>
-          <LoginForm />
+          <Suspense fallback={<p className="text-sm text-muted-foreground">Memuat…</p>}>
+            <LoginForm />
+          </Suspense>
         </section>
         <p className="hotspot-login-footer">
           © 2026 PerumNet. All Rights Reserved.

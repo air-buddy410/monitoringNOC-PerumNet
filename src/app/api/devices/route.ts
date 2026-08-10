@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { getDeviceMeta, getLatestDevices } from "@/server/device-store";
 import type { DeviceStatus } from "@/types/device";
+import { withRole } from "@/server/rbac";
 
 // Snapshot selalu diambil dari store server, jangan di-cache statis oleh Next.
 export const dynamic = "force-dynamic";
@@ -24,7 +25,7 @@ type SortKey = (typeof VALID_SORTS)[number];
  *   &sort=<severity|name>
  * Tanpa query mengembalikan seluruh perangkat. `total` = jumlah sebelum filter.
  */
-export async function GET(request: Request) {
+export const GET = withRole([], async (request) => {
   const { searchParams } = new URL(request.url);
   const area = searchParams.get("area");
   const group = searchParams.get("group");
@@ -107,4 +108,4 @@ export async function GET(request: Request) {
       },
     },
   );
-}
+});
