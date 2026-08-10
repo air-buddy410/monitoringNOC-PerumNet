@@ -7,9 +7,10 @@ import {
   fetchDeviceCpuUsage,
   fetchDeviceEventlog,
   fetchDeviceGraphPng,
+  fetchDeviceHealth,
+  fetchDeviceLinks,
   fetchDevicePorts,
   fetchDevices,
-  fetchDiscoveredLinks,
 } from "@/server/librenms";
 
 type RouteMap = Record<string, unknown>;
@@ -128,15 +129,36 @@ describe("fetchDeviceEventlog", () => {
   });
 });
 
-describe("fetchDiscoveredLinks", () => {
-  it("membaca /resources/links", async () => {
-    stubRoutes({
-      "/resources/links": {
+describe("fetchDeviceHealth", () => {
+  it("membaca /devices/{id}/health dan membaca kunci graphs", async () => {
+    const mock = stubRoutes({
+      "/devices/7/health": {
+        graphs: [
+          { sensor_id: 21, sensor_class: "temperature", sensor_current: 41 },
+        ],
+      },
+    });
+    const sensors = await fetchDeviceHealth(7);
+    expect(sensors[0].sensor_class).toBe("temperature");
+    expect(String(mock.mock.calls[0][0])).toContain("/devices/7/health");
+  });
+
+  it("instalasi tanpa sensor → array kosong (bukan crash)", async () => {
+    stubRoutes({ "/devices/7/health": { graphs: [] } });
+    expect(await fetchDeviceHealth(7)).toEqual([]);
+  });
+});
+
+describe("fetchDeviceLinks", () => {
+  it("membaca /devices/{id}/links", async () => {
+    const mock = stubRoutes({
+      "/devices/3/links": {
         links: [{ id: 1, local_device_id: 3, remote_device_id: 9, active: 1 }],
       },
     });
-    const links = await fetchDiscoveredLinks();
+    const links = await fetchDeviceLinks(3);
     expect(links[0].remote_device_id).toBe(9);
+    expect(String(mock.mock.calls[0][0])).toContain("/devices/3/links");
   });
 });
 

@@ -82,6 +82,23 @@ export interface LibrenmsAlertIngestResponse {
   state: AlertState;
   sent: number;
   failed: number;
+  /** ID incident (tabel incidents); "" bila recovery tanpa incident aktif. */
+  incidentId: string;
+}
+
+// --- GET /api/v1/integrations/librenms/status -------------------------------
+// Diagnostik koneksi integrasi (peran admin). Dipakai untuk memastikan mode
+// terhubung benar-benar aktif dan melihat jumlah perangkat yang terpetakan.
+export interface LibrenmsStatusResponse {
+  configured: boolean;
+  reachable: boolean;
+  lastError: string | null;
+  deviceCount: number;
+  alertCount: number;
+  assetCount: number;
+  mappedAssetCount: number;
+  snapshotSource: "librenms" | "fixture";
+  checkedAt: string;
 }
 
 // --- Customer (implementasi Fase 6) ----------------------------------------

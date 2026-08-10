@@ -66,14 +66,18 @@ export async function fetchDevicePorts(
 }
 
 /**
- * Seluruh sensor bernilai (kelas temperature/dbm/voltage/…) semua device
- * dalam satu panggilan — pemanggil memfilter per device & men-cache bersama.
+ * Sensor/health milik satu device — `/devices/{id}/health` mengembalikan
+ * seluruh kelas (temperature, dbm, voltage, …) sekaligus. Endpoint agregat
+ * `/resources/sensors` tidak ada pada semua versi LibreNMS, jadi pemanggilan
+ * dilakukan per device dan di-cache per device oleh store pemakai.
  */
-export async function fetchAllSensors(): Promise<LibrenmsSensor[]> {
-  const body = await librenmsFetch<{ sensors?: LibrenmsSensor[] }>(
-    "/resources/sensors",
+export async function fetchDeviceHealth(
+  deviceId: number,
+): Promise<LibrenmsSensor[]> {
+  const body = await librenmsFetch<{ graphs?: LibrenmsSensor[] }>(
+    `/devices/${deviceId}/health`,
   );
-  return body.sensors ?? [];
+  return body.graphs ?? [];
 }
 
 interface HealthListEntry {
@@ -164,10 +168,12 @@ export async function fetchDeviceEventlog(
   return body.logs ?? body.events ?? [];
 }
 
-/** Link hasil discovery LLDP/CDP seluruh jaringan — bahan rekomendasi F5. */
-export async function fetchDiscoveredLinks(): Promise<LibrenmsLink[]> {
+/** Link hasil discovery LLDP/CDP per device — bahan rekomendasi F5. */
+export async function fetchDeviceLinks(
+  deviceId: number,
+): Promise<LibrenmsLink[]> {
   const body = await librenmsFetch<{ links?: LibrenmsLink[] }>(
-    "/resources/links",
+    `/devices/${deviceId}/links`,
   );
   return body.links ?? [];
 }

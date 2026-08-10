@@ -155,7 +155,7 @@ export interface DiscoveredLink {
 }
 
 /**
- * Baris /resources/links → kandidat link topologi (bahan REKOMENDASI
+ * Baris /devices/{id}/links → kandidat link topologi (bahan REKOMENDASI
  * discovery Fase 5 — tidak pernah menimpa topologi manual). Link non-aktif
  * atau yang remote-nya tidak dikenal LibreNMS dibuang.
  */

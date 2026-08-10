@@ -125,6 +125,22 @@
 @media (max-width: 820px) { .noc-sidebar { z-index: 1300; transform: translateX(-100%); transition: transform .24s ease; }.noc-sidebar.is-open { transform: translateX(0); }.noc-sidebar-backdrop { position: fixed; z-index: 1200; inset: 0; display: block; width: 100%; height: 100%; padding: 0; background: #102b2a8c; border: 0; backdrop-filter: blur(3px); }.noc-sidebar-close { position: absolute; top: 20px; right: 17px; display: grid; place-items: center; width: 36px; height: 36px; padding: 0; color: #eaf6f4; background: #ffffff12; border: 1px solid #ffffff25; border-radius: 9px; }.noc-sidebar-close svg { width: 18px; height: 18px; }.noc-workspace { margin-left: 0; }.noc-topbar { position: sticky; top: 0; z-index: 20; gap: 12px; min-height: 59px; padding: 0 18px; box-shadow: 0 5px 18px #25413a0a; }.noc-menu-button { position: relative; z-index: 1; display: grid; flex: 0 0 auto; place-items: center; width: 38px; height: 38px; padding: 0; color: #345654; background: #eef8f6; border: 1px solid #d9e9e6; border-radius: 10px; touch-action: manipulation; -webkit-tap-highlight-color: transparent; }.noc-menu-button svg { width: 20px; height: 20px; }.noc-breadcrumb { min-width: 0; }.noc-search { display: none; }.noc-topbar-status { margin-left: auto; }.noc-topbar-actions > a:nth-child(2) { display: none; }.noc-page { padding: 23px 18px 32px; }.noc-map-page { min-height: calc(100dvh - 59px); }.noc-map-canvas { min-height: 480px; } }
 @media (max-width: 580px) { .noc-topbar { gap: 8px; padding: 0 12px; }.noc-breadcrumb > span, .noc-breadcrumb > i { display: none; }.noc-breadcrumb strong { font-size: 12px; white-space: nowrap; }.noc-topbar-status { gap: 0; margin-left: auto; font-size: 0; }.noc-topbar-status span { width: 8px; height: 8px; }.noc-topbar-actions { gap: 8px; }.noc-topbar-actions > a, .noc-topbar-actions > button { width: 34px; height: 34px; }.noc-topbar-actions > a b { display: none; }.noc-topbar-actions > button { gap: 0; font-size: 0; }.noc-topbar-actions > button svg { width: 18px; height: 18px; }.noc-page [data-slot="table-container"] > table { min-width: 640px; }.noc-page-intro { align-items: flex-start; margin-bottom: 19px; }.noc-page-intro h1 { font-size: 27px; }.noc-page-intro p { max-width: 300px; font-size: 12px; line-height: 1.5; }.noc-health-grid { gap: 9px; }.noc-health-card { min-height: 100px; padding: 13px; gap: 10px; border-radius: 11px; }.noc-health-icon { width: 37px; height: 37px; border-radius: 9px; }.noc-health-icon svg { width: 19px; height: 19px; }.noc-health-card p { font-size: 10px; }.noc-health-card strong { font-size: 23px; }.noc-health-card small { margin-top: 4px; font-size: 9px; }.noc-activity-grid { grid-template-columns: 1fr; gap: 10px; margin-top: 10px; }.noc-site-panel { grid-column: auto; }.noc-alert-strip { align-items: flex-start; }.noc-alert-strip > span { display: none; }.noc-device-section { margin-top: 10px; }.noc-section-heading { padding: 15px 14px 12px; }.noc-device-list { overflow-x: auto; }.noc-map-canvas { min-height: 440px; }.noc-map-canvas .absolute.right-4.top-4 { top: 12px; right: 12px; left: 12px; }.noc-map-canvas .absolute.right-4.top-16 { top: 113px; right: 12px; }.noc-map-canvas .absolute.left-4.top-4 { display: none; }.noc-map-attribution { right: 54px; bottom: 8px; font-size: 9px; } }
 
+/* Dashboard NOC: peta dan insiden adalah konteks operasional pertama. */
+.noc-command-grid { display: grid; grid-template-columns: minmax(0, 1.9fr) minmax(300px, 1fr); gap: 15px; align-items: stretch; }
+.noc-dashboard-map-panel { display: flex; min-height: 430px; flex-direction: column; }
+.noc-dashboard-map-canvas { position: relative; flex: 1; min-height: 354px; overflow: hidden; background: #edf7f5; }
+.noc-dashboard-map-canvas .leaflet-container { height: 100%; width: 100%; }
+.noc-dashboard-map-legend { position: absolute; z-index: 500; bottom: 14px; left: 14px; width: 150px; padding: 11px 12px; color: #526767; background: #fffffff2; border: 1px solid #dceae6; border-radius: 8px; box-shadow: 0 8px 20px #25413a1a; pointer-events: none; }
+.noc-dashboard-map-legend p { margin: 0 0 7px; color: #526767; font-size: 9px; font-weight: 800; letter-spacing: .45px; text-transform: uppercase; }
+.noc-dashboard-map-legend ul { display: grid; gap: 5px; margin: 0; padding: 0; list-style: none; }
+.noc-dashboard-map-legend li { display: grid; grid-template-columns: 7px minmax(0, 1fr) auto; align-items: center; gap: 7px; color: #677b79; font-size: 10px; }
+.noc-dashboard-map-legend i { width: 7px; height: 7px; border-radius: 50%; }.noc-dashboard-map-legend i.online { background: #22c55e; }.noc-dashboard-map-legend i.warning { background: #eab308; }.noc-dashboard-map-legend i.offline { background: #ef4444; }.noc-dashboard-map-legend strong { color: #3e5152; font-size: 10px; }
+.noc-incidents-panel { display: flex; min-width: 0; flex-direction: column; }.noc-incidents-panel .noc-incident-list { flex: 1; padding-top: 4px; }.noc-incident-row { grid-template-columns: 8px minmax(0, 1fr) 16px; align-items: center; }.noc-incident-row div small { display: block; margin-top: 4px; overflow: hidden; color: #98a5a4; font-size: 10px; text-overflow: ellipsis; white-space: nowrap; }.noc-incident-row > svg { width: 15px; height: 15px; color: #a4b1af; }
+.noc-dashboard-secondary { grid-template-columns: minmax(0, 1.3fr) minmax(280px, .7fr); margin-top: 15px; }.noc-dashboard-secondary .noc-traffic-panel { grid-column: auto; }.noc-dashboard-secondary .noc-alert-strip { grid-column: auto; min-height: 100%; }.noc-dashboard-health { margin-top: 15px; }
+
+@media (max-width: 1040px) { .noc-command-grid { grid-template-columns: 1fr; }.noc-dashboard-map-panel { min-height: 390px; }.noc-dashboard-secondary { grid-template-columns: 1.1fr .9fr; }.noc-dashboard-secondary .noc-alert-strip { grid-column: auto; } }
+@media (max-width: 580px) { .noc-command-grid { gap: 10px; }.noc-dashboard-map-panel { min-height: 336px; }.noc-dashboard-map-canvas { min-height: 272px; }.noc-dashboard-map-legend { bottom: 10px; left: 10px; width: 137px; padding: 9px 10px; }.noc-dashboard-secondary { grid-template-columns: 1fr; gap: 10px; margin-top: 10px; }.noc-dashboard-secondary .noc-alert-strip { grid-column: auto; min-height: auto; }.noc-dashboard-health { margin-top: 10px; } }
+
 .dark {
   --background: oklch(0.145 0 0);
   --foreground: oklch(0.985 0 0);
@@ -199,6 +215,8 @@
 
 /* PerumNet-CRM NOC dashboard shell. The routes and actions remain unchanged. */
 .noc-sidebar { padding:25px 18px 17px; }
+.noc-shell, .noc-workspace, .noc-content, .noc-page { min-width:0; max-width:100%; }
+.noc-shell { overflow-x:clip; }
 .noc-brand { display:flex; align-items:center; gap:8px; padding:5px 9px 21px; }
 .noc-brand-mark { display:block; width:34px; height:40px; object-fit:contain; }
 .noc-brand-wordmark { display:block; width:116px; height:auto; object-fit:contain; }
@@ -222,6 +240,10 @@
 .noc-profile-panel-rule { height:1px; margin:4px 3px; background:#e7efed; }
 
 @media (max-width: 580px) {
+  html, body { max-width:100%; overflow-x:hidden; }
+  .noc-menu-button { width:44px; height:44px; }
+  .noc-topbar-actions > a, .noc-topbar-actions > button { width:44px; height:44px; }
+  .noc-page { overflow-x:clip; }
   .noc-login-page { padding:22px 18px; }
   .noc-login-card { padding:24px 22px; }
   .noc-profile-toggle > span, .noc-profile-toggle > svg:last-child { display:none; }
@@ -265,6 +287,16 @@
     font-size: 9px;
     letter-spacing: 0.1em;
   }
+}
+
+/* Safari/iOS fallback: device-width tetap kecil walau layout viewport belum
+   tersinkron saat halaman pertama kali dibuka dari alamat IP lokal. */
+@media (max-width: 820px), (max-device-width: 820px) {
+  .noc-sidebar { z-index: 1300; transform: translateX(-100%); }
+  .noc-sidebar.is-open { transform: translateX(0); }
+  .noc-sidebar-backdrop { position:fixed; z-index:1200; inset:0; display:block; width:100%; height:100%; padding:0; border:0; background:#102b2a8c; }
+  .noc-workspace { width:100%; margin-left:0 !important; }
+  .noc-menu-button { position:relative; z-index:30; display:grid !important; width:44px; height:44px; touch-action:manipulation; }
 }
 
 /* PerumNet Hotspot admin login — presentation-only, scoped to /login. */

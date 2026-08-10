@@ -22,8 +22,8 @@ import { cache } from "@/server/cache";
 import { getAssetsWithStatus } from "@/server/device-store";
 import {
   dbmSensorsToOptics,
-  fetchAllSensors,
   fetchDeviceCpuUsage,
+  fetchDeviceHealth,
   fetchDeviceMemUsage,
   fetchDevicePorts,
   isLibrenmsConfigured,
@@ -65,12 +65,17 @@ async function resolveLibrenmsDeviceId(
   );
 }
 
-/** Sensor seluruh device di-cache bersama — satu panggilan API per TTL. */
-async function getSharedSensors(): Promise<LibrenmsSensor[]> {
-  const key = "librenms:sensors";
+/**
+ * Sensor/health device — satu panggilan `/devices/{id}/health` per TTL.
+ * Bila suatu instalasi tidak punya sensor, hasil kosong (bukan error).
+ */
+async function getDeviceSensors(
+  librenmsDeviceId: number,
+): Promise<LibrenmsSensor[]> {
+  const key = `librenms:health:${librenmsDeviceId}`;
   const cached = await cache.get<LibrenmsSensor[]>(key);
   if (cached) return cached;
-  const sensors = await fetchAllSensors();
+  const sensors = await fetchDeviceHealth(librenmsDeviceId);
   await cache.set(key, sensors, METRICS_TTL_SECONDS);
   return sensors;
 }
@@ -81,13 +86,10 @@ async function buildLibrenmsMetrics(
 ): Promise<DeviceMetricsSnapshot> {
   const [ports, sensors, cpu, ram] = await Promise.all([
     fetchDevicePorts(librenmsDeviceId),
-    getSharedSensors(),
+    getDeviceSensors(librenmsDeviceId),
     fetchDeviceCpuUsage(librenmsDeviceId),
     fetchDeviceMemUsage(librenmsDeviceId),
   ]);
-  const deviceSensors = sensors.filter(
-    (sensor) => sensor.device_id === librenmsDeviceId,
-  );
   const now = timeLabel();
 
   let usage = liveUsageSeries.get(assetId) ?? [];
@@ -122,7 +124,7 @@ async function buildLibrenmsMetrics(
     usage,
     // Tanpa sensor suhu → 0/normal sebagai placeholder eksplisit (UI khusus
     // "tidak ada sensor" menyusul saat UI pindah ke kontrak v1 pada Fase 7).
-    temperature: sensorsToTemperature(deviceSensors) ?? {
+    temperature: sensorsToTemperature(sensors) ?? {
       celsius: 0,
       status: "normal",
     },
@@ -183,10 +185,8 @@ export async function getOltOptics(deviceId: string): Promise<OltOpticsSnapshot>
   if (isLibrenmsConfigured()) {
     const librenmsDeviceId = await resolveLibrenmsDeviceId(deviceId);
     if (librenmsDeviceId !== null) {
-      const sensors = await getSharedSensors();
-      ports = dbmSensorsToOptics(
-        sensors.filter((sensor) => sensor.device_id === librenmsDeviceId),
-      );
+      const sensors = await getDeviceSensors(librenmsDeviceId);
+      ports = dbmSensorsToOptics(sensors);
     }
   }
 

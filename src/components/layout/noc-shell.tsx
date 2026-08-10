@@ -25,6 +25,7 @@ import {
   X,
 } from "lucide-react";
 import LogoutButton from "@/components/logout-button";
+import { useSession } from "@/hooks/use-session";
 
 const navigation = [
   { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
@@ -52,6 +53,7 @@ function currentPage(pathname: string) {
 
 export default function NocShell({ children }: { children: ReactNode }) {
   const pathname = usePathname();
+  const { session, isLoading: isSessionLoading } = useSession();
   const [menuOpen, setMenuOpen] = useState(false);
   const [profileOpen, setProfileOpen] = useState(false);
   const profileMenuRef = useRef<HTMLDivElement>(null);
@@ -100,6 +102,15 @@ export default function NocShell({ children }: { children: ReactNode }) {
   if (isPublicPage) return <>{children}</>;
 
   const title = currentPage(pathname);
+  const accountName = session?.user.name ?? (isSessionLoading ? "Memuat akun" : "Belum masuk");
+  const accountEmail = session?.user.email ?? "Masuk untuk melanjutkan";
+  const accountInitials = session?.user.name
+    .split(/\s+/)
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((word) => word[0])
+    .join("")
+    .toUpperCase() ?? "?";
 
   function toggleMenu() {
     setMenuOpen((value) => !value);
@@ -163,10 +174,10 @@ export default function NocShell({ children }: { children: ReactNode }) {
           })}
         </nav>
         <div className="noc-sidebar-footer">
-          <span className="noc-avatar">AD</span>
+          <span className="noc-avatar">{accountInitials}</span>
           <div>
-            <strong>Admin NOC</strong>
-            <span>noc@perumnet.id</span>
+            <strong>{accountName}</strong>
+            <span>{accountEmail}</span>
           </div>
           <Link href="/profile" aria-label="Buka profil">
             <ChevronRight aria-hidden="true" />
@@ -217,7 +228,7 @@ export default function NocShell({ children }: { children: ReactNode }) {
                 onClick={() => setProfileOpen((value) => !value)}
               >
                 <UserRound aria-hidden="true" />
-                <span>Admin NOC</span>
+                <span>{accountName}</span>
                 <ChevronDown aria-hidden="true" />
               </button>
               {profileOpen && (
@@ -227,7 +238,7 @@ export default function NocShell({ children }: { children: ReactNode }) {
                     Profil saya
                   </Link>
                   <span className="noc-profile-panel-rule" />
-                  <LogoutButton />
+                  {session ? <LogoutButton /> : <Link href="/login" role="menuitem" onClick={() => setProfileOpen(false)}>Masuk</Link>}
                 </div>
               )}
             </div>
