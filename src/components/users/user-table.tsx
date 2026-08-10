@@ -3,7 +3,7 @@
 import { useState } from "react";
 import Link from "next/link";
 import useSWR from "swr";
-import { CircleCheck, CircleDashed } from "lucide-react";
+import { CircleCheck, CircleDashed, UserPlus, X } from "lucide-react";
 import {
   Select,
   SelectContent,
@@ -19,6 +19,10 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { useSession } from "@/hooks/use-session";
 import { ApiError, getJson, sendJson } from "@/lib/api/http";
 import { ROLE_LABELS, type UserRole } from "@/types/user";
 
@@ -47,10 +51,15 @@ function formatDate(iso: string) {
 }
 
 export default function UserTable() {
+  const { session } = useSession();
+  const isAdmin = session?.user.role === "admin";
   const { data, error, mutate } = useSWR("/api/users", getJson<UsersResponse>, {
     revalidateOnFocus: false,
   });
   const [actionError, setActionError] = useState<string | null>(null);
+  const [formOpen, setFormOpen] = useState(false);
+  const [form, setForm] = useState({ name: "", email: "", password: "", role: "engineer" as UserRole });
+  const [saving, setSaving] = useState(false);
 
   async function changeRole(userId: string, role: UserRole) {
     setActionError(null);
@@ -62,6 +71,29 @@ export default function UserTable() {
         err instanceof Error ? err.message : "Gagal mengubah peran.",
       );
       await mutate();
+    }
+  }
+
+  async function createUser(event: React.FormEvent) {
+    event.preventDefault();
+    setSaving(true);
+    setActionError(null);
+    try {
+      await sendJson("POST", "/api/users", {
+        name: form.name,
+        email: form.email,
+        password: form.password,
+        role: form.role,
+      });
+      setForm({ name: "", email: "", password: "", role: "engineer" });
+      setFormOpen(false);
+      await mutate();
+    } catch (err) {
+      setActionError(
+        err instanceof Error ? err.message : "Gagal membuat pengguna.",
+      );
+    } finally {
+      setSaving(false);
     }
   }
 
@@ -78,8 +110,84 @@ export default function UserTable() {
           <p className="text-xs text-muted-foreground">
             {data ? `${data.total} pengguna` : "…"}
           </p>
+          {isAdmin && (
+            <Button
+              type="button"
+              size="sm"
+              variant={formOpen ? "secondary" : "default"}
+              onClick={() => setFormOpen((value) => !value)}
+            >
+              {formOpen ? (
+                <X className="size-3.5" aria-hidden="true" />
+              ) : (
+                <UserPlus className="size-3.5" aria-hidden="true" />
+              )}
+              <span>{formOpen ? "Batal" : "Tambah Pengguna"}</span>
+            </Button>
+          )}
         </div>
       </div>
+
+      {isAdmin && formOpen && (
+        <form onSubmit={createUser} className="grid gap-3 border-b bg-muted/30 px-4 py-4 sm:grid-cols-2 lg:grid-cols-5">
+          <div className="space-y-1.5">
+            <Label htmlFor="new-user-name">Nama Lengkap</Label>
+            <Input
+              id="new-user-name"
+              required
+              maxLength={80}
+              value={form.name}
+              onChange={(event) => setForm({ ...form, name: event.target.value })}
+            />
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="new-user-email">Email</Label>
+            <Input
+              id="new-user-email"
+              type="email"
+              required
+              autoComplete="off"
+              value={form.email}
+              onChange={(event) => setForm({ ...form, email: event.target.value })}
+            />
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="new-user-password">Password (min. 8)</Label>
+            <Input
+              id="new-user-password"
+              type="password"
+              required
+              minLength={8}
+              autoComplete="new-password"
+              value={form.password}
+              onChange={(event) => setForm({ ...form, password: event.target.value })}
+            />
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="new-user-role">Peran</Label>
+            <Select
+              value={form.role}
+              onValueChange={(value) => setForm({ ...form, role: (value ?? "engineer") as UserRole })}
+            >
+              <SelectTrigger id="new-user-role" className="h-8 w-full bg-background text-xs">
+                <SelectValue>{ROLE_LABELS[form.role]}</SelectValue>
+              </SelectTrigger>
+              <SelectContent>
+                {ROLES.map((item) => (
+                  <SelectItem key={item} value={item}>
+                    {ROLE_LABELS[item]}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="flex items-end">
+            <Button type="submit" size="sm" disabled={saving}>
+              {saving ? "Menyimpan…" : "Buat Akun"}
+            </Button>
+          </div>
+        </form>
+      )}
 
       {error instanceof ApiError ? (
         <p className="px-4 py-8 text-center text-sm text-muted-foreground">
