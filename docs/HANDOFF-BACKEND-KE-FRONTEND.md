@@ -444,45 +444,6 @@ pekerjaan tampilan — datanya sudah tersedia di endpoint yang disebut, tidak
 ada yang perlu ditunggu dari backend. Tandai ✅ dan pindahkan ke §Selesai
 kalau sudah dikerjakan.
 
-### T-1. Penanda "data tiruan" di kepala layar
-
-- **Layar:** seluruh aplikasi (`src/components/layout/noc-shell.tsx`), badge
-  Live/Offline di pojok topbar.
-- **Butuh:** badge sekarang hanya membaca `reachable`, jadi saat LibreNMS
-  belum dikonfigurasi ia menulis "Offline" — padahal angka di dasbor tetap
-  terisi penuh dari data tiruan, dan pengguna membacanya sebagai kondisi
-  jaringan sungguhan. Bedakan tiga keadaan dari
-  `GET /api/v1/integrations/librenms/status`: `configured: false` → tulis
-  **"Data contoh"** (bukan "Offline"); `configured: true, reachable: false` →
-  "Offline"; keduanya true → "Live". Field `snapshotSource` (`"librenms"` /
-  `"fixture"`) sudah ada di respons yang sama dan boleh dipakai langsung.
-- **Kenapa tidak bisa diakali di sisi backend:** endpoint sudah mengembalikan
-  ketiga fieldnya; yang kurang murni cara menampilkannya.
-
-### T-2. Halaman detail perangkat: satu polling, bukan tiga
-
-- **Layar:** `src/app/devices/[id]`, komponen `history-chart.tsx`,
-  `optical-health.tsx`.
-- **Butuh:** halaman ini memanggil beberapa endpoint terpisah tiap siklus.
-  `GET /api/devices/:id/live` sudah mengembalikan `{ device, metrics, optics,
-  updatedAt }` sekaligus dan belum dipakai sama sekali — pindahkan polling
-  10 detik ke sana, sisakan `metrics-history` (rentang panjang, TTL 60 detik)
-  dan `graph` (PNG) sebagai panggilan terpisah.
-- **Kenapa tidak bisa diakali di sisi backend:** endpoint gabungannya sudah
-  ada sejak awal; yang menentukan berapa kali request terkirim adalah klien.
-
-### T-3. Siapkan layar laporan & dasbor menghadapi 401
-
-- **Layar:** `src/components/reports/*`, `src/components/dashboard/*`.
-- **Butuh:** `/api/reports/sla`, `/api/reports/traffic`, dan
-  `/api/dashboard/summary` sekarang bisa diakses tanpa sesi. Itu akan saya
-  tutup dari sisi backend (`withRole`), jadi ketiganya akan mulai membalas
-  **401 `{ "error": "Belum login." }`**. Pastikan layar-layar itu menampilkan
-  pesan error dari `ApiError.message` seperti tabel pengguna, bukan grafik
-  kosong tanpa keterangan.
-- **Kenapa tidak bisa diakali di sisi backend:** penutupan aksesnya milik
-  backend, tapi tampilan saat ditolak milik frontend.
-
 ### ✅ T-4. Form login pindah ke satu pintu — SELESAI 2026-08-18
 
 - **Layar:** `src/components/auth/login-form.tsx`.
@@ -508,26 +469,25 @@ kalau sudah dikerjakan.
 - **Kenapa tidak bisa diakali di sisi backend:** endpointnya sudah ditutup;
   yang tersisa halaman yang menjanjikan sesuatu yang tidak akan terjadi.
 
-### T-6. Form yang menyesuaikan mode login
-
-- **Layar:** `src/components/profile/change-password-form.tsx`,
-  `src/components/users/user-table.tsx` (form tambah pengguna).
-- **Butuh:** panggil `GET /api/auth-mode` lalu:
-  - `passwordChangeAvailable: false` → **sembunyikan** form ganti password di
-    halaman profil. Password portal tidak ada di mode mailserver; yang diganti
-    adalah password email, dan itu dilakukan di webmail.
-  - `passwordRequiredOnCreate: false` → **sembunyikan isian password** pada
-    form tambah pengguna. Mengirim password di mode ini ditolak 400.
-- **Kenapa tidak bisa diakali di sisi backend:** backend sudah menolak dengan
-  pesan yang menjelaskan; yang kurang adalah tidak menampilkan isian yang
-  memang tidak berlaku.
-
 ### Selesai
 
 - **T-4** — `login-form.tsx` memakai `POST /api/auth/sign-in/portal` dan
   membedakan mailserver mati dari kredensial salah. Diverifikasi dari kode.
 - **T-5** — `/register` diubah jadi pengalihan ke `/login`, bukan dihapus.
   Lebih baik: deep-link dan cache peramban lama tidak jadi 404.
+- **T-1** — Badge LibreNMS membedakan `Data contoh`, `Offline`, dan `Live`.
+  Ketiga state diverifikasi di browser pada fixture, konfigurasi kosong, dan
+  stub LibreNMS yang tidak terjangkau.
+- **T-2** — `useDeviceLive()` memakai satu SWR `/api/devices/:id/live` setiap
+  10 detik untuk device/metrics/optics; history dan RRD tetap terpisah.
+  Detail perangkat diverifikasi di browser.
+- **T-3** — Dashboard dan laporan memakai `ApiErrorNotice` yang menampilkan
+  `ApiError.message` dan tautan masuk kembali untuk 401; tidak lagi diam-diam
+  merender chart kosong. Route terlindungi dan DOM layar diverifikasi.
+- **T-6** — `useAuthMode()` dipakai pada profil dan form pengguna. Browser
+  memverifikasi mode LOCAL tetap menampilkan form, sedangkan MAILSERVER
+  menyembunyikan form password profil dan input password pengguna; kegagalan
+  membaca mode menahan form secara aman.
 
 ---
 
