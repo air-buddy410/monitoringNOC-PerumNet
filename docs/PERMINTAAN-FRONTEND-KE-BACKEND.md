@@ -23,6 +23,12 @@ field-nya di `docs/HANDOFF-BACKEND-KE-FRONTEND.md`, bukan di sini.
 
 ## Terbuka
 
+_(belum ada — silakan diisi)_
+
+---
+
+## Selesai
+
 ### Sinkronkan kolom `allow_local_login` untuk jalur login portal
 - **Layar:** `/login` → `POST /api/auth/sign-in/portal`
 - **Butuh:** schema/migrasi database dev yang sesuai dengan query
@@ -33,9 +39,8 @@ field-nya di `docs/HANDOFF-BACKEND-KE-FRONTEND.md`, bukan di sini.
   frontend tidak boleh mengubah schema, menyembunyikan error 500, atau
   menurunkan pemeriksaan akun. Setelah migrasi/schema sinkron, verifikasi ulang
   response 401, 503, dan 429 yang menjadi kontrak T-4.
-
----
-
-## Selesai
-
-_(kosong)_
+- **✅ Selesai 2026-08-18.** Migrasi `drizzle/pg/0001_needy_firedrake.sql`
+  memang belum pernah dijalankan di database dev. Sudah diterapkan
+  (`npx drizzle-kit migrate`); kolomnya ada, dan `POST /api/auth/sign-in/portal`
+  sekarang menjawab **401**, bukan 500. Kontrak 401/503/429 di HANDOFF T-4
+  berlaku apa adanya.

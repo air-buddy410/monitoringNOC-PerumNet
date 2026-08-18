@@ -424,6 +424,19 @@ berubah, dan jangan tunjukkan angkanya sebagai fakta operasional.
 
 ---
 
+## Sebelum menguji jalur login
+
+Database dev harus ikut termigrasi — skema di kode tidak otomatis sampai ke
+database yang sudah ada:
+
+```
+set -a && . ./.env.local && set +a && npx drizzle-kit migrate
+```
+
+Tanpa itu `POST /api/auth/sign-in/portal` menjawab **500** karena kolom
+`user.allow_local_login` belum ada, dan gejalanya terlihat seperti bug
+backend padahal migrasinya yang tertinggal. (Terjadi 2026-08-18.)
+
 ## Tugas untuk Luna
 
 Papan permintaan Opus → Luna (`WORKFLOW-TIM.md` §5). Semua di sini murni
