@@ -483,7 +483,7 @@ kalau sudah dikerjakan.
 - **Kenapa tidak bisa diakali di sisi backend:** penutupan aksesnya milik
   backend, tapi tampilan saat ditolak milik frontend.
 
-### T-4. Form login pindah ke satu pintu ⚠️ menahan penyalaan mode mailserver
+### ✅ T-4. Form login pindah ke satu pintu — SELESAI 2026-08-18
 
 - **Layar:** `src/components/auth/login-form.tsx`.
 - **Butuh:** form masih POST ke `/api/auth/sign-in/email`. Pindahkan ke
@@ -499,7 +499,7 @@ kalau sudah dikerjakan.
   Selama `AUTH_PROVIDER` masih `LOCAL`, `/sign-in/email` juga masih hidup —
   jadi perpindahan ini aman dilakukan kapan saja, tidak perlu serentak.
 
-### T-5. Halaman `/register` dimatikan
+### ✅ T-5. Halaman `/register` dimatikan — SELESAI 2026-08-18
 
 - **Layar:** `src/app/register`, `src/components/auth/register-form.tsx`.
 - **Butuh:** pendaftaran mandiri sudah ditutup permanen di backend
@@ -524,7 +524,10 @@ kalau sudah dikerjakan.
 
 ### Selesai
 
-_(kosong)_
+- **T-4** — `login-form.tsx` memakai `POST /api/auth/sign-in/portal` dan
+  membedakan mailserver mati dari kredensial salah. Diverifikasi dari kode.
+- **T-5** — `/register` diubah jadi pengalihan ke `/login`, bukan dihapus.
+  Lebih baik: deep-link dan cache peramban lama tidak jadi 404.
 
 ---
 
