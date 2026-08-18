@@ -8,11 +8,11 @@ import OpticalHealth from "@/components/devices/optical-health";
 import PortBandwidth from "@/components/devices/port-bandwidth";
 import TemperatureCard from "@/components/devices/temperature-card";
 import StatusBadge from "@/components/status-badge";
-import { useDevices } from "@/hooks/use-devices";
+import { useDeviceLive } from "@/hooks/use-device-live";
 
 export default function DeviceDetail({ deviceId }: { deviceId: string }) {
-  const { devices, isLoading } = useDevices();
-  const device = devices.find((item) => item.id === deviceId);
+  const { data: live, error, isLoading } = useDeviceLive(deviceId);
+  const device = live?.device;
 
   if (isLoading && !device) {
     return (
@@ -22,10 +22,14 @@ export default function DeviceDetail({ deviceId }: { deviceId: string }) {
     );
   }
 
-  if (!device) {
+  if (!live || !device) {
     return (
       <div className="flex h-40 flex-col items-center justify-center gap-2 text-sm text-muted-foreground">
-        <p>Perangkat dengan ID {deviceId} tidak ditemukan.</p>
+        <p role="alert">
+          {error instanceof Error
+            ? error.message
+            : `Perangkat dengan ID ${deviceId} tidak ditemukan.`}
+        </p>
         <Link href="/dashboard" className="text-foreground hover:underline">
           ← Kembali ke Dasbor
         </Link>
@@ -35,6 +39,14 @@ export default function DeviceDetail({ deviceId }: { deviceId: string }) {
 
   return (
     <>
+      {error && (
+        <p
+          role="alert"
+          className="border-b border-destructive/30 bg-destructive/10 px-6 py-2 text-xs text-destructive"
+        >
+          Gagal memperbarui data live: {error instanceof Error ? error.message : "coba lagi nanti."}
+        </p>
+      )}
       {/* Header perangkat */}
       <header className="border-b px-6 py-4">
         <Link
@@ -72,17 +84,17 @@ export default function DeviceDetail({ deviceId }: { deviceId: string }) {
       {/* Panel metrik — diisi bertahap oleh task berikutnya */}
       <section className="grid flex-1 content-start gap-4 overflow-y-auto px-6 py-6 lg:grid-cols-3">
         <div className="h-72 lg:col-span-2">
-          <CpuRamChart deviceId={device.id} group={device.group} />
+          <CpuRamChart metrics={live.metrics} />
         </div>
         <div className="h-72">
-          <TemperatureCard deviceId={device.id} group={device.group} />
+          <TemperatureCard metrics={live.metrics} />
         </div>
         <div className="lg:col-span-3">
-          <PortBandwidth deviceId={device.id} group={device.group} />
+          <PortBandwidth metrics={live.metrics} />
         </div>
         {device.group === "OLT" && (
           <div className="lg:col-span-3">
-            <OpticalHealth deviceId={device.id} />
+            <OpticalHealth optics={live.optics} />
           </div>
         )}
         <div className="lg:col-span-3">

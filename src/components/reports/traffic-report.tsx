@@ -1,6 +1,7 @@
 "use client";
 
 import useSWR from "swr";
+import ApiErrorNotice from "@/components/api-error-notice";
 import {
   Table,
   TableBody,
@@ -31,12 +32,22 @@ interface TrafficResponse {
 }
 
 export default function TrafficReport({ period }: { period: string }) {
-  const { data } = useSWR(
+  const { data, error } = useSWR(
     `/api/reports/traffic?period=${period}`,
     getJson<TrafficResponse>,
     { revalidateOnFocus: false },
   );
   const rows = data?.rows ?? [];
+
+  if (error) {
+    return (
+      <ApiErrorNotice
+        error={error}
+        fallback="Laporan trafik tidak dapat dimuat."
+        className="rounded-lg bg-card py-8 text-center"
+      />
+    );
+  }
 
   return (
     <div className="rounded-lg border bg-card">

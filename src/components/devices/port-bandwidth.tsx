@@ -8,9 +8,8 @@ import {
   XAxis,
   YAxis,
 } from "recharts";
-import { useDeviceMetrics } from "@/hooks/use-device-metrics";
+import type { DeviceMetricsResponse } from "@/lib/api/devices";
 import { CHART_SLOT_1, CHART_SLOT_2 } from "@/lib/chart-colors";
-import type { DeviceGroup } from "@/types/device";
 
 const SERIES = {
   download: { label: "Download", color: CHART_SLOT_1 },
@@ -18,13 +17,11 @@ const SERIES = {
 };
 
 export default function PortBandwidth({
-  deviceId,
-  group,
+  metrics,
 }: {
-  deviceId: string;
-  group: DeviceGroup;
+  metrics: DeviceMetricsResponse;
 }) {
-  const { ports } = useDeviceMetrics(deviceId, group);
+  const { ports } = metrics;
 
   return (
     <div className="rounded-lg border bg-card">

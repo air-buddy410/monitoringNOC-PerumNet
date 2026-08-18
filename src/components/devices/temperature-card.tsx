@@ -1,13 +1,12 @@
 "use client";
 
 import { CircleCheck, Flame, TriangleAlert } from "lucide-react";
-import { useDeviceMetrics } from "@/hooks/use-device-metrics";
+import type { DeviceMetricsResponse } from "@/lib/api/devices";
 import {
   TEMP_THRESHOLD_CRITICAL,
   TEMP_THRESHOLD_HIGH,
   type TemperatureStatus,
 } from "@/lib/mock-metrics";
-import type { DeviceGroup } from "@/types/device";
 
 // Status palette dataviz (mode gelap) — ikon + label selalu menyertai warna.
 const TEMP_STATUS: Record<
@@ -20,13 +19,11 @@ const TEMP_STATUS: Record<
 };
 
 export default function TemperatureCard({
-  deviceId,
-  group,
+  metrics,
 }: {
-  deviceId: string;
-  group: DeviceGroup;
+  metrics: DeviceMetricsResponse;
 }) {
-  const { temperature: reading } = useDeviceMetrics(deviceId, group);
+  const reading = metrics.temperature;
 
   if (!reading) {
     return (

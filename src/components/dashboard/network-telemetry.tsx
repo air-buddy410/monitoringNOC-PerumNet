@@ -1,11 +1,12 @@
 "use client";
 
 import { AlertTriangle, ArrowDown, ArrowUp } from "lucide-react";
+import ApiErrorNotice from "@/components/api-error-notice";
 import StatusBadge from "@/components/status-badge";
 import { useDevices } from "@/hooks/use-devices";
 
 export default function NetworkTelemetry() {
-  const { devices } = useDevices();
+  const { devices, error } = useDevices();
   const incidents = devices
     .filter((device) => device.status !== "online")
     .slice(0, 4);
@@ -13,6 +14,13 @@ export default function NetworkTelemetry() {
 
   return (
     <div className="noc-activity-grid noc-dashboard-secondary">
+      {error && (
+        <ApiErrorNotice
+          error={error}
+          fallback="Data perangkat untuk telemetri belum dapat dimuat."
+          className="col-span-full rounded-lg"
+        />
+      )}
       <section className="noc-panel noc-traffic-panel">
         <div className="noc-panel-heading">
           <div>

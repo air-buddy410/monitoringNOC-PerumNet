@@ -1,6 +1,7 @@
 "use client";
 
 import useSWR from "swr";
+import ApiErrorNotice from "@/components/api-error-notice";
 import { CircleCheck, TriangleAlert } from "lucide-react";
 import {
   Table,
@@ -33,12 +34,22 @@ interface SlaResponse {
 }
 
 export default function SlaReport({ period }: { period: string }) {
-  const { data } = useSWR(
+  const { data, error } = useSWR(
     `/api/reports/sla?period=${period}`,
     getJson<SlaResponse>,
     { revalidateOnFocus: false },
   );
   const rows = data?.rows ?? [];
+
+  if (error) {
+    return (
+      <ApiErrorNotice
+        error={error}
+        fallback="Laporan SLA tidak dapat dimuat."
+        className="rounded-lg bg-card py-8 text-center"
+      />
+    );
+  }
 
   return (
     <div className="rounded-lg border bg-card">

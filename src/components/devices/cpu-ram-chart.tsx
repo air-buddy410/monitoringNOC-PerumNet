@@ -10,14 +10,13 @@ import {
   XAxis,
   YAxis,
 } from "recharts";
-import { useDeviceMetrics } from "@/hooks/use-device-metrics";
+import type { DeviceMetricsResponse } from "@/lib/api/devices";
 import {
   CHART_GRID_DARK as GRID_DARK,
   CHART_INK_MUTED as INK_MUTED,
   CHART_SLOT_1,
   CHART_SLOT_2,
 } from "@/lib/chart-colors";
-import type { DeviceGroup } from "@/types/device";
 
 // Slot kategorikal 1 & 2 (mode gelap) dari palet referensi dataviz —
 // pasangan adjacent tervalidasi aman CVD.
@@ -27,13 +26,11 @@ const SERIES = {
 };
 
 export default function CpuRamChart({
-  deviceId,
-  group,
+  metrics,
 }: {
-  deviceId: string;
-  group: DeviceGroup;
+  metrics: DeviceMetricsResponse;
 }) {
-  const { usage: data } = useDeviceMetrics(deviceId, group);
+  const data = metrics.usage;
   const latest = data[data.length - 1];
 
   if (!latest) {

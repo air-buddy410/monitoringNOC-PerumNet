@@ -21,18 +21,25 @@ export default function LoginForm() {
     setLoading(true);
     setError(null);
     try {
-      await sendJson("POST", "/api/auth/sign-in/email", { email, password });
+      await sendJson("POST", "/api/auth/sign-in/portal", { email, password });
       const callbackUrl = searchParams.get("callbackUrl");
       router.push(callbackUrl ?? "/dashboard");
       router.refresh();
     } catch (err) {
-      setError(
-        err instanceof ApiError && err.status === 401
-          ? "Email atau kata sandi salah. Periksa kembali kredensial Anda."
-          : err instanceof Error
-            ? err.message
-            : "Gagal masuk.",
-      );
+      if (err instanceof ApiError) {
+        if (err.status === 401) {
+          setError(err.message || "Email atau password salah.");
+        } else if (err.status === 503) {
+          setError(`Mailserver tidak tersedia. ${err.message}`);
+        } else if (err.status === 429) {
+          setError(`${err.message} Tunggu sebentar sebelum mencoba lagi.`);
+        } else {
+          setError(err.message);
+        }
+      } else {
+        setError(err instanceof Error ? err.message : "Gagal masuk.");
+      }
+    } finally {
       setLoading(false);
     }
   }

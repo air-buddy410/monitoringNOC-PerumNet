@@ -3,6 +3,7 @@
 
 import { getJson } from "@/lib/api/http";
 import type {
+  PonPortHealth,
   PortBandwidth,
   TemperatureReading,
   UsagePoint,
@@ -28,8 +29,25 @@ export interface DeviceMetricsResponse {
   updatedAt: string;
 }
 
+export interface OltOpticsResponse {
+  ports: PonPortHealth[];
+  updatedAt: string;
+}
+
+// Kontrak respons GET /api/devices/[id]/live.
+export interface DeviceLiveResponse {
+  device: NetworkDevice;
+  metrics: DeviceMetricsResponse;
+  optics: OltOpticsResponse | null;
+  updatedAt: string;
+}
+
 export function fetchDeviceMetrics(
   deviceId: string,
 ): Promise<DeviceMetricsResponse> {
   return getJson<DeviceMetricsResponse>(`/api/devices/${deviceId}/metrics`);
+}
+
+export function fetchDeviceLive(deviceId: string): Promise<DeviceLiveResponse> {
+  return getJson<DeviceLiveResponse>(`/api/devices/${deviceId}/live`);
 }

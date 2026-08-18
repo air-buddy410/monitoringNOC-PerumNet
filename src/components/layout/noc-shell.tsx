@@ -28,17 +28,25 @@ import {
 } from "lucide-react";
 import LogoutButton from "@/components/logout-button";
 import { useSession } from "@/hooks/use-session";
-import type { IncidentsResponse } from "@/server/api-v1/contracts";
+import { getJson } from "@/lib/api/http";
+import type {
+  IncidentsResponse,
+  LibrenmsStatusResponse,
+} from "@/server/api-v1/contracts";
 
 const fetcher = (url: string) => fetch(url).then((r) => r.json());
 
-function useLibrenmsLive(): { reachable: boolean; loading: boolean } {
-  const { data, isLoading } = useSWR<{ reachable: boolean }>(
+function useLibrenmsLive(): {
+  data?: LibrenmsStatusResponse;
+  loading: boolean;
+  error?: unknown;
+} {
+  const { data, isLoading, error } = useSWR<LibrenmsStatusResponse>(
     "/api/v1/integrations/librenms/status",
-    fetcher,
+    getJson<LibrenmsStatusResponse>,
     { refreshInterval: 30_000, revalidateOnFocus: false, refreshWhenHidden: true },
   );
-  return { reachable: data?.reachable ?? false, loading: isLoading };
+  return { data, loading: isLoading, error };
 }
 
 function useActiveIncidentCount(): number {
@@ -132,6 +140,31 @@ export default function NocShell({ children }: { children: ReactNode }) {
 
   const incidentCount = useActiveIncidentCount();
   const librenmsLive = useLibrenmsLive();
+  const librenmsLabel = librenmsLive.loading && !librenmsLive.data
+    ? "..."
+    : librenmsLive.data
+      ? !librenmsLive.data.configured
+        ? "Data contoh"
+        : librenmsLive.data.reachable
+          ? "Live"
+          : "Offline"
+      : "Tidak tersedia";
+  const librenmsColor = !librenmsLive.data
+    ? "#94a3b8"
+    : !librenmsLive.data.configured
+      ? "#fab219"
+      : librenmsLive.data.reachable
+        ? "#22c55e"
+        : "#d03b3b";
+  const librenmsTitle = librenmsLive.data
+    ? !librenmsLive.data.configured
+      ? "LibreNMS belum dikonfigurasi — angka menggunakan data contoh"
+      : librenmsLive.data.reachable
+        ? "LibreNMS terhubung"
+        : "LibreNMS tidak terjangkau"
+    : librenmsLive.error
+      ? "Status LibreNMS tidak dapat dibaca"
+      : "Memeriksa status LibreNMS";
 
   if (isPublicPage) return <>{children}</>;
 
@@ -251,9 +284,9 @@ export default function NocShell({ children }: { children: ReactNode }) {
             <Search aria-hidden="true" />
             <input name="search" placeholder="Cari perangkat, lokasi, IP, atau ID" />
           </form>
-          <div className="noc-topbar-status" title={librenmsLive.reachable ? "LibreNMS terhubung" : librenmsLive.loading ? "Memeriksa..." : "LibreNMS tidak terjangkau"}>
-            <span style={{ background: librenmsLive.reachable ? "#22c55e" : "#94a3b8" }} />
-            {librenmsLive.loading ? "..." : librenmsLive.reachable ? "Live" : "Offline"}
+          <div className="noc-topbar-status" title={librenmsTitle}>
+            <span style={{ background: librenmsColor }} />
+            {librenmsLabel}
           </div>
           <div className="noc-topbar-actions">
             <Link href="/notifications" aria-label="Notifikasi">
