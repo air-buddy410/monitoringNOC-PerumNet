@@ -6,7 +6,7 @@
 import { eq } from "drizzle-orm";
 import { db } from "@/db";
 import { user } from "@/db/auth-schema";
-import { auth } from "@/server/auth";
+import { createPortalUser } from "@/server/user-provisioning";
 
 const DEFAULT_ADMIN_EMAIL = "admin@perumnet.id";
 const LEGACY_DEFAULT_ADMIN_EMAIL = "admin@perumnet.co.id";
@@ -54,16 +54,24 @@ export async function ensureAdminUser() {
 
   let adminId = existingByEmail?.id;
   if (!adminId) {
-    const created = await auth.api.signUpEmail({
-      body: {
-        name: ADMIN_NAME,
-        email: ADMIN_EMAIL,
-        password: ADMIN_PASSWORD,
-      },
+    // Admin pertama sekaligus AKUN DARURAT: ia tetap punya password lokal
+    // walau AUTH_PROVIDER=MAILSERVER. Tanpa satu pun akun seperti ini,
+    // mailserver yang mati berarti tidak ada yang bisa masuk untuk
+    // memperbaikinya — pola yang sama dipakai CRM (admin@perumnet.id).
+    const dibuat = await createPortalUser({
+      name: ADMIN_NAME,
+      email: ADMIN_EMAIL,
+      role: "admin",
+      password: ADMIN_PASSWORD,
+      allowLocalLogin: true,
     });
-    adminId = created.user.id;
+    if (!dibuat.ok) {
+      console.error(`[bootstrap] akun Admin NOC gagal dibuat: ${dibuat.error}`);
+      return;
+    }
+    adminId = dibuat.user.id;
   }
 
   await db.update(user).set({ role: "admin" }).where(eq(user.id, adminId));
-  console.log(`[bootstrap] akun Admin NOC siap: ${ADMIN_EMAIL}`);
+  console.log(`[bootstrap] akun Admin NOC siap: ${ADMIN_EMAIL} (akun darurat)`);
 }

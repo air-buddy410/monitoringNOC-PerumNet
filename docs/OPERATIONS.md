@@ -125,3 +125,58 @@ hostname, IP manajemen, vendor/model, topologi, atau raw grafik.
 - Pengiriman Telegram/WhatsApp nyata (teruji mode simulasi).
 - Webhook ingress dari LibreNMS nyata (teruji HTTP langsung + unit test).
 - CRM nyata (contract + adapter diuji dengan stub).
+
+## 8. Menyalakan login satu pintu (mailcow)
+
+Sumber kebenaran password ditentukan `AUTH_PROVIDER`. Bawaannya `LOCAL` —
+**tidak ada yang berubah sampai variabel ini diubah.**
+
+| Nilai | Password yang berlaku | Endpoint yang mati |
+|---|---|---|
+| `LOCAL` (bawaan) | hash Better Auth | `/sign-up/email` (ditutup permanen) |
+| `MAILSERVER` | password EMAIL di mailcow, lewat IMAPS 993 | `/sign-in/email`, `/sign-up/email`, `/change-password` |
+
+Kedua mode masuk lewat alamat yang sama: `POST /api/auth/sign-in/portal`.
+
+### Urutan menyalakan — jangan dibalik
+
+1. **Migrasi database** (`drizzle/pg/0001_*.sql`) — menambah kolom
+   `user.allow_local_login`. Aman dijalankan kapan saja: default `false`,
+   tidak mengubah baris yang ada.
+2. **Samakan alamat email.** Login mencocokkan lewat email. Alamat di tabel
+   `user` harus sama persis dengan alamat mailbox di mailcow. Yang tidak cocok
+   tidak bisa masuk, dan gejalanya membingungkan: mailcow menerima
+   passwordnya, tapi portal tidak mengenali orangnya.
+3. **Pastikan ada akun darurat.** Minimal satu baris dengan
+   `allow_local_login = true` DAN punya password lokal. Bootstrap
+   (`ADMIN_EMAIL`) membuatnya otomatis sebagai akun darurat. Periksa:
+   ```sql
+   SELECT email FROM "user" WHERE allow_local_login = true;
+   ```
+   Tanpa ini, mailserver yang mati berarti **tidak ada seorang pun** bisa
+   masuk — termasuk untuk memperbaikinya.
+4. **Frontend sudah pindah ke `/sign-in/portal`** (tugas T-4 di
+   `HANDOFF-BACKEND-KE-FRONTEND.md`). Sebelum ini selesai, menyalakan mode
+   mailserver akan mematikan form login yang masih menembak `/sign-in/email`.
+5. Baru set:
+   ```
+   AUTH_PROVIDER=MAILSERVER
+   MAILSERVER_URL=https://mail.perumnet.id
+   ```
+   lalu restart. Uji dengan satu akun biasa **dan** akun darurat.
+
+### Rollback
+
+Kembalikan `AUTH_PROVIDER=LOCAL` dan restart. Kolom `allow_local_login` boleh
+ditinggal — ia tidak berpengaruh di mode LOCAL. Akun yang dibuat selama mode
+MAILSERVER **tidak punya password lokal**, jadi setelah rollback mereka perlu
+dibuatkan password oleh admin.
+
+### Yang tidak dijaga di sini
+
+- Pembatas percobaan login (5 per menit per IP) disimpan **di memori proses**.
+  Kalau nanti berjalan lebih dari satu instance, hitungannya terpisah per
+  proses — sama seperti catatan rate limit webhook LibreNMS di §3.
+- Portal tidak pernah menyimpan password email, juga tidak mencatatnya di log
+  maupun audit. Yang tercatat di `audit_logs` hanya berhasil/gagal, alasannya,
+  dan jalur yang dipakai (`mailserver` atau `lokal-darurat`).

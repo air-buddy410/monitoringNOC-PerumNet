@@ -27,6 +27,13 @@ export const user = pgTable("user", {
     .$onUpdate(() => new Date()),
   /** Peran RBAC portal: admin | noc | engineer | manajemen | customer (F6). */
   role: text("role").default("engineer"),
+
+  /**
+   * Akun darurat: tetap boleh masuk dengan password lokal walaupun
+   * AUTH_PROVIDER=MAILSERVER. Tanpa ini, mailserver yang mati berarti tidak
+   * ada seorang pun bisa masuk untuk memperbaikinya.
+   */
+  allowLocalLogin: boolean("allow_local_login").notNull().default(false),
 });
 
 export const session = pgTable(

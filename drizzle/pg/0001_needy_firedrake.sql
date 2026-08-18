@@ -1,0 +1,1 @@
+ALTER TABLE "user" ADD COLUMN "allow_local_login" boolean DEFAULT false NOT NULL;
