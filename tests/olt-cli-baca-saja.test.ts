@@ -131,3 +131,24 @@ describe("bacaKredensial", () => {
     vi.unstubAllEnvs();
   });
 });
+
+describe("pisahkanIac — negosiasi telnet", () => {
+  // Tanpa ini HSGQ menerima "show gpon onu detail-info" sebagai
+  // "show gpononudetail-info" — spasinya hilang, perintahnya ditolak, dan
+  // sebabnya tidak terlihat sama sekali dari pesan galatnya.
+  it("DO dijawab WONT, WILL dijawab DONT", async () => {
+    const { pisahkanIac } = await import("@/server/olt-cli");
+    // IAC DO ECHO (255,253,1) + IAC WILL SGA (255,251,3)
+    const masuk = Uint8Array.from([255, 253, 1, 255, 251, 3, 0x68, 0x69]);
+    const { teks, balas } = pisahkanIac(masuk);
+    expect([...balas]).toEqual([255, 252, 1, 255, 254, 3]);
+    expect(teks.toString()).toBe("hi");
+  });
+
+  it("byte teks biasa tidak tersentuh", async () => {
+    const { pisahkanIac } = await import("@/server/olt-cli");
+    const { teks, balas } = pisahkanIac(Uint8Array.from(Buffer.from("show version")));
+    expect(teks.toString()).toBe("show version");
+    expect(balas.length).toBe(0);
+  });
+});
