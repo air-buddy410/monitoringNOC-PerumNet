@@ -20,6 +20,12 @@ URL_BAWAAN="https://192.168.100.1"
 read -r -p "Alamat RouterOS [$URL_BAWAAN]: " URL
 URL="${URL:-$URL_BAWAAN}"
 URL="${URL%/}"
+# Tambahkan skema bila lupa — "192.168.100.1" saja membuat penarikan gagal
+# dengan pesan "Invalid URL" yang tidak menyebut alamat sama sekali.
+case "$URL" in
+  http://*|https://*) ;;
+  *) URL="https://$URL"; echo "  (dilengkapi jadi $URL)" ;;
+esac
 
 read -r -p "Username (akun BACA-SAJA sudah cukup): " USR
 [ -n "$USR" ] || { echo "Username tidak boleh kosong."; exit 1; }

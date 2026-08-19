@@ -74,7 +74,9 @@ describe("pollPppoe", () => {
   it("router belum dikonfigurasi → SKIPPED bercatat, bukan gagal & bukan diam", async () => {
     const r = await pollPppoe({ now: T0 });
     expect(r.status).toBe("SKIPPED");
-    expect(r.detail).toMatch(/belum dikonfigurasi/);
+    // Pesannya menyebut variabel mana yang kurang, bukan sekadar "belum
+    // dikonfigurasi" — yang membaca log tidak perlu menebak.
+    expect(r.detail).toMatch(/MIKROTIK_URL, MIKROTIK_USER, MIKROTIK_PASSWORD belum diisi/);
 
     const run = await client.query<{ status: string; error: string }>(
       "SELECT status, error FROM pppoe_poll_runs");
@@ -131,5 +133,36 @@ describe("pollPppoe", () => {
     expect(nama).not.toContain("customer_name");
     expect(nama).not.toContain("address_line");
     expect(nama).not.toContain("phone");
+  });
+});
+
+describe("normalkanUrlRouter — alamat tanpa skema", () => {
+  // Terjadi sungguhan 19 Agustus 2026: alamat ditulis "192.168.100.1" tanpa
+  // https://, `new URL()` melempar "Invalid URL", dan tugasnya gagal dengan
+  // pesan yang tidak menyebut alamat sama sekali.
+  it.each([
+    ["192.168.100.1", "https://192.168.100.1"],
+    ["https://192.168.100.1", "https://192.168.100.1"],
+    ["https://192.168.100.1/", "https://192.168.100.1"],
+    ["http://192.168.100.1", "http://192.168.100.1"],
+    ["router.lokal:8443", "https://router.lokal:8443"],
+  ])("%s → %s", async (masuk, keluar) => {
+    const { normalkanUrlRouter } = await import("@/server/pppoe");
+    expect(normalkanUrlRouter(masuk)).toBe(keluar);
+  });
+
+  it.each([undefined, "", "   "])("%s → null", async (masuk) => {
+    const { normalkanUrlRouter } = await import("@/server/pppoe");
+    expect(normalkanUrlRouter(masuk as string | undefined)).toBeNull();
+  });
+
+  it("sebabBelumSiap membedakan 'belum diisi' dari 'bentuknya salah'", async () => {
+    const { sebabBelumSiap } = await import("@/server/pppoe");
+    vi.stubEnv("MIKROTIK_USER", "pemantau");
+    vi.stubEnv("MIKROTIK_PASSWORD", "rahasia");
+    vi.stubEnv("MIKROTIK_URL", "");
+    expect(sebabBelumSiap()).toMatch(/MIKROTIK_URL belum diisi/);
+    vi.stubEnv("MIKROTIK_URL", "192.168.100.1");
+    expect(sebabBelumSiap()).toBeNull();
   });
 });
