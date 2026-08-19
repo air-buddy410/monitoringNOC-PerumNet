@@ -48,14 +48,16 @@ async function main() {
   // saat dimuat, jadi impor statis di kepala berkas akan membacanya sebelum
   // `loadEnvConfig` sempat mengisinya.
   const { PROBE_TASKS } = await import("@/server/probe");
+  const { PPPOE_TASKS } = await import("@/server/pppoe");
   const { registerTask, runDueTasks, syncTaskRegistry } = await import(
     "@/server/scheduler"
   );
 
-  for (const task of PROBE_TASKS) registerTask(task);
+  const TUGAS = [...PROBE_TASKS, ...PPPOE_TASKS];
+  for (const task of TUGAS) registerTask(task);
   await syncTaskRegistry();
   console.log(
-    `[worker ${workerId}] siap · ${PROBE_TASKS.length} tugas terdaftar · tick ${TICK_MS}ms`,
+    `[worker ${workerId}] siap · ${TUGAS.length} tugas terdaftar · tick ${TICK_MS}ms`,
   );
 
   while (!berhenti) {
