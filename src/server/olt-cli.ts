@@ -130,6 +130,37 @@ export function kirimPerintah(kirim: Pengirim, perintah: string): void {
   kirim(`${perintah}\r\n`);
 }
 
+/** Tanda halaman pada konsol perangkat. Selama ini menggantung, prompt tidak
+ *  akan pernah muncul — jadi ia harus dijawab SEBELUM deteksi prompt. */
+export const TANDA_MORE = /[ \t]*--More--[ \t]*/g;
+
+/**
+ * Pisahkan negosiasi telnet (IAC, 0xFF) dari teks, dan susun jawabannya.
+ *
+ * Semua opsi DITOLAK: perangkat ini tidak butuh echo maupun terminal-type dari
+ * kita, dan menjawab dengan benar lebih sederhana daripada mengabaikannya.
+ * Mengabaikannya BUKAN pilihan yang aman — terbukti 19 Agustus 2026: tanpa
+ * jawaban, HSGQ menerima "show gpon onu detail-info" sebagai
+ * "show gpononudetail-info" (spasinya hilang) lalu menolaknya. Perintahnya
+ * benar, salurannya yang belum siap.
+ */
+export function pisahkanIac(bytes: Uint8Array): { teks: Buffer; balas: Buffer } {
+  const balas: number[] = [];
+  const teks: number[] = [];
+  for (let i = 0; i < bytes.length; i += 1) {
+    if (bytes[i] === 255 && i + 2 < bytes.length) {
+      const perintah = bytes[i + 1];
+      const opsi = bytes[i + 2];
+      if (perintah === 253) balas.push(255, 252, opsi); // DO   → WONT
+      else if (perintah === 251) balas.push(255, 254, opsi); // WILL → DONT
+      i += 2;
+    } else {
+      teks.push(bytes[i]);
+    }
+  }
+  return { teks: Buffer.from(teks), balas: Buffer.from(balas) };
+}
+
 /**
  * Jalankan sederet perintah BACA pada satu sesi telnet, kembalikan keluarannya.
  *
@@ -148,6 +179,7 @@ export async function jalankanPerintahBaca(
 
   return new Promise<string>((resolve, reject) => {
     const sock = new net.Socket();
+    let buffer = "";
     let keluaran = "";
     let tahap: "user" | "password" | "perintah" = "user";
     let indeks = 0;
@@ -157,35 +189,55 @@ export async function jalankanPerintahBaca(
       if (selesai) return;
       selesai = true;
       sock.destroy();
-      err ? reject(err) : resolve(keluaran);
+      if (err) reject(err);
+      else resolve(keluaran);
     };
 
     sock.setTimeout(timeoutMs);
-    sock.once("timeout", () => tutup(new OltCliError(`Tidak ada jawaban dalam ${timeoutMs}ms.`)));
+    sock.once("timeout", () =>
+      tutup(new OltCliError(`Tidak ada jawaban dalam ${timeoutMs}ms.`)));
     sock.once("error", (e) => tutup(new OltCliError(e.message)));
     sock.once("close", () => tutup());
 
-    sock.on("data", (buf) => {
-      const teks = buf.toString("binary");
-      keluaran += teks;
+    sock.on("data", (chunk) => {
+      const { teks, balas } = pisahkanIac(Uint8Array.from(chunk));
+      if (balas.length) sock.write(balas);
 
-      if (tahap === "user" && /(login|username)\s*:/i.test(teks)) {
+      const potongan = teks.toString("utf8");
+      buffer += potongan;
+      // Kredensial tidak pernah masuk keluaran yang dikembalikan.
+      if (tahap === "perintah") keluaran += potongan;
+
+      // Dijawab SEBELUM deteksi prompt — lihat catatan pada TANDA_MORE.
+      if (tahap === "perintah" && /--More--/.test(buffer)) {
+        buffer = buffer.replace(TANDA_MORE, "\n");
+        keluaran = keluaran.replace(TANDA_MORE, "\n");
+        sock.write(" ");
+        return;
+      }
+
+      const bawah = buffer.toLowerCase();
+
+      if (tahap === "user" && /(username|login)\s*:/.test(bawah)) {
         tahap = "password";
+        buffer = "";
         sock.write(`${user}\r\n`);
         return;
       }
-      if (tahap === "password" && /password\s*:/i.test(teks)) {
+      if (tahap === "password" && /password\s*:/.test(bawah)) {
         tahap = "perintah";
+        buffer = "";
         sock.write(`${password}\r\n`);
         return;
       }
-      if (tahap === "perintah" && /[>#]\s*$/.test(teks)) {
+      if (tahap === "perintah" && /[>#]\s*$/.test(buffer)) {
+        buffer = "";
         if (indeks < perintah.length) {
           kirimPerintah((b) => sock.write(b), perintah[indeks]);
           indeks += 1;
         } else {
-          // `exit` ada di daftar putih dan memang harus dikirim — meninggalkan
-          // sesi menggantung membuat OLT kehabisan slot login.
+          // `exit` ada di daftar putih dan memang harus dikirim — sesi yang
+          // menggantung membuat OLT kehabisan slot login.
           kirimPerintah((b) => sock.write(b), "exit");
           tutup();
         }

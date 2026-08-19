@@ -534,6 +534,43 @@ sampai ada yang mendaftarkan datanya lewat layar.
   dan kapan. Jangan bangun tombol edit/hapus.
 - `authorLabel` terisi nama pengguna; `null` berarti catatan sistem.
 
+### 13. Konsol perangkat — `POST /api/v1/devices/console`
+
+Sebagian OLT tidak mendukung SNMP sama sekali (HSGQ-100-Kecicang), jadi
+satu-satunya cara membacanya adalah masuk ke konsolnya. Endpoint ini
+menyediakannya **dari dalam portal**, supaya tidak ada yang perlu membuka
+telnet sendiri dari laptop — tanpa jejak, tanpa batas perintah.
+
+- **Peran:** `admin` / `noc` saja.
+- **Body:** `{ oltId, command }`. **Perangkat dipilih dari DAFTAR (`oltId`),
+  bukan alamat.** Frontend TIDAK boleh menyediakan isian host/port — kalau
+  ada, endpoint ini berubah jadi mesin telnet umum yang bisa diarahkan ke mana
+  saja di jaringan.
+- **Jawaban:** `{ olt: { id, name }, command, output }` — `output` teks mentah
+  dari perangkat, tampilkan apa adanya dengan huruf monospace.
+- **Kode galat, dan bedanya penting bagi yang membaca layar:**
+  - **403** — perintah ditolak daftar putih. Pesannya menyebut perintah apa
+    yang diizinkan; **tampilkan pesan servernya apa adanya**, jangan ganti
+    dengan "akses ditolak" yang membuat orang mengira ini soal peran.
+  - **409** — konfigurasi belum lengkap (kredensial belum diisi, atau OLT
+    belum punya `telnet_port`). Ini bukan kerusakan.
+  - **429** — lebih dari 20 perintah per menit per pengguna.
+  - **502** — perangkatnya yang tidak menjawab.
+- **Batas perilaku yang harus terlihat di layar:**
+  - **Konsol ini BACA-SAJA, dan itu bukan kesopanan melainkan aturan.** Yang
+    diizinkan hanya `show`, `display`, `enable`, `configure`, `interface`,
+    `exit`, `quit`, `end`, `?`. Perintah yang mengubah keadaan ditolak
+    **sebelum koneksi dibuka** — perangkat produksi tidak pernah menerimanya.
+  - Penumpukan perintah (`;` `|` `&` baris baru) ditolak.
+  - **Setiap percobaan dicatat di `audit_logs`** — yang ditolak maupun yang
+    berhasil, lengkap dengan siapa dan perintah apa. Katakan ini di layar;
+    orang berhak tahu bahwa yang ia ketik tercatat.
+- **Catatan lapangan (diuji 19 Agustus 2026 ke HSGQ-100-Kecicang):**
+  `show version` berhasil dan mengembalikan 12 baris. Perintah dengan lebih
+  dari satu spasi (`show ont-optical 1`) ditolak PERANGKATNYA — spasi kedua
+  dimakan parser VTY-nya. Itu perilaku perangkat, bukan bug portal; tampilkan
+  jawaban perangkat apa adanya supaya orang bisa mencoba bentuk lain.
+
 ---
 
 ## Jebakan nama & bentuk
@@ -604,6 +641,26 @@ Papan permintaan Opus → Luna (`WORKFLOW-TIM.md` §5). Semua di sini murni
 pekerjaan tampilan — datanya sudah tersedia di endpoint yang disebut, tidak
 ada yang perlu ditunggu dari backend. Tandai ✅ dan pindahkan ke §Selesai
 kalau sudah dikerjakan.
+
+### T-15. Konsol perangkat
+
+- **Layar:** halaman baru, mis. `/console` — atau tab di halaman detail OLT.
+- **Butuh:** §13. Pilihan OLT dari `GET /api/v1/ftth/odps`… **bukan** —
+  daftar OLT-nya perlu endpoint sendiri; untuk sekarang ambil dari
+  `olt_devices` lewat halaman yang sudah kamu buat, atau minta saya bikinkan
+  `GET /api/v1/ftth/olts` (tulis di PERMINTAAN-FRONTEND-KE-BACKEND).
+- **Yang WAJIB benar, ini endpoint paling berisiko di aplikasi:**
+  - **Jangan sediakan isian host/port.** Perangkat dipilih dari daftar. Kalau
+    frontend mengirim alamat bebas, seluruh penjagaan di server jadi sia-sia.
+  - **Katakan di layar bahwa konsol ini baca-saja dan tercatat.** Orang berhak
+    tahu sebelum mengetik, bukan sesudah ditolak.
+  - **403 tampilkan pesan servernya apa adanya** — ia menyebut perintah apa
+    yang diizinkan. Menggantinya dengan "akses ditolak" membuat orang mengira
+    ini soal peran dan menyerah, padahal cukup mengubah perintahnya.
+  - **409 bukan kerusakan** — itu konfigurasi yang belum lengkap.
+  - `output` teks mentah: monospace, pertahankan baris, jangan dirapikan.
+- **Kenapa tidak bisa diakali di sisi frontend:** kredensial perangkat tidak
+  pernah sampai ke browser, dan memang tidak boleh.
 
 ### T-11. Halaman Situs & IPAM
 
@@ -781,6 +838,9 @@ kalau sudah dikerjakan.
 
 ## Riwayat
 
+- **2026-08-19** — Konsol perangkat (§13) + tugas T-15. Lahir karena sebagian
+  OLT tidak mendukung SNMP; daripada orang membuka telnet sendiri tanpa jejak,
+  portal menyediakannya dengan daftar putih perintah dan audit penuh.
 - **2026-08-19** — Fase 10: situs, IPAM, FTTH, PPPoE, riwayat insiden (§12).
   Tugas T-11…T-14. Sengaja TIDAK dibuat tabel `network_devices`/`network_links`
   tandingan — `assets` dan `topology_*` yang sudah ada diperluas, supaya tidak
