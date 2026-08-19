@@ -5,6 +5,12 @@ source of truth (discovery, SNMP polling, status, alert, availability,
 health, dan grafik RRD). Portal menyimpan hanya data aplikasi: user/RBAC,
 metadata aset, mapping CRM, incident, audit log, topologi, dan notifikasi.
 
+**Portal ini tidak bertindak keluar secara bawaan.** Ia boleh menulis ke
+database sendiri, tetapi tidak mengirim notifikasi dan tidak mendorong data ke
+sistem lain selama `OUTWARD_ACTIONS` bukan `ALLOWED` — dan bawaannya bukan.
+Alasannya, batasnya, dan cara menyalakannya nanti ada di
+[`docs/MODE-BACA-SAJA.md`](docs/MODE-BACA-SAJA.md).
+
 ## Fitur per fase (PRD)
 
 | Fase | Status | Ringkasan |
