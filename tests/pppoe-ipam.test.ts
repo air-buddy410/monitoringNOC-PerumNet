@@ -44,6 +44,19 @@ describe("parseUptime — bentuk RouterOS, bukan ISO", () => {
     expect(parseUptime(raw)).toBe(detik);
   });
 
+  // Bentuk yang SEBENARNYA dikembalikan /rest/ppp/active — dan yang semula
+  // tidak tertangani, sehingga 1.609 sesi tersimpan dengan uptime kosong
+  // tanpa satu galat pun.
+  it.each([
+    ["14w5d22h44m53s", 14*604800 + 5*86400 + 22*3600 + 44*60 + 53],
+    ["11w1d13h26m1s", 11*604800 + 1*86400 + 13*3600 + 26*60 + 1],
+    ["3d4h5m6s", 3*86400 + 4*3600 + 5*60 + 6],
+    ["45s", 45],
+    ["2h", 7200],
+  ])("bentuk REST %s → %i detik", (raw, detik) => {
+    expect(parseUptime(raw)).toBe(detik);
+  });
+
   it.each([undefined, "", "kemarin", "3 jam"])("%s → null", (raw) => {
     expect(parseUptime(raw as string | undefined)).toBeNull();
   });

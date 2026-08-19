@@ -84,10 +84,37 @@ export function sebabBelumSiap(): string | null {
   return null;
 }
 
-/** "1w2d03:04:05" → detik. Bentuk RouterOS, bukan ISO. */
+/**
+ * Uptime RouterOS → detik.
+ *
+ * DUA bentuk, dan keduanya nyata:
+ * - REST `/rest/ppp/active` → `14w5d22h44m53s` (bersuffix)
+ * - konsol/API lama          → `1w2d03:04:05`  (jam bertitik dua)
+ *
+ * Semula hanya bentuk kedua yang ditangani; akibatnya 1.609 sesi tersimpan
+ * dengan uptime kosong tanpa satu galat pun — data yang hilang diam-diam,
+ * bukan gagal yang terlihat.
+ */
 export function parseUptime(raw: string | undefined): number | null {
   if (!raw) return null;
-  const m = raw.match(/^(?:(\d+)w)?(?:(\d+)d)?(?:(\d+):)?(\d+):(\d+)$/);
+  const teks = raw.trim();
+  if (!teks) return null;
+
+  // Bentuk bersuffix: 14w5d22h44m53s (bagian mana pun boleh tidak ada).
+  if (/^(\d+w)?(\d+d)?(\d+h)?(\d+m)?(\d+s)?$/.test(teks) && /\d/.test(teks)) {
+    const ambil = (huruf: string) =>
+      Number(new RegExp(`(\\d+)${huruf}`).exec(teks)?.[1] ?? 0);
+    return (
+      ambil("w") * 604_800 +
+      ambil("d") * 86_400 +
+      ambil("h") * 3_600 +
+      ambil("m") * 60 +
+      ambil("s")
+    );
+  }
+
+  // Bentuk jam bertitik dua: 1w2d03:04:05
+  const m = teks.match(/^(?:(\d+)w)?(?:(\d+)d)?(?:(\d+):)?(\d+):(\d+)$/);
   if (!m) return null;
   const [, w, d, h, mi, s] = m;
   return (
