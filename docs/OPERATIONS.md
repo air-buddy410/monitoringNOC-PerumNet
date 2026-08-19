@@ -15,6 +15,7 @@ checklist go-live, dan prosedur rollback. Melengkapi
 | `LIBRENMS_URL` | ya* | `https://nms.perumnet.id` — tanpa ini mode fixture |
 | `LIBRENMS_TOKEN` | ya* | token API LibreNMS (read-only, server-side) |
 | `LIBRENMS_WEBHOOK_SECRET` | produksi | header `x-webhook-token` dari LibreNMS |
+| `NOTIFICATION_BOT_SECRET` | **wajib bila memakai bot** | header `x-bot-token` pada `POST /api/notifications/channels/verify`. Tanpa ini rute itu menjawab **503** — sengaja tertutup, bukan terbuka |
 | `CUSTOMER_PORTAL_SECRET` | ya | HMAC deep-link portal customer |
 | `CUSTOMER_SUPPORT_CONTACT` | opsional | kontak pada halaman status pelanggan |
 | `OUTWARD_ACTIONS` | opsional | **bawaan `BLOCKED`.** `ALLOWED` hanya setelah cutover dari ALUS — lihat §9 |

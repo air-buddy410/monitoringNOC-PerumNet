@@ -86,8 +86,8 @@ Tapi variabelnya bukan bagian yang sulit. **Pastikan ALUS sudah berhenti
 melakukan hal yang sama lebih dulu** — bukan berjalan berdampingan. Itu
 keputusan pemilik, bukan keputusan teknis, dan urutannya tidak boleh dibalik.
 
-Sebelum `TELEGRAM_BOT_TOKEN` pernah diisi, tutup dulu lubang di §Yang tidak
-dijamin butir 4.
+Isi juga `NOTIFICATION_BOT_SECRET` sebelum bot mana pun dijalankan — tanpa itu
+rute verifikasi channel menjawab 503.
 
 ## Memastikan keadaannya
 
@@ -114,12 +114,11 @@ tertutup rapat.
    atau menulis langsung. Beratnya "shell + env + restart" itu fiturnya, bukan
    hambatan yang perlu dipermudah — jangan tambahkan tombol di halaman
    pengaturan, karena itu justru mengulang kelemahan CRM.
-4. **`POST /api/notifications/channels/verify` belum terkunci.** Tanpa sesi,
-   tanpa token, tanpa rate limit; kendalinya hanya kode 6 digit yang tidak
-   pernah kedaluwarsa. Siapa pun bisa menebaknya beruntun lalu menautkan chatId
-   miliknya, dan menerima alert NOC. Hari ini gigitannya tertahan karena mode
-   ini menahan pengiriman — **tapi lubang itu bersenjata pada detik
-   `TELEGRAM_BOT_TOKEN` diisi.** Harus ditutup sebelum itu.
+4. **Kode verifikasi channel tidak pernah kedaluwarsa.** Rutenya sudah
+   dikunci (`x-bot-token` + rate limit, 19 Agustus 2026), tapi kode 6 digit yang
+   sudah dibuat tetap sah selamanya sampai dipakai. Menambahkan masa berlaku
+   butuh migrasi kolom, jadi ditunda — catat sebagai utang, bukan sebagai
+   sesuatu yang sudah beres.
 5. **LibreNMS sendiri bisa bertindak ke perangkat.** Token kita read, dan uji
    penyisir menahan kode ini tetap GET — tapi hak token di sisi LibreNMS di luar
    jangkauan repo ini.

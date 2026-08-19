@@ -1,4 +1,4 @@
-import { randomUUID } from "node:crypto";
+import { randomInt, randomUUID } from "node:crypto";
 import { NextResponse } from "next/server";
 import { and, desc, eq } from "drizzle-orm";
 import { db } from "@/db";
@@ -85,7 +85,9 @@ export const POST = withRole([], async (request) => {
     );
   }
 
-  const verificationCode = String(Math.floor(100000 + Math.random() * 900000));
+  // CSPRNG, bukan Math.random: kode ini satu-satunya hal yang berdiri antara
+  // orang luar dan hak menerima alert NOC.
+  const verificationCode = String(randomInt(100000, 1000000));
   const channel = {
     id: randomUUID(),
     type,
