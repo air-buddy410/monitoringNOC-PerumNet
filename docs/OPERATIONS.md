@@ -199,6 +199,26 @@ alasannya, dan daftar apa yang TIDAK dijamin ada di
 
 Periksa keadaannya: `GET /api/read-only-mode` (cukup login).
 
+**Jangan memeriksanya lewat `/proc/<pid>/environ` — di situ ia TIDAK akan
+terlihat, dan itu normal.** PM2 menjalankan `next start` dari cwd
+`~/apps/noc-portal`, dan Next memuat `.env.production` sendiri saat runtime;
+`environ` hanya memuat lingkungan saat exec. Diperiksa 19 Agustus 2026: **tidak
+satu pun** variabel aplikasi ada di sana — termasuk `DATABASE_URL`, padahal
+databasenya jelas terhubung.
+
+Dibuktikan dengan kontras, bukan dugaan: satu alert uji ke lubang hitam
+(`127.0.0.1:9`) menghasilkan baris `outward.blocked` saat `BLOCKED`, dan **tidak
+menghasilkannya** saat `ALLOWED`. Satu-satunya yang berbeda adalah variabelnya.
+
+**Kerapuhan yang harus diingat:** mekanisme ini bergantung pada
+`.env.production` berada di cwd proses. Kalau noc-portal kelak dipindah ke
+`output: 'standalone'` atau ke tata letak direktori rilis seperti enterprise
+(`~/releases/<commit>/`) tanpa `.env.production` di sebelahnya, **variabelnya
+berhenti terbaca — dan berhentinya diam-diam.** Penjaga akan jatuh ke bawaan
+`BLOCKED`, jadi tidak berbahaya; yang rusak adalah kemampuan menyalakannya
+nanti. CRM tidak punya masalah ini karena `.env` sengaja dibuang dari citra
+lewat `.dockerignore`, sehingga Compose wajib meneruskannya secara eksplisit.
+
 **Kalau notifikasi/CRM tidak terkirim padahal sudah dikonfigurasi**, itu
 kemungkinan besar bukan gangguan — cek endpoint di atas lebih dulu. `BLOCKED`
 adalah keadaan yang BENAR sampai ALUS berhenti melakukan hal yang sama.
