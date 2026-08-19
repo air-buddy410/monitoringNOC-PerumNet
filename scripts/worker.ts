@@ -13,8 +13,24 @@
 // `npm ci` dengan NODE_ENV=production melewatkan devDependencies.
 
 import { randomUUID } from "node:crypto";
-import { PROBE_TASKS } from "@/server/probe";
-import { registerTask, runDueTasks, syncTaskRegistry } from "@/server/scheduler";
+import { loadEnvConfig } from "@next/env";
+
+// WAJIB sebelum apa pun yang menyentuh database. Worker ini BUKAN Next.js,
+// jadi `.env.production` tidak dimuat sendiri — dan tanpa DATABASE_URL,
+// `src/db` diam-diam jatuh ke PGlite. Akibatnya worker menulis ke database
+// yang BERBEDA dari aplikasinya: probe berjalan, alarm tercatat, dan tidak
+// satu pun muncul di layar. Gagal seperti itu tidak menghasilkan galat apa pun.
+// Dipakai loader milik Next supaya urutan berkasnya persis sama dengan aplikasi.
+loadEnvConfig(process.cwd(), process.env.NODE_ENV !== "production");
+
+if (!process.env.DATABASE_URL?.trim()) {
+  console.error(
+    "[worker] DATABASE_URL kosong setelah memuat .env — worker akan memakai " +
+      "PGlite, BUKAN database aplikasi. Berhenti; ini hampir pasti bukan yang dimaksud.",
+  );
+  process.exit(1);
+}
+
 
 const TICK_MS = Number(process.env.WORKER_TICK_MS ?? 15_000);
 const workerId = `${process.pid}-${randomUUID().slice(0, 8)}`;
@@ -28,6 +44,14 @@ for (const sinyal of ["SIGTERM", "SIGINT"] as const) {
 }
 
 async function main() {
+  // Impor DINAMIS, sesudah env termuat: modul database membaca DATABASE_URL
+  // saat dimuat, jadi impor statis di kepala berkas akan membacanya sebelum
+  // `loadEnvConfig` sempat mengisinya.
+  const { PROBE_TASKS } = await import("@/server/probe");
+  const { registerTask, runDueTasks, syncTaskRegistry } = await import(
+    "@/server/scheduler"
+  );
+
   for (const task of PROBE_TASKS) registerTask(task);
   await syncTaskRegistry();
   console.log(
