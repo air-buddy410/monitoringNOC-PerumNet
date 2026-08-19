@@ -677,6 +677,13 @@ export const oltDevices = pgTable("olt_devices", {
   model: text("model"),
   siteId: text("site_id").references(() => networkSites.id, { onDelete: "set null" }),
   assetId: text("asset_id").references(() => assets.assetId, { onDelete: "set null" }),
+  /** Port konsol. Sebagian OLT tidak mendukung SNMP sama sekali dan hanya bisa
+   *  dibaca lewat CLI; HSGQ di sini memakai 1023-1025, bukan 23. */
+  telnetPort: integer("telnet_port"),
+  /** NAMA env var yang memuat kredensial, bukan kredensialnya. Kata sandi
+   *  perangkat tidak boleh tinggal di database — ia akan ikut ke setiap
+   *  cadangan, dan cadangan berpindah tangan lebih sering daripada database. */
+  credentialRef: text("credential_ref"),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
 

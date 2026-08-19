@@ -32,6 +32,10 @@ const NETWORK_ALLOWLIST: Record<string, string> = {
   [path.join("server", "mail-auth.ts")]:
     "probe TLS ke IMAP 993 untuk memeriksa password — bertanya, bukan bertindak. " +
     "JANGAN diblokir: memblokirnya mengunci semua orang dari portal saat AUTH_PROVIDER=MAILSERVER",
+  [path.join("server", "olt-cli.ts")]:
+    "telnet BACA-SAJA ke konsol OLT yang tidak mendukung SNMP. Perintahnya disaring " +
+    "daftar putih kata pertama sebelum menyentuh soket — lihat tests/olt-cli-baca-saja.test.ts. " +
+    "Bukan aksi keluar: ia membaca keadaan perangkat, tidak mengubahnya",
   [path.join("server", "pppoe.ts")]:
     "GET /rest/ppp/active ke router — hanya MEMBACA daftar sesi, tidak mengubah " +
     "satu pun konfigurasi router. Sekategori dengan pembacaan LibreNMS",
