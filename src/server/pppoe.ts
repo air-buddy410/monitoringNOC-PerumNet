@@ -11,6 +11,7 @@
 // yang tertulis — bukan gagal, dan bukan pula diam. Tugas yang diam saat belum
 // dikonfigurasi tidak bisa dibedakan dari tugas yang rusak.
 
+import https from "node:https";
 import { randomUUID } from "node:crypto";
 import { eq } from "drizzle-orm";
 import { db } from "@/db";
@@ -61,16 +62,75 @@ export function parseUptime(raw: string | undefined): number | null {
   );
 }
 
-async function ambilDariRouter(cfg: PppoeConfig): Promise<PppoeActive[]> {
-  const res = await fetch(`${cfg.baseUrl}/rest/ppp/active`, {
-    headers: {
-      Authorization: `Basic ${Buffer.from(`${cfg.user}:${cfg.password}`).toString("base64")}`,
-      Accept: "application/json",
-    },
-    signal: AbortSignal.timeout(15_000),
+/**
+ * RouterOS memakai sertifikat yang diterbitkannya sendiri, jadi verifikasi TLS
+ * akan MENOLAK sambungan walau kredensialnya benar — dan galatnya tidak
+ * menyebut sertifikat sama sekali, jadi orang akan mengira kata sandinya salah.
+ *
+ * Karena itu ia dilewati HANYA bila `MIKROTIK_INSECURE_TLS=true` disetel dengan
+ * sengaja. Tidak dijadikan bawaan: mematikan verifikasi diam-diam berarti
+ * portal ini akan menerima siapa pun yang bisa menyamar sebagai router, dan
+ * kelak saat router dipasangi sertifikat yang benar tidak ada yang tahu bahwa
+ * perlindungannya sudah lama dimatikan.
+ *
+ * Yang membuatnya bisa diterima di sini: jaringannya internal (192.168.100.0/24
+ * lewat 10.10.222.1), dan yang dikirim cuma permintaan BACA.
+ */
+function tlsLonggar(): boolean {
+  return (process.env.MIKROTIK_INSECURE_TLS ?? "").trim().toLowerCase() === "true";
+}
+
+/** Dipakai langsung, bukan lewat fetch: `fetch` Node tidak menyediakan cara
+ *  melonggarkan verifikasi sertifikat per-permintaan tanpa menambah dependensi
+ *  atau mematikannya untuk SELURUH proses. */
+function ambilJson(url: string, headers: Record<string, string>): Promise<unknown> {
+  return new Promise((resolve, reject) => {
+    const u = new URL(url);
+    const req = https.request(
+      {
+        hostname: u.hostname,
+        port: u.port || 443,
+        path: u.pathname + u.search,
+        method: "GET",
+        headers,
+        timeout: 15_000,
+        rejectUnauthorized: !tlsLonggar(),
+      },
+      (res) => {
+        let isi = "";
+        res.setEncoding("utf8");
+        res.on("data", (c) => (isi += c));
+        res.on("end", () => {
+          if ((res.statusCode ?? 0) === 401) {
+            return reject(new Error("RouterOS menolak kredensial (HTTP 401)."));
+          }
+          if ((res.statusCode ?? 0) >= 400) {
+            return reject(new Error(`RouterOS menjawab HTTP ${res.statusCode}`));
+          }
+          try {
+            resolve(JSON.parse(isi));
+          } catch {
+            reject(new Error("Jawaban RouterOS bukan JSON yang sah."));
+          }
+        });
+      },
+    );
+    req.on("timeout", () => req.destroy(new Error("RouterOS tidak menjawab dalam 15 detik.")));
+    req.on("error", (e) => {
+      const pesan = /self.signed|unable to verify|DEPTH_ZERO/i.test(e.message)
+        ? `Sertifikat router tidak tepercaya. Setel MIKROTIK_INSECURE_TLS=true bila ini memang router internal kita. (${e.message})`
+        : e.message;
+      reject(new Error(pesan));
+    });
+    req.end();
   });
-  if (!res.ok) throw new Error(`RouterOS menjawab HTTP ${res.status}`);
-  const data: unknown = await res.json();
+}
+
+async function ambilDariRouter(cfg: PppoeConfig): Promise<PppoeActive[]> {
+  const data = await ambilJson(`${cfg.baseUrl}/rest/ppp/active`, {
+    Authorization: `Basic ${Buffer.from(`${cfg.user}:${cfg.password}`).toString("base64")}`,
+    Accept: "application/json",
+  });
   if (!Array.isArray(data)) throw new Error("Jawaban RouterOS bukan larik.");
   return data as PppoeActive[];
 }
