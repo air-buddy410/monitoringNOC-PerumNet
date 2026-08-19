@@ -400,6 +400,32 @@ links: {
     acknowledge insiden, edit topologi, kelola pengguna, daftar channel, ekspor
     laporan. Mode ini tidak mematikan satu pun di antaranya.
 
+### 10. Kesegaran cadangan — `GET /api/backup-freshness`
+
+- **Dipakai untuk:** penanda "cadangan bermasalah" di shell, dan/atau satu
+  kartu kecil di dashboard.
+- **Cara pakai:** `GET /api/backup-freshness` — **cukup login**, peran apa pun.
+  Cukup sekali per sesi (`useSWR`, `revalidateOnFocus: false`); nilainya hanya
+  berubah sekali sehari saat cron berjalan.
+- **Field:**
+  - `needsAttention`: `boolean` — **satu-satunya yang dibutuhkan penanda.**
+    `true` bila ADA aplikasi yang tidak `ok`.
+  - `checkedAt`: ISO string
+  - `apps[]`: `{ key, label, health, latestAt, ageHours, bytes, previousBytes,
+    count, reason }`
+  - `health`: `"ok"` | `"basi"` | `"mencurigakan"` | `"tidak-ada"`
+  - `reason`: kalimat Indonesia siap tampil — **tampilkan apa adanya**, jangan
+    disusun ulang dari `health` + angka.
+- **Batas perilaku:**
+  - Empat aplikasi selalu dikembalikan (`noc`, `crm`, `warehouse`,
+    `enterprise`) walau foldernya tidak ada — yang itu ber-`health:
+    "tidak-ada"`, dan itu **temuan**, bukan galat. Jangan disembunyikan.
+  - `latestAt`/`ageHours`/`bytes` **null** bila belum ada cadangan sama sekali.
+    Jangan render `0 jam` untuk null — nol jam berarti baru saja, kebalikannya.
+  - Endpoint tidak pernah memuat isi cadangan; hanya nama, waktu, ukuran.
+  - Di komputer pengembang folder cadangan tidak ada, jadi keempatnya akan
+    `"tidak-ada"`. Itu benar, bukan yang perlu di-mock jadi hijau.
+
 ---
 
 ## Jebakan nama & bentuk
@@ -470,6 +496,23 @@ Papan permintaan Opus → Luna (`WORKFLOW-TIM.md` §5). Semua di sini murni
 pekerjaan tampilan — datanya sudah tersedia di endpoint yang disebut, tidak
 ada yang perlu ditunggu dari backend. Tandai ✅ dan pindahkan ke §Selesai
 kalau sudah dikerjakan.
+
+### T-9. Penanda "cadangan bermasalah"
+
+- **Layar:** bebas — shell (`noc-shell.tsx`) atau kartu di `/dashboard`.
+- **Butuh:** `GET /api/backup-freshness` (§10). Tampilkan penanda **hanya bila**
+  `needsAttention: true`; kalau semuanya sehat, jangan tampilkan apa pun.
+  Di dalamnya, daftar `apps` yang `health !== "ok"` dengan `reason`-nya apa
+  adanya.
+- **Kenapa ini ada:** cadangan bisa berhenti diam-diam berbulan-bulan tanpa
+  satu galat pun — yang tersisa cuma berkas yang tidak pernah diperbarui. Tidak
+  ada yang membaca log cron. Sinyalnya sengaja ditaruh di layar yang memang
+  sudah dibuka orang tiap hari, dan sengaja **pasif** (dibaca, bukan dikirim)
+  supaya tetap jujur saat jaringan sedang rusak.
+- **Nada:** ini bukan alarm jaringan. Jangan pakai pola merah berkedip; cukup
+  terlihat. Yang membacanya tidak sedang menangani gangguan, ia sedang lewat.
+- **Jangan** menyembunyikan `health: "tidak-ada"` sebagai "belum ada data" —
+  aplikasi tanpa cadangan sama sekali justru yang paling perlu terlihat.
 
 ### T-7. Penanda "mode baca-saja" di shell
 
@@ -560,6 +603,9 @@ kalau sudah dikerjakan.
 
 ## Riwayat
 
+- **2026-08-19** — `GET /api/backup-freshness` (§10) + tugas T-9. Lahir dari
+  malam yang sama: cadangan CRM ternyata salah nama database berbulan-bulan dan
+  menghasilkan berkas kosong, dan tidak ada yang membaca log cron.
 - **2026-08-19** — Mode baca-saja ditegakkan di kode: `GET /api/read-only-mode`
   (§9), penjaga aksi keluar di `notifyCrm`/`sendTelegram`/`sendWhatsApp`.
   Tugas T-7 (penanda di shell) dan T-8 (design system) dibuka. Rute
