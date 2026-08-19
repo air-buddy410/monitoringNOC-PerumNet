@@ -441,6 +441,14 @@ tanpa menandai sumbernya — nanti tidak jelas siapa yang berhak menutup baris.
     bukan DOWN — jangan dirender merah.
   - `consecutiveFails` berguna ditampilkan bersama `failThreshold`: "2/3"
     memberi tahu alarm belum naik, dan itu memang disengaja.
+- **`POST /api/v1/probe-targets`** (`admin`/`noc`) — daftarkan sasaran baru.
+  Body: `{ name, address, port?, assetId?, severity?, intervalSec?, timeoutMs?,
+  failThreshold? }`. Bawaan: port 443, severity `critical`, interval 60 detik,
+  ambang 3, timeout 3000 ms. → **201** `{ id, name, address, port }`.
+  - Ditolak **400**: `name`/`address` kosong, port di luar 1–65535,
+    `failThreshold` < 1, atau `intervalSec` < 10 detik. Dua batas terakhir
+    disengaja — ambang 0 membuat satu paket hilang langsung membangunkan orang,
+    dan interval terlalu rapat membanjiri perangkat justru saat ia paling rapuh.
 - **`GET /api/v1/alarms`** (cukup login) — alarm terbuka, maksimum 200,
   terbaru dulu. `?semua=1` untuk ikut yang sudah ditutup.
   - Field: `{ id, alarmNumber, severity, source, assetId, message, count,
