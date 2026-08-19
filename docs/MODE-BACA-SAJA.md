@@ -33,10 +33,10 @@ Tiga hal, supaya tidak ada yang "menyeragamkan" keduanya ke arah yang salah:
    dari lima tugas `enabledByDefault: true`). Di sini bawaannya memblokir, jadi
    VPS baru, container baru, atau `.env` yang dipulihkan dari cadangan lama
    semuanya naik dalam keadaan terkunci.
-3. **Tombol manual di CRM melewati gerbangnya sepenuhnya.** Siapa pun dengan
-   izin RBAC yang tepat masih bisa menekan tombol dan mengirim WhatsApp
-   sungguhan. Di sini penjaganya duduk di transport, jadi jalur manual pun
-   menabraknya — **untuk ketiga transport yang kita kenal.**
+3. **Tombol manual di CRM melewati gerbangnya sepenuhnya.** `runQueueAction`,
+   `runJobsAction`, dan `postInvoiceRunAction` memanggil fungsi yang sama tanpa
+   lewat penjadwal. Di sini penjaganya duduk di transport, jadi jalur manual
+   pun menabraknya — **untuk ketiga transport yang kita kenal.**
 
 ## Tiga jalur keluar yang dijaga
 
@@ -123,10 +123,15 @@ tertutup rapat.
    penyisir menahan kode ini tetap GET — tapi hak token di sisi LibreNMS di luar
    jangkauan repo ini.
 
-## Catatan untuk CRM
+## Catatan untuk CRM — sudah dikerjakan
 
-Kelemahan CRM di §Bedanya butir 3 nyata: `runOutboundQueue()`,
-`runQueuedJobs()`, dan `postInvoiceRun()` punya jalur manual yang tidak melewati
-gerbang mana pun. Pola di repo ini — satu penjaga di transport, dipanggil dari
-jalur terjadwal **dan** jalur manual — adalah perbaikannya. Di luar lingkup
-pekerjaan ini; ditulis supaya pengetahuannya tidak mati di repo ini saja.
+Kelemahan di §Bedanya butir 3 sudah ditambal 19 Agustus 2026 dengan pola yang
+sama: `crm/src/lib/outward-guard.ts`, saklar `OUTWARD_ACTIONS` yang sama,
+dipanggil dari `runOutboundQueue()`, `runQueuedJobs()`, dan `postInvoiceRun()`.
+
+**Satu koreksi penting** yang muncul saat mengerjakannya, supaya tidak ada yang
+menakar risiko CRM terlalu tinggi: dua adaptor keluarnya masih rintisan.
+`defaultSender` (`channels.ts:234`) dan `defaultExecutor` (`dunning.ts:125`)
+selalu menjawab "adapter belum tersambung" (§11.7). **CRM tidak bisa mengirim
+WhatsApp maupun perintah router hari ini.** Yang benar-benar berbahaya di sana
+cuma `postInvoiceRun` — dan itu tulisan database, bukan panggilan keluar.
