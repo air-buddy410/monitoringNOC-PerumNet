@@ -225,3 +225,50 @@ adalah keadaan yang BENAR sampai ALUS berhenti melakukan hal yang sama.
 
 Bedanya di `audit_logs`: `crm_webhook.failed` = dicoba lalu gagal (perlu
 ditindaklanjuti); `outward.blocked` = tidak pernah dicoba (tidak perlu).
+
+## 10. Cadangan database
+
+**Sampai 19 Agustus 2026 tidak ada cadangan sama sekali** — tidak ada baris
+cron, tidak ada foldernya. Ditemukan saat memverifikasi temuan serupa di CRM.
+
+Sekarang: `~/deploy/noc-portal/cadangkan-database.sh`, jalan **03:30 WITA** tiap
+hari lewat cron (sengaja jauh dari enterprise 18:30 dan warehouse 02:30),
+tersimpan di `~/backups/noc-portal/`, disimpan **14 hari**. Sumber kebenaran
+skripnya ada di repo: `deploy/cadangkan-database.sh` — kalau diubah, salin
+ulang ke VPS.
+
+Memulihkan:
+
+```bash
+gunzip -c <berkas>.sql.gz | docker exec -i perumnet-noc-postgres \
+  psql -U perumnet_noc -d perumnet_noc
+```
+
+### Kenapa skripnya rewel soal verifikasi
+
+Perintah cadangan CRM di dokumennya menyebut nama database yang salah selama
+berbulan-bulan. Yang membuatnya bertahan bukan kesalahannya, melainkan cara ia
+gagal: `pg_dump` mati, `gzip` di sisi kanan pipa tetap sukses, berkasnya lahir
+dengan nama dan tanggal yang benar, dan `gzip -t` menyatakannya utuh — 30 bita,
+nol baris.
+
+Tiga penangkal dipakai di sini, dan **ketiganya diuji dengan sengaja
+menggagalkan skripnya**, bukan cuma dijalankan pada jalur normal:
+
+1. `set -o pipefail` — tanpa itu status pipa diambil dari perintah terakhir.
+2. Hitung blok `COPY` sesudahnya; berkas kosong tetap "utuh" menurut gzip.
+3. Tulis ke `.part` dulu, beri nama akhir **setelah** isinya terbukti. Versi
+   pertama skrip ini menulis langsung ke nama akhir — dan uji jalur-gagal
+   menangkapnya meninggalkan `.sql.gz` kosong bertanggal hari ini, yang bagi
+   siapa pun yang melihat folder tampak seperti cadangan yang berhasil.
+
+Pemangkasan cadangan lama juga hanya dijalankan **setelah** cadangan hari ini
+terbukti berisi — supaya yang lama tidak pernah dihapus demi yang kosong.
+
+### Diuji sampai pulih, bukan sampai jadi berkas
+
+19 Agustus 2026: cadangan dipulihkan ke database terpisah (`uji_pulih`) di
+container yang sama. 19 tabel, `user` 3, `assets` 15, `notification_channels` 2,
+`sla_reports` 4 — semuanya cocok dengan aslinya, nol galat. Database ujinya
+dihapus setelahnya. **Cadangan yang belum pernah dipulihkan belum tentu
+cadangan.**
