@@ -116,9 +116,12 @@ async function main() {
     // `credentialRef` SENGAJA tidak diambil: itu penunjuk ke kredensial, dan
     // repo ini publik. Kredensial tetap tinggal di CRM.
     const olt = nol();
+    // `credentialRef` adalah NAMA env var, bukan kata sandinya — aman dibawa,
+    // dan justru itu yang membuat portal tahu env mana yang harus diisi.
     const rOlt = await crm.query<{
       name: string; managementIp: string; vendor: string | null; model: string | null;
-    }>(`SELECT name, "managementIp", vendor, model FROM "OltDevice"`);
+      telnetPort: number | null; credentialRef: string | null;
+    }>(`SELECT name, "managementIp", vendor, model, "telnetPort", "credentialRef" FROM "OltDevice"`);
 
     for (const o of rOlt.rows) {
       const ada = await noc.query<{ id: string }>(
@@ -126,15 +129,16 @@ async function main() {
       if (ada.rows[0]) {
         if (!DRY) {
           await noc.query(
-            `UPDATE olt_devices SET management_ip=$2, vendor=$3, model=$4 WHERE id=$1`,
-            [ada.rows[0].id, o.managementIp, o.vendor, o.model]);
+            `UPDATE olt_devices SET management_ip=$2, vendor=$3, model=$4, telnet_port=$5, credential_ref=$6 WHERE id=$1`,
+            [ada.rows[0].id, o.managementIp, o.vendor, o.model, o.telnetPort, o.credentialRef]);
         }
         olt.diperbarui += 1;
       } else {
         if (!DRY) {
           await noc.query(
-            `INSERT INTO olt_devices (id, name, management_ip, vendor, model) VALUES ($1,$2,$3,$4,$5)`,
-            [randomUUID(), o.name, o.managementIp, o.vendor, o.model]);
+            `INSERT INTO olt_devices (id, name, management_ip, vendor, model, telnet_port, credential_ref)
+             VALUES ($1,$2,$3,$4,$5,$6,$7)`,
+            [randomUUID(), o.name, o.managementIp, o.vendor, o.model, o.telnetPort, o.credentialRef]);
         }
         olt.dibuat += 1;
       }
