@@ -521,7 +521,9 @@ sampai ada yang mendaftarkan datanya lewat layar.
 - Hanya `username` yang disimpan. Tidak ada nama pelanggan di sini, dan itu
   disengaja.
 
-**Riwayat insiden** — `GET/POST /api/v1/incidents/:incidentId/updates`
+**Riwayat insiden** — `GET/POST /api/v1/incidents/:alertId/updates`
+- `:alertId` menerima ID internal incident **maupun** `librenmsAlertId` —
+  sama persis dengan rute `acknowledge` di sebelahnya.
 - `{ id, incidentId, authorUserId, authorLabel, kind, body, createdAt }`,
   terlama dulu — dibaca sebagai cerita.
 - `kind`: `"catatan"` | `"status"` | `"eskalasi"` | `"penyebab"` |
