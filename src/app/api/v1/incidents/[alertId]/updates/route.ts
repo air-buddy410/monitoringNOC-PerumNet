@@ -1,18 +1,33 @@
 import { NextResponse } from "next/server";
 import { randomUUID } from "node:crypto";
-import { eq } from "drizzle-orm";
+import { eq, or } from "drizzle-orm";
 import { db } from "@/db";
 import { incidentUpdates, incidents } from "@/db/schema";
 import { withRole } from "@/server/rbac";
 
 export const dynamic = "force-dynamic";
 
-type Ctx = { params: Promise<{ incidentId: string }> };
+type Ctx = { params: Promise<{ alertId: string }> };
+
+/** Sama seperti rute acknowledge di sebelahnya, `:alertId` menerima ID internal
+ *  incident MAUPUN librenmsAlertId. Slug-nya WAJIB bernama sama dengan
+ *  saudaranya — Next menolak dua nama slug berbeda pada jalur yang sama, dan
+ *  penolakannya terjadi saat RUNTIME, bukan saat build. */
+async function cariIncidentId(ref: string): Promise<string | null> {
+  const [row] = await db
+    .select({ id: incidents.id })
+    .from(incidents)
+    .where(or(eq(incidents.id, ref), eq(incidents.librenmsAlertId, ref)))
+    .limit(1);
+  return row?.id ?? null;
+}
 const JENIS = ["catatan", "status", "eskalasi", "penyebab", "penutupan"] as const;
 
 /** GET — riwayat sebuah insiden, terlama dulu (dibaca sebagai cerita). */
 export const GET = withRole([], async (_r, _u, ctx: Ctx) => {
-  const { incidentId } = await ctx.params;
+  const { alertId } = await ctx.params;
+  const incidentId = await cariIncidentId(alertId);
+  if (!incidentId) return NextResponse.json({ updates: [] }, { headers: { "Cache-Control": "no-store" } });
   const rows = await db
     .select().from(incidentUpdates)
     .where(eq(incidentUpdates.incidentId, incidentId))
@@ -27,7 +42,7 @@ export const GET = withRole([], async (_r, _u, ctx: Ctx) => {
  * dibutuhkan — waktu orang menelusuri ulang apa yang diketahui dan kapan.
  */
 export const POST = withRole(["admin", "noc", "engineer"], async (request, user, ctx: Ctx) => {
-  const { incidentId } = await ctx.params;
+  const { alertId } = await ctx.params;
   let body: { body?: string; kind?: (typeof JENIS)[number] };
   try {
     body = await request.json();
@@ -43,10 +58,10 @@ export const POST = withRole(["admin", "noc", "engineer"], async (request, user,
     );
   }
 
-  const [ada] = await db
-    .select({ id: incidents.id }).from(incidents)
-    .where(eq(incidents.id, incidentId)).limit(1);
-  if (!ada) return NextResponse.json({ error: "Insiden tidak ditemukan." }, { status: 404 });
+  const incidentId = await cariIncidentId(alertId);
+  if (!incidentId) {
+    return NextResponse.json({ error: "Insiden tidak ditemukan." }, { status: 404 });
+  }
 
   const id = randomUUID();
   await db.insert(incidentUpdates).values({
