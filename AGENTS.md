@@ -185,3 +185,15 @@ This version has breaking changes — APIs, conventions, and file structure may 
 This block is written and re-added by `next dev` — verify at `node_modules/next/dist/server/lib/generate-agent-files.js`. Removing it from a diff only re-creates the uncommitted change; committing it with your work keeps the tree clean.
 
 <!-- END:nextjs-agent-rules -->
+
+---
+
+# Aturan kerja tim (WAJIB dibaca lebih dulu)
+
+**Luna (OpenCode) = FRONTEND. Opus (Claude Code) = BACKEND, SERVER, DATABASE.**
+
+Aturan lengkap, batas wilayah, alur per fase, dan peta seluruh aplikasi
+PerumNet ada di **`docs/WORKFLOW-TIM.md`**. Baca itu sebelum mengubah apa pun.
+
+- Permintaan Luna → Opus: `docs/PERMINTAAN-FRONTEND-KE-BACKEND.md`
+- Kontrak Opus → Luna: `docs/HANDOFF-BACKEND-KE-FRONTEND.md`
