@@ -373,6 +373,33 @@ links: {
     dari data tiruan (lihat bagian berikut) — layar diagnostik sebaiknya
     menyatakannya terang-terangan.
 
+### 9. Mode baca-saja — `GET /api/read-only-mode`
+
+- **Dipakai untuk:** penanda "mode baca-saja" di shell aplikasi.
+- **Cara pakai:** `GET /api/read-only-mode` — **cukup login**, peran apa pun.
+  Tidak perlu di-poll: nilainya hanya berubah kalau konfigurasi server berubah
+  dan servernya di-restart. Perlakukan seperti `GET /api/auth-mode`.
+- **Field:**
+  - `readOnly`: `boolean`
+  - `outwardActions`: `"BLOCKED"` | `"ALLOWED"`
+  - `configured`: `{ "crm-webhook": boolean, telegram: boolean, whatsapp: boolean }`
+    — kanal yang AKAN bertindak keluar SEANDAINYA modenya `ALLOWED`. Ini
+    **bukan** status pengiriman; `true` di sini tidak berarti ada yang terkirim.
+  - `reason`: kalimat Indonesia siap tampil — **tampilkan apa adanya.**
+- **Batas perilaku:**
+  - Tidak pernah memuat URL, token, atau nama host. Hanya mode dan boolean.
+  - Belum login → **401** `{ "error": "Belum login." }`
+  - Selama `readOnly: true`, notifikasi Telegram/WhatsApp nyata dan webhook ke
+    CRM **tidak dikirim**. Tapi pengiriman **simulasi** (tanpa token) TETAP
+    berjalan dan TETAP muncul di riwayat notifikasi — jangan menyimpulkan dari
+    `readOnly: true` bahwa riwayatnya pasti kosong.
+  - Alert yang ditahan **tidak** menghasilkan baris di riwayat notifikasi
+    (bukan `failed`, bukan `sent`). Jejaknya di `audit_logs`. Jangan
+    menampilkannya sebagai kegagalan pengiriman.
+  - **Semua tombol yang menulis ke database portal tetap berfungsi normal** —
+    acknowledge insiden, edit topologi, kelola pengguna, daftar channel, ekspor
+    laporan. Mode ini tidak mematikan satu pun di antaranya.
+
 ---
 
 ## Jebakan nama & bentuk
@@ -444,6 +471,46 @@ pekerjaan tampilan — datanya sudah tersedia di endpoint yang disebut, tidak
 ada yang perlu ditunggu dari backend. Tandai ✅ dan pindahkan ke §Selesai
 kalau sudah dikerjakan.
 
+### T-7. Penanda "mode baca-saja" di shell
+
+- **Layar:** `src/components/layout/noc-shell.tsx` — penempatan terserah kamu,
+  yang penting terlihat di semua halaman internal.
+- **Butuh:** baca `GET /api/read-only-mode` sekali per sesi (`useSWR` dengan
+  `revalidateOnFocus: false`, persis pola `useAuthMode()`), lalu:
+  - `readOnly: true` → penanda tenang & permanen, mis. badge "Mode baca-saja".
+    Tampilkan `reason` apa adanya sebagai tooltip atau teks pendamping.
+    **Bukan** warna error/merah — ini keadaan yang BENAR, bukan gangguan.
+  - `readOnly: false` → **tidak menampilkan apa-apa.** Tidak perlu badge "mode
+    penuh"; ketiadaan penanda sudah berarti itu.
+  - Gagal membaca (401/500) → **jangan menebak.** Diamkan penandanya; jangan
+    menampilkan "mode penuh" hanya karena gagal membaca.
+- **JANGAN ditampilkan di** `/customer/**` (halaman pelanggan tidak boleh
+  membocorkan keadaan internal) dan `/login` (endpointnya butuh sesi).
+- **Jangan menonaktifkan kontrol apa pun** berdasarkan nilai ini — lihat §9
+  "Batas perilaku". Semua tombol tetap hidup.
+- **Kenapa tidak bisa diakali di sisi frontend:** endpointnya sudah jalan dan
+  sudah diuji; yang kurang hanya satu tempat di layar untuk menyatakannya.
+  Tanpa itu, satu-satunya cara mengetahui portal sedang menahan aksi keluar
+  adalah membaca `.env` di server.
+
+### T-8. Terapkan design system PerumNet
+
+- **Layar:** seluruh shell + halaman login.
+- **Butuh:** `docs/PERUMNET_FRONTEND_DESIGN_SYSTEM.md` diterapkan, lalu
+  checklist di bagian akhirnya dicentang. Berkas itu **byte-per-byte sama**
+  dengan milik CRM, jadi mengikutinya otomatis menyamakan tampilan kedua
+  aplikasi — itu yang diminta pemilik proyek.
+- **Jarak yang nyata hari ini** (diperiksa 19 Agustus, jangan ditebak ulang):
+  - Token: CRM memakai `--pn-primary` dkk; di sini nama shadcn (`--primary`),
+    nilainya sudah teal `#04a99f`. Yang berbeda nama, bukan warna.
+  - Latar: doc meminta kanvas mint `#F7FBFA`→`#EDF7F5`; di sini
+    `--background: #f8f8f6` (abu netral).
+  - `public/brand/` sudah lengkap, tapi `next.svg`/`vercel.svg` bawaan
+    Next.js masih tersisa di `public/`.
+- **Batas:** jangan mengubah route, RBAC, autentikasi, atau API — doc itu
+  menyatakannya sendiri di paragraf pembuka.
+- **Kenapa tidak bisa diakali di sisi backend:** ini murni presentasi.
+
 ### ✅ T-4. Form login pindah ke satu pintu — SELESAI 2026-08-18
 
 - **Layar:** `src/components/auth/login-form.tsx`.
@@ -493,6 +560,11 @@ kalau sudah dikerjakan.
 
 ## Riwayat
 
+- **2026-08-19** — Mode baca-saja ditegakkan di kode: `GET /api/read-only-mode`
+  (§9), penjaga aksi keluar di `notifyCrm`/`sendTelegram`/`sendWhatsApp`.
+  Tugas T-7 (penanda di shell) dan T-8 (design system) dibuka. Rute
+  `POST /api/notifications/channels/verify` kini menuntut header `x-bot-token`
+  — hanya menyentuh bot, bukan layar mana pun.
 - **2026-08-17** — Satu pintu login: `POST /api/auth/sign-in/portal` +
   `GET /api/auth-mode`; `/sign-up/email` ditutup permanen, `/sign-in/email`
   dan `/change-password` mati saat `AUTH_PROVIDER=MAILSERVER`. Tugas T-4…T-6.
