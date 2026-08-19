@@ -591,3 +591,196 @@ export const networkAlarms = pgTable(
       .where(sql`${table.clearedAt} is null`),
   ],
 );
+
+// ── Fase 10: situs, IPAM, FTTH, PPPoE, dan riwayat insiden ────────────────
+//
+// Menyusul fitur yang sudah ada di CRM. Satu keputusan yang membentuk seluruh
+// bagian ini: **memperluas yang sudah ada, bukan membuat tandingannya.**
+//
+// CRM punya `NetworkDevice` dan `NetworkLink`. Portal ini SUDAH punya padanan
+// keduanya — `assets` (inventaris perangkat dari LibreNMS) dan
+// `topology_nodes`/`topology_links` (keterhubungan). Menambahkan tabel kembar
+// hanya akan melahirkan dua daftar perangkat yang pelan-pelan berbeda isinya,
+// dan tidak akan pernah jelas mana yang benar. Jadi yang ditambahkan di sini
+// hanya yang benar-benar BELUM ada padanannya: situs, IPAM, FTTH, PPPoE, dan
+// riwayat insiden.
+
+/**
+ * Lokasi fisik: POP, kantor, tower.
+ *
+ * `code` sengaja dibuat cocok dengan kolom teks `assets.site` yang sudah ada,
+ * dan `assets` TIDAK diberi kolom `site_id`. Menambahkan FK berarti dua
+ * representasi situs pada baris yang sama, dan cepat atau lambat keduanya akan
+ * berbeda isinya tanpa ada yang tahu mana yang benar. Tautannya lunak dengan
+ * sengaja: tabel ini memperkaya nama situs, bukan menggantikannya.
+ */
+export const networkSites = pgTable("network_sites", {
+  id: text("id").primaryKey(),
+  code: text("code").notNull().unique(),
+  name: text("name").notNull(),
+  address: text("address"),
+  latitude: doublePrecision("latitude"),
+  longitude: doublePrecision("longitude"),
+  notes: text("notes"),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+/** Blok IP yang dikelola. `cidr` disimpan apa adanya (mis. 10.20.0.0/24). */
+export const subnets = pgTable(
+  "subnets",
+  {
+    id: text("id").primaryKey(),
+    cidr: text("cidr").notNull().unique(),
+    name: text("name").notNull(),
+    gateway: text("gateway"),
+    vlanId: integer("vlan_id"),
+    siteId: text("site_id").references(() => networkSites.id, { onDelete: "set null" }),
+    purpose: text("purpose"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [index("subnets_site_idx").on(table.siteId)],
+);
+
+/**
+ * Satu alamat terpakai di dalam sebuah subnet.
+ *
+ * Unik per (subnet, address) — bukan per address saja: alamat privat yang sama
+ * sah muncul di dua subnet berbeda, dan memaksakan keunikan global akan
+ * menolak pencatatan yang benar.
+ */
+export const ipAddresses = pgTable(
+  "ip_addresses",
+  {
+    id: text("id").primaryKey(),
+    subnetId: text("subnet_id")
+      .notNull()
+      .references(() => subnets.id, { onDelete: "cascade" }),
+    address: text("address").notNull(),
+    assetId: text("asset_id").references(() => assets.assetId, { onDelete: "set null" }),
+    label: text("label"),
+    status: text("status", { enum: ["dipakai", "dicadangkan", "bebas"] })
+      .notNull()
+      .default("dipakai"),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [
+    uniqueIndex("ip_addresses_subnet_address_idx").on(table.subnetId, table.address),
+  ],
+);
+
+/** OLT — perangkat agregasi FTTH. Ditautkan ke `assets` bila ia juga terpantau. */
+export const oltDevices = pgTable("olt_devices", {
+  id: text("id").primaryKey(),
+  name: text("name").notNull(),
+  managementIp: text("management_ip").notNull(),
+  vendor: text("vendor"),
+  model: text("model"),
+  siteId: text("site_id").references(() => networkSites.id, { onDelete: "set null" }),
+  assetId: text("asset_id").references(() => assets.assetId, { onDelete: "set null" }),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
+/** ODP — kotak terminasi di lapangan. */
+export const odps = pgTable(
+  "odps",
+  {
+    id: text("id").primaryKey(),
+    code: text("code").notNull().unique(),
+    name: text("name").notNull(),
+    siteId: text("site_id").references(() => networkSites.id, { onDelete: "set null" }),
+    oltId: text("olt_id").references(() => oltDevices.id, { onDelete: "set null" }),
+    latitude: doublePrecision("latitude"),
+    longitude: doublePrecision("longitude"),
+    /** Kapasitas TOTAL port. Jumlah terpakai TIDAK disimpan di sini — ia
+     *  diturunkan dari `odp_ports`, supaya tidak ada dua angka yang bisa
+     *  berbeda tentang hal yang sama. */
+    capacity: integer("capacity").notNull().default(8),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [index("odps_site_idx").on(table.siteId)],
+);
+
+export const odpPorts = pgTable(
+  "odp_ports",
+  {
+    id: text("id").primaryKey(),
+    odpId: text("odp_id")
+      .notNull()
+      .references(() => odps.id, { onDelete: "cascade" }),
+    portNumber: integer("port_number").notNull(),
+    status: text("status", { enum: ["kosong", "terpakai", "rusak", "dicadangkan"] })
+      .notNull()
+      .default("kosong"),
+    /** Identitas pelanggan di sistem LAIN (CRM/ALUS). Portal ini sengaja tidak
+     *  menyimpan nama atau alamat pelanggan — repo ini publik. */
+    externalServiceId: text("external_service_id"),
+    notes: text("notes"),
+    updatedAt: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [uniqueIndex("odp_ports_odp_number_idx").on(table.odpId, table.portNumber)],
+);
+
+/** Satu putaran penarikan sesi PPPoE dari router. */
+export const pppoePollRuns = pgTable("pppoe_poll_runs", {
+  id: text("id").primaryKey(),
+  startedAt: timestamp("started_at", { withTimezone: true }).notNull().defaultNow(),
+  finishedAt: timestamp("finished_at", { withTimezone: true }),
+  status: text("status", { enum: ["RUNNING", "SUCCESS", "FAILED", "SKIPPED"] })
+    .notNull()
+    .default("RUNNING"),
+  sessionCount: integer("session_count").notNull().default(0),
+  error: text("error"),
+});
+
+/**
+ * Sesi PPPoE yang sedang aktif menurut penarikan terakhir.
+ *
+ * Yang disimpan sengaja hanya `username` — bukan nama, alamat, atau nomor
+ * pelanggan. Repo ini publik, dan pemetaan username ke orang adalah milik CRM.
+ */
+export const pppoeSessions = pgTable(
+  "pppoe_sessions",
+  {
+    id: text("id").primaryKey(),
+    username: text("username").notNull(),
+    callerId: text("caller_id"),
+    address: text("address"),
+    uptimeSec: integer("uptime_sec"),
+    routerName: text("router_name"),
+    seenAt: timestamp("seen_at", { withTimezone: true }).notNull().defaultNow(),
+    pollRunId: text("poll_run_id").references(() => pppoePollRuns.id, {
+      onDelete: "set null",
+    }),
+  },
+  (table) => [uniqueIndex("pppoe_sessions_username_idx").on(table.username)],
+);
+
+/**
+ * Riwayat sebuah insiden — catatan berurutan, append-only.
+ *
+ * Tanpa ini insiden cuma punya STATUS; dengan ini ia punya cerita. Saat
+ * peninjauan pasca-gangguan, "kapan siapa tahu apa" hampir selalu pertanyaan
+ * yang lebih berguna daripada "status akhirnya apa".
+ */
+export const incidentUpdates = pgTable(
+  "incident_updates",
+  {
+    id: text("id").primaryKey(),
+    incidentId: text("incident_id")
+      .notNull()
+      .references(() => incidents.id, { onDelete: "cascade" }),
+    authorUserId: text("author_user_id").references(() => user.id, {
+      onDelete: "set null",
+    }),
+    /** null = catatan sistem (mis. dinaikkan otomatis oleh probe). */
+    authorLabel: text("author_label"),
+    kind: text("kind", {
+      enum: ["catatan", "status", "eskalasi", "penyebab", "penutupan"],
+    })
+      .notNull()
+      .default("catatan"),
+    body: text("body").notNull(),
+    createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+  },
+  (table) => [index("incident_updates_incident_idx").on(table.incidentId, table.createdAt)],
+);

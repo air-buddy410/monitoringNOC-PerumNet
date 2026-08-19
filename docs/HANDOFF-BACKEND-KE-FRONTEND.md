@@ -471,6 +471,67 @@ tanpa menandai sumbernya — nanti tidak jelas siapa yang berhak menutup baris.
     cara melihatnya dari layar.
     Toleransi 3× disengaja: satu putaran yang kelewat bukan kerusakan.
 
+### 12. Situs, IPAM, FTTH, PPPoE, dan riwayat insiden
+
+Semuanya sudah hidup dan terisi skema; sebagian besar masih kosong isinya
+sampai ada yang mendaftarkan datanya lewat layar.
+
+**Situs** — `GET/POST /api/v1/sites` (POST: `admin`/`noc`)
+- `{ id, code, name, address, latitude, longitude, notes }`. `code` unik,
+  otomatis huruf besar. Bentrok → **409**.
+- `code` sengaja dibuat cocok dengan kolom teks `assets.site` yang sudah ada.
+  Aset **tidak** punya `siteId`; tautannya lunak. Jangan bangun UI yang
+  mengandaikan relasi keras.
+
+**IPAM** — `GET/POST /api/v1/subnets`, `GET/POST /api/v1/subnets/:id/addresses`
+- Subnet: `{ id, cidr, name, gateway, vlanId, siteId, purpose, usedCount }`.
+  `usedCount` diturunkan dari tabel alamat, bukan kolom tersimpan.
+- CIDR divalidasi ketat → **400** kalau bukan IPv4 CIDR yang sah.
+  Duplikat → **409**.
+- Alamat: `{ id, subnetId, address, assetId, label, status }`,
+  `status`: `"dipakai"` | `"dicadangkan"` | `"bebas"`.
+- Unik per **(subnet, address)**, bukan per alamat saja — alamat privat yang
+  sama sah muncul di dua subnet berbeda. Pesan 409-nya menyebut "di subnet ini".
+
+**FTTH** — `GET/POST /api/v1/ftth/odps`, `GET/PATCH /api/v1/ftth/odps/:id/ports`
+- ODP: `{ id, code, name, siteId, oltId, latitude, longitude, capacity,
+  usedPorts, brokenPorts }`.
+  **`usedPorts` DITURUNKAN dari tabel port**, bukan kolom tersimpan — jangan
+  pernah menampilkan angka terpakai dari sumber lain.
+- **POST ODP otomatis membuat port sebanyak `capacity`** (1–256). Frontend
+  tidak perlu membuat port satu per satu.
+- PATCH port: body `{ portNumber, status?, externalServiceId?, notes? }`.
+  `status`: `"kosong"` | `"terpakai"` | `"rusak"` | `"dicadangkan"`.
+  Port tidak ada pada ODP itu → **404**.
+- **`externalServiceId` adalah identitas layanan di sistem LAIN (CRM/ALUS).**
+  Portal ini sengaja tidak menyimpan nama maupun alamat pelanggan — repo ini
+  publik. Jangan menambah field identitas pelanggan di layar.
+
+**PPPoE** — `GET /api/v1/pppoe/sessions`
+- `{ lastRun, sessions[] }`. Sesi: `{ username, address, callerId, uptimeSec,
+  routerName, seenAt }`.
+- `lastRun`: `{ status, startedAt, finishedAt, sessionCount, error }` —
+  `status` bisa `"SUCCESS"` | `"FAILED"` | `"SKIPPED"` | `"RUNNING"`.
+- **`lastRun` WAJIB ditampilkan bersama daftarnya.** Daftar sesi yang tidak
+  diperbarui terlihat persis sama dengan jaringan yang stabil. `SKIPPED`
+  berarti router belum dikonfigurasi — itu keadaan yang benar hari ini, bukan
+  gangguan.
+- Penarikan yang gagal **tidak** menghapus gambaran terakhir; datanya jadi
+  tua, dan umurnya terbaca dari `seenAt`/`lastRun`.
+- Hanya `username` yang disimpan. Tidak ada nama pelanggan di sini, dan itu
+  disengaja.
+
+**Riwayat insiden** — `GET/POST /api/v1/incidents/:incidentId/updates`
+- `{ id, incidentId, authorUserId, authorLabel, kind, body, createdAt }`,
+  terlama dulu — dibaca sebagai cerita.
+- `kind`: `"catatan"` | `"status"` | `"eskalasi"` | `"penyebab"` |
+  `"penutupan"`. Selain itu → **400** dengan daftar yang sah.
+- POST butuh `admin`/`noc`/`engineer`. **Append-only: tidak ada ubah maupun
+  hapus**, dan itu bukan kelalaian — riwayat gangguan yang bisa disunting
+  kehilangan gunanya justru saat orang menelusuri ulang apa yang diketahui
+  dan kapan. Jangan bangun tombol edit/hapus.
+- `authorLabel` terisi nama pengguna; `null` berarti catatan sistem.
+
 ---
 
 ## Jebakan nama & bentuk
@@ -541,6 +602,59 @@ Papan permintaan Opus → Luna (`WORKFLOW-TIM.md` §5). Semua di sini murni
 pekerjaan tampilan — datanya sudah tersedia di endpoint yang disebut, tidak
 ada yang perlu ditunggu dari backend. Tandai ✅ dan pindahkan ke §Selesai
 kalau sudah dikerjakan.
+
+### T-11. Halaman Situs & IPAM
+
+- **Layar:** `/sites` dan `/ipam` (nama bebas), plus entri nav — **tambahkan**,
+  jangan menata ulang.
+- **Butuh:** §12 "Situs" & "IPAM". Keduanya masih kosong; layar ini yang akan
+  mengisinya, jadi form tambah bukan pelengkap melainkan intinya.
+- **Yang penting benar:**
+  - `usedCount` subnet datang dari server. Jangan hitung ulang di klien.
+  - Validasi CIDR ada di server dan mengembalikan 400 dengan pesan siap tampil.
+    Validasi di form itu kenyamanan; **tampilkan pesan servernya apa adanya**.
+  - 409 berarti duplikat — itu bukan galat sistem, tampilkan sebagai koreksi
+    yang bisa ditindaklanjuti pengguna.
+
+### T-12. Halaman FTTH (ODP & port)
+
+- **Layar:** `/ftth`, dengan tampilan port per ODP.
+- **Butuh:** §12 "FTTH".
+- **Yang penting benar:**
+  - `usedPorts`/`brokenPorts` diturunkan server. Menampilkan angka terpakai
+    dari hitungan klien akan menyimpang begitu ada dua orang membuka layar.
+  - Membuat ODP otomatis membuat port sebanyak `capacity` — **jangan** buat
+    layar "tambah port satu per satu".
+  - **Jangan tambahkan field nama/alamat/nomor pelanggan.** Yang ada hanya
+    `externalServiceId`. Repo ini publik dan itu batas yang disengaja.
+  - Peta: ODP punya `latitude`/`longitude` — bisa menyatu dengan `/map` yang
+    sudah ada. Kalau iya, **tambahkan lapisan**, jangan ubah lapisan yang ada.
+
+### T-13. Halaman PPPoE
+
+- **Layar:** `/pppoe`.
+- **Butuh:** §12 "PPPoE".
+- **Yang penting benar, dan ini yang paling mudah salah:**
+  - **Tampilkan `lastRun` sejelas daftarnya.** Daftar sesi yang membeku
+    terlihat persis seperti jaringan yang stabil — tanpa umur data, layar ini
+    berbohong dengan meyakinkan.
+  - `status: "SKIPPED"` = router belum dikonfigurasi. Itu keadaan yang BENAR
+    hari ini. Jangan dirender sebagai kegagalan.
+  - `status: "FAILED"` → daftarnya masih ada tapi TUA. Tandai umurnya, jangan
+    kosongkan layar.
+  - Tidak ada nama pelanggan — jangan sediakan kolomnya.
+
+### T-14. Riwayat pada halaman insiden
+
+- **Layar:** detail insiden (menyatu dengan `/notifications` atau halaman baru).
+- **Butuh:** §12 "Riwayat insiden".
+- **Yang penting benar:**
+  - Append-only. **Jangan bangun tombol ubah atau hapus** — itu bukan fitur
+    yang belum sempat dibuat, itu keputusan.
+  - Urutan terlama dulu; ini dibaca sebagai kronologi, bukan umpan berita.
+  - `kind` layak dibedakan secara visual — `eskalasi` dan `penyebab` adalah
+    yang dicari orang saat menelusuri ulang.
+  - `authorLabel: null` = catatan sistem; bedakan dari catatan orang.
 
 ### T-10. Halaman Probe & Alarm
 
@@ -665,6 +779,10 @@ kalau sudah dikerjakan.
 
 ## Riwayat
 
+- **2026-08-19** — Fase 10: situs, IPAM, FTTH, PPPoE, riwayat insiden (§12).
+  Tugas T-11…T-14. Sengaja TIDAK dibuat tabel `network_devices`/`network_links`
+  tandingan — `assets` dan `topology_*` yang sudah ada diperluas, supaya tidak
+  lahir dua daftar perangkat yang pelan-pelan berbeda isinya.
 - **2026-08-19** — Fase 9: penjadwal + probe milik portal sendiri (§11) —
   `probe-targets`, `alarms`, `alarms/:id/acknowledge`, `scheduler`. Tugas T-10.
   Lahir karena LibreNMS melaporkan 0 perangkat, sehingga portal buta bukan

@@ -22,6 +22,13 @@
       "when": 1787148684596,
       "tag": "0002_motionless_pestilence",
       "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1787150440529,
+      "tag": "0003_futuristic_lightspeed",
+      "breakpoints": true
     }
   ]
 }

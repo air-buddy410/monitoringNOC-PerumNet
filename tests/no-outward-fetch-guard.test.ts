@@ -32,6 +32,9 @@ const NETWORK_ALLOWLIST: Record<string, string> = {
   [path.join("server", "mail-auth.ts")]:
     "probe TLS ke IMAP 993 untuk memeriksa password — bertanya, bukan bertindak. " +
     "JANGAN diblokir: memblokirnya mengunci semua orang dari portal saat AUTH_PROVIDER=MAILSERVER",
+  [path.join("server", "pppoe.ts")]:
+    "GET /rest/ppp/active ke router — hanya MEMBACA daftar sesi, tidak mengubah " +
+    "satu pun konfigurasi router. Sekategori dengan pembacaan LibreNMS",
   [path.join("server", "probe.ts")]:
     "membuka koneksi TCP ke perangkat lalu menutupnya — tidak mengirim satu perintah pun. " +
     "Kategorinya sama dengan pembacaan LibreNMS: bertanya, bukan bertindak. " +
