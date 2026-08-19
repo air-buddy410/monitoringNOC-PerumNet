@@ -426,6 +426,51 @@ links: {
   - Di komputer pengembang folder cadangan tidak ada, jadi keempatnya akan
     `"tidak-ada"`. Itu benar, bukan yang perlu di-mock jadi hijau.
 
+### 11. Probe & alarm — pemantauan milik portal sendiri
+
+Portal kini mengukur keterjangkauan sendiri lewat TCP, tidak lagi hanya
+menunggu LibreNMS. **Ini sumber yang BERBEDA dari `/api/v1/incidents`:**
+`incidents` = apa yang DIKATAKAN LibreNMS lewat webhook; `alarms` = apa yang
+portal ini SIMPULKAN dari probenya sendiri. Jangan digabung jadi satu daftar
+tanpa menandai sumbernya — nanti tidak jelas siapa yang berhak menutup baris.
+
+- **`GET /api/v1/probe-targets`** (cukup login) — `{ targets[] }` dengan
+  `{ id, name, address, port, assetId, severity, isActive, status, latencyMs,
+  consecutiveFails, failThreshold, checkedAt, hasOpenAlarm }`.
+  - `status`: `"UP"` | `"DOWN"` | **`null`** (belum pernah diperiksa). Null
+    bukan DOWN — jangan dirender merah.
+  - `consecutiveFails` berguna ditampilkan bersama `failThreshold`: "2/3"
+    memberi tahu alarm belum naik, dan itu memang disengaja.
+- **`POST /api/v1/probe-targets`** (`admin`/`noc`) — daftarkan sasaran baru.
+  Body: `{ name, address, port?, assetId?, severity?, intervalSec?, timeoutMs?,
+  failThreshold? }`. Bawaan: port 443, severity `critical`, interval 60 detik,
+  ambang 3, timeout 3000 ms. → **201** `{ id, name, address, port }`.
+  - Ditolak **400**: `name`/`address` kosong, port di luar 1–65535,
+    `failThreshold` < 1, atau `intervalSec` < 10 detik. Dua batas terakhir
+    disengaja — ambang 0 membuat satu paket hilang langsung membangunkan orang,
+    dan interval terlalu rapat membanjiri perangkat justru saat ia paling rapuh.
+- **`GET /api/v1/alarms`** (cukup login) — alarm terbuka, maksimum 200,
+  terbaru dulu. `?semua=1` untuk ikut yang sudah ditutup.
+  - Field: `{ id, alarmNumber, severity, source, assetId, message, count,
+    occurredAt, lastSeenAt, acknowledgedAt, clearedAt }`
+  - `count` = berapa kali gangguan yang sama terulang. Satu gangguan tetap
+    SATU baris; jangan tampilkan sebagai kejadian terpisah.
+  - `source`: `"PROBE"` | `"LIBRENMS"` | `"MANUAL"`.
+- **`POST /api/v1/alarms/:alarmId/acknowledge`** (`admin`/`noc`/`engineer`) —
+  menandai sudah dilihat. **TIDAK menutup alarm.** Penutupan hanya terjadi
+  karena sasarannya benar-benar pulih, supaya "sudah dilihat" tidak pernah
+  tertukar dengan "sudah beres". Alarm yang sudah ditandai atau sudah ditutup
+  → **404**.
+- **`GET /api/v1/scheduler`** (cukup login) — `{ workerLikelyDown, tasks[] }`.
+  - `tasks[]`: `{ code, name, description, isEnabled, intervalSec, lastRunAt,
+    lastStatus, lastError, lastDurationMs, runCount, failCount, overdueSec,
+    stalled }`
+  - `workerLikelyDown: true` berarti ada tugas yang terlambat lebih dari 3×
+    intervalnya. **Worker yang mati tidak menghasilkan galat apa pun** — yang
+    tersisa cuma baris yang tidak pernah diperbarui, jadi inilah satu-satunya
+    cara melihatnya dari layar.
+    Toleransi 3× disengaja: satu putaran yang kelewat bukan kerusakan.
+
 ---
 
 ## Jebakan nama & bentuk
@@ -496,6 +541,23 @@ Papan permintaan Opus → Luna (`WORKFLOW-TIM.md` §5). Semua di sini murni
 pekerjaan tampilan — datanya sudah tersedia di endpoint yang disebut, tidak
 ada yang perlu ditunggu dari backend. Tandai ✅ dan pindahkan ke §Selesai
 kalau sudah dikerjakan.
+
+### T-10. Halaman Probe & Alarm
+
+- **Layar:** halaman baru (mis. `/alarms` dan `/probe`), plus entri nav —
+  **tambahkan** entri, jangan menata ulang yang sudah ada.
+- **Butuh:** §11 di atas. Datanya sudah lengkap, tidak ada yang perlu ditunggu.
+- **Yang penting ditampilkan benar:**
+  - `status: null` berarti belum pernah diperiksa — **bukan** DOWN.
+  - `count` pada alarm = pengulangan gangguan yang SAMA. Satu baris, bukan
+    daftar kejadian.
+  - Tombol acknowledge tidak menutup alarm. Kalau labelnya berbunyi seperti
+    "selesai", orang akan mengira gangguannya beres.
+  - `workerLikelyDown` dari `/api/v1/scheduler` layak jadi penanda kecil —
+    kalau worker mati, seluruh angka di halaman ini membeku tanpa satu galat
+    pun, dan halaman yang membeku terlihat persis seperti jaringan yang sehat.
+- **Kenapa tidak bisa diakali di sisi frontend:** seluruh pengukuran dan daur
+  hidup alarm terjadi di worker + database.
 
 ### T-9. Penanda "cadangan bermasalah"
 
@@ -603,6 +665,10 @@ kalau sudah dikerjakan.
 
 ## Riwayat
 
+- **2026-08-19** — Fase 9: penjadwal + probe milik portal sendiri (§11) —
+  `probe-targets`, `alarms`, `alarms/:id/acknowledge`, `scheduler`. Tugas T-10.
+  Lahir karena LibreNMS melaporkan 0 perangkat, sehingga portal buta bukan
+  karena rusak melainkan karena sumbernya kosong.
 - **2026-08-19** — `GET /api/backup-freshness` (§10) + tugas T-9. Lahir dari
   malam yang sama: cadangan CRM ternyata salah nama database berbulan-bulan dan
   menghasilkan berkas kosong, dan tidak ada yang membaca log cron.

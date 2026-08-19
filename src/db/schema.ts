@@ -17,6 +17,7 @@ import { sql } from "drizzle-orm";
 import {
   boolean,
   doublePrecision,
+  index,
   integer,
   jsonb,
   pgTable,
@@ -412,5 +413,181 @@ export const trafficMonthly = pgTable(
       table.assetId,
       table.period,
     ),
+  ],
+);
+
+// ── Penjadwal & probe (Fase 9, meniru pola CRM) ───────────────────────────
+//
+// Sampai Fase 8 portal ini TIDAK punya penjadwal sama sekali: tidak ada worker,
+// cron, maupun setInterval, dan seluruh telemetry datang dari LibreNMS. Itu
+// berhenti berguna ketika LibreNMS tidak punya perangkat terdaftar — portal
+// jadi buta bukan karena rusak, melainkan karena sumbernya kosong.
+//
+// Tabel di bawah menyalin pola yang sudah terbukti jalan di CRM
+// (`crm/src/lib/scheduler.ts`, `crm/src/lib/probe.ts`): pekerjaan terjadwal
+// dengan sewa, dan probe TCP yang mengukur keterjangkauan sendiri.
+
+/**
+ * Pekerjaan terjadwal. `isEnabled` adalah keadaan OPERATOR — `syncTaskRegistry`
+ * sengaja tidak pernah menimpanya, supaya deploy biasa tidak menyalakan kembali
+ * apa yang sengaja dimatikan orang.
+ */
+export const scheduledTasks = pgTable(
+  "scheduled_tasks",
+  {
+    id: text("id").primaryKey(),
+    code: text("code").notNull().unique(),
+    name: text("name").notNull(),
+    description: text("description"),
+    intervalSec: integer("interval_sec").notNull(),
+    isEnabled: boolean("is_enabled").notNull().default(true),
+
+    lastRunAt: timestamp("last_run_at", { withTimezone: true }),
+    lastStatus: text("last_status", { enum: ["SUCCESS", "FAILED"] }),
+    lastError: text("last_error"),
+    lastDurationMs: integer("last_duration_ms"),
+    runCount: integer("run_count").notNull().default(0),
+    failCount: integer("fail_count").notNull().default(0),
+
+    /** Sewa: diisi saat pekerjaan direbut, dikosongkan saat selesai. Sewa
+     *  kedaluwarsa boleh direbut worker lain — supaya worker yang mati tidak
+     *  mengunci pekerjaan selamanya. */
+    lockedAt: timestamp("locked_at", { withTimezone: true }),
+    lockedBy: text("locked_by"),
+
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => [index("scheduled_tasks_due_idx").on(table.isEnabled, table.lastRunAt)],
+);
+
+/** Riwayat eksekusi — append-only, untuk melihat kapan sebuah tugas berhenti. */
+export const scheduledTaskRuns = pgTable(
+  "scheduled_task_runs",
+  {
+    id: text("id").primaryKey(),
+    taskId: text("task_id")
+      .notNull()
+      .references(() => scheduledTasks.id, { onDelete: "cascade" }),
+    workerId: text("worker_id").notNull(),
+    startedAt: timestamp("started_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    finishedAt: timestamp("finished_at", { withTimezone: true }),
+    status: text("status", { enum: ["RUNNING", "SUCCESS", "FAILED"] })
+      .notNull()
+      .default("RUNNING"),
+    detail: text("detail"),
+    error: text("error"),
+  },
+  (table) => [index("scheduled_task_runs_task_idx").on(table.taskId, table.startedAt)],
+);
+
+/**
+ * Sasaran probe. Keterjangkauan diukur lewat TCP connect, bukan ICMP: ping
+ * butuh raw socket (hak root) yang tidak dimiliki proses aplikasi.
+ * Konsekuensinya jujur — perangkat yang hidup tetapi portnya tertutup akan
+ * terbaca DOWN, karena itu portnya dapat disetel per sasaran.
+ */
+export const probeTargets = pgTable(
+  "probe_targets",
+  {
+    id: text("id").primaryKey(),
+    name: text("name").notNull(),
+    address: text("address").notNull(),
+    port: integer("port").notNull().default(443),
+    assetId: text("asset_id").references(() => assets.assetId, {
+      onDelete: "set null",
+    }),
+    severity: text("severity", { enum: ["warning", "critical"] })
+      .notNull()
+      .default("critical"),
+    intervalSec: integer("interval_sec").notNull().default(60),
+    timeoutMs: integer("timeout_ms").notNull().default(3000),
+    /** Gagal berturut-turut sebelum alarm dinaikkan — supaya satu paket hilang
+     *  tidak langsung membangunkan orang. */
+    failThreshold: integer("fail_threshold").notNull().default(3),
+    isActive: boolean("is_active").notNull().default(true),
+
+    consecutiveFails: integer("consecutive_fails").notNull().default(0),
+    lastStatus: text("last_status", { enum: ["UP", "DOWN"] }),
+    lastLatencyMs: integer("last_latency_ms"),
+    lastCheckedAt: timestamp("last_checked_at", { withTimezone: true }),
+    /** Alarm yang sedang terbuka akibat sasaran ini — dipakai untuk auto-clear. */
+    openAlarmId: text("open_alarm_id"),
+
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => [index("probe_targets_active_idx").on(table.isActive, table.lastStatus)],
+);
+
+/** Hasil tiap pemeriksaan — append-only. */
+export const probeResults = pgTable(
+  "probe_results",
+  {
+    id: text("id").primaryKey(),
+    targetId: text("target_id")
+      .notNull()
+      .references(() => probeTargets.id, { onDelete: "cascade" }),
+    checkedAt: timestamp("checked_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    status: text("status", { enum: ["UP", "DOWN"] }).notNull(),
+    latencyMs: integer("latency_ms"),
+    error: text("error"),
+  },
+  (table) => [index("probe_results_target_idx").on(table.targetId, table.checkedAt)],
+);
+
+/**
+ * Alarm jaringan — daur hidupnya terpisah dari `incidents`.
+ *
+ * `incidents` adalah apa yang DIKATAKAN LibreNMS lewat webhook; `network_alarms`
+ * adalah apa yang portal ini SIMPULKAN sendiri (dari probe, dan nanti dari
+ * sumber lain). Dipisah dengan sengaja: menggabungkannya berarti satu tabel
+ * dengan dua pemilik, dan tidak akan jelas siapa yang berhak menutup baris.
+ *
+ * `dedupKey` mencegah satu gangguan yang sama melahirkan alarm beruntun.
+ */
+export const networkAlarms = pgTable(
+  "network_alarms",
+  {
+    id: text("id").primaryKey(),
+    alarmNumber: text("alarm_number").notNull().unique(),
+    severity: text("severity", { enum: ["warning", "critical"] }).notNull(),
+    source: text("source", { enum: ["PROBE", "LIBRENMS", "MANUAL"] }).notNull(),
+    assetId: text("asset_id").references(() => assets.assetId, {
+      onDelete: "set null",
+    }),
+    message: text("message").notNull(),
+    /** Satu gangguan = satu baris. Alarm berulang menaikkan `count`.
+     *  Keunikannya HANYA berlaku di antara alarm yang masih terbuka — lihat
+     *  indeks parsial di bawah. Kalau dibuat unik global, sasaran yang mati
+     *  untuk KEDUA kalinya tidak akan pernah bisa menaikkan alarm lagi. */
+    dedupKey: text("dedup_key").notNull(),
+    count: integer("count").notNull().default(1),
+    occurredAt: timestamp("occurred_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    lastSeenAt: timestamp("last_seen_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    acknowledgedAt: timestamp("acknowledged_at", { withTimezone: true }),
+    acknowledgedBy: text("acknowledged_by").references(() => user.id, {
+      onDelete: "set null",
+    }),
+    clearedAt: timestamp("cleared_at", { withTimezone: true }),
+  },
+  (table) => [
+    index("network_alarms_open_idx").on(table.clearedAt, table.occurredAt),
+    // Unik hanya di antara yang BELUM ditutup: satu gangguan tidak boleh
+    // melahirkan dua alarm terbuka sekaligus, tapi gangguan yang berulang
+    // besok harus tetap bisa melahirkan alarm baru.
+    uniqueIndex("network_alarms_dedup_open_idx")
+      .on(table.dedupKey)
+      .where(sql`${table.clearedAt} is null`),
   ],
 );

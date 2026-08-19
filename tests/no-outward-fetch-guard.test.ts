@@ -32,6 +32,10 @@ const NETWORK_ALLOWLIST: Record<string, string> = {
   [path.join("server", "mail-auth.ts")]:
     "probe TLS ke IMAP 993 untuk memeriksa password — bertanya, bukan bertindak. " +
     "JANGAN diblokir: memblokirnya mengunci semua orang dari portal saat AUTH_PROVIDER=MAILSERVER",
+  [path.join("server", "probe.ts")]:
+    "membuka koneksi TCP ke perangkat lalu menutupnya — tidak mengirim satu perintah pun. " +
+    "Kategorinya sama dengan pembacaan LibreNMS: bertanya, bukan bertindak. " +
+    "Memblokirnya membuat portal buta, yang justru kebalikan dari tujuannya",
 };
 
 /** Berkas yang wajib menempuh outwardFetch(), bukan fetch() telanjang. */
