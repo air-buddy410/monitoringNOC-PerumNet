@@ -34,17 +34,54 @@ export interface PppoeConfig {
   routerName: string;
 }
 
+/**
+ * Rapikan alamat router jadi URL yang sah.
+ *
+ * Menerima `192.168.100.1` maupun `https://192.168.100.1` — orang wajar
+ * mengetik alamatnya saja, dan menolaknya karena kurang `https://` adalah
+ * kekakuan yang tidak membeli apa pun. Terjadi 19 Agustus 2026: alamat
+ * ditulis tanpa skema, `new URL()` melempar "Invalid URL", dan tugasnya
+ * gagal dengan pesan yang tidak menyebut alamat sama sekali.
+ *
+ * Bawaannya `https` — RouterOS REST memang di sana, dan menebak `http`
+ * berarti kredensial melintas polos di jaringan.
+ */
+export function normalkanUrlRouter(raw: string | undefined | null): string | null {
+  const v = (raw ?? "").trim();
+  if (!v) return null;
+  const lengkap = /^https?:\/\//i.test(v) ? v : `https://${v}`;
+  try {
+    const u = new URL(lengkap);
+    if (!u.hostname) return null;
+    return lengkap.replace(/\/+$/, "");
+  } catch {
+    return null;
+  }
+}
+
 export function pppoeConfig(): PppoeConfig | null {
-  const baseUrl = process.env.MIKROTIK_URL?.trim();
+  const baseUrl = normalkanUrlRouter(process.env.MIKROTIK_URL);
   const user = process.env.MIKROTIK_USER?.trim();
   const password = process.env.MIKROTIK_PASSWORD?.trim();
   if (!baseUrl || !user || !password) return null;
   return {
-    baseUrl: baseUrl.replace(/\/+$/, ""),
+    baseUrl,
     user,
     password,
     routerName: process.env.MIKROTIK_NAME?.trim() || new URL(baseUrl).hostname,
   };
+}
+
+/** Sebab konfigurasi belum bisa dipakai — supaya SKIPPED menyebut yang benar,
+ *  bukan selalu "belum diisi" padahal sudah diisi tapi bentuknya salah. */
+export function sebabBelumSiap(): string | null {
+  const kosong = (["MIKROTIK_URL", "MIKROTIK_USER", "MIKROTIK_PASSWORD"] as const)
+    .filter((n) => !process.env[n]?.trim());
+  if (kosong.length) return `${kosong.join(", ")} belum diisi`;
+  if (!normalkanUrlRouter(process.env.MIKROTIK_URL)) {
+    return `MIKROTIK_URL="${process.env.MIKROTIK_URL}" bukan alamat yang sah`;
+  }
+  return null;
 }
 
 /** "1w2d03:04:05" → detik. Bentuk RouterOS, bukan ISO. */
@@ -149,18 +186,15 @@ export async function pollPppoe(
   const runId = randomUUID();
 
   if (!cfg && !opts.fetcher) {
+    const sebab = sebabBelumSiap() ?? "konfigurasi router tidak lengkap";
     await db.insert(pppoePollRuns).values({
       id: runId,
       startedAt: now,
       finishedAt: now,
       status: "SKIPPED",
-      error: "MIKROTIK_URL/USER/PASSWORD belum diisi",
+      error: sebab,
     });
-    return {
-      status: "SKIPPED",
-      sessionCount: 0,
-      detail: "router belum dikonfigurasi (MIKROTIK_URL/USER/PASSWORD)",
-    };
+    return { status: "SKIPPED", sessionCount: 0, detail: `router belum siap — ${sebab}` };
   }
 
   await db.insert(pppoePollRuns).values({ id: runId, startedAt: now, status: "RUNNING" });
