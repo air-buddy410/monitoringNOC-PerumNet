@@ -12,9 +12,10 @@ checklist go-live, dan prosedur rollback. Melengkapi
 | `DATABASE_URL` | produksi | `postgres://user:pass@host:5432/db` |
 | `BETTER_AUTH_SECRET` | ya | string acak panjang |
 | `BETTER_AUTH_URL` | ya | URL publik portal |
-| `LIBRENMS_URL` | ya* | `https://nms.perumnet.id` — tanpa ini mode fixture |
+| `LIBRENMS_URL` | ya* | **`http://127.0.0.1:8000`** — instans LOKAL. Lihat §11 sebelum menggantinya ke hostname publik |
 | `LIBRENMS_TOKEN` | ya* | token API LibreNMS (read-only, server-side) |
 | `LIBRENMS_WEBHOOK_SECRET` | produksi | header `x-webhook-token` dari LibreNMS |
+| `CRM_DATABASE_URL` | hanya saat impor | koneksi BACA-SAJA ke database CRM untuk `npm run impor:crm` (§12) |
 | `NOTIFICATION_BOT_SECRET` | **wajib bila memakai bot** | header `x-bot-token` pada `POST /api/notifications/channels/verify`. Tanpa ini rute itu menjawab **503** — sengaja tertutup, bukan terbuka |
 | `CUSTOMER_PORTAL_SECRET` | ya | HMAC deep-link portal customer |
 | `CUSTOMER_SUPPORT_CONTACT` | opsional | kontak pada halaman status pelanggan |
@@ -272,3 +273,58 @@ container yang sama. 19 tabel, `user` 3, `assets` 15, `notification_channels` 2,
 `sla_reports` 4 — semuanya cocok dengan aslinya, nol galat. Database ujinya
 dihapus setelahnya. **Cadangan yang belum pernah dipulihkan belum tentu
 cadangan.**
+
+## 11. LibreNMS: pakai instans LOKAL, bukan nms.perumnet.id
+
+**Diperbaiki 19 Agustus 2026.** Sebelumnya `LIBRENMS_URL=https://nms.perumnet.id`
+dengan token yang **tidak terdaftar** di instans lokal. Akibatnya API menjawab
+`{"status":"ok","count":0}` — jawaban yang SAH dan tampak sehat — sementara
+LibreNMS lokal sedang memantau 6 perangkat dan 819 port dengan baik.
+
+Portal terlihat "belum ada data" selama itu, dan tidak ada satu galat pun.
+
+**Cara memastikan sambungannya benar:**
+
+```bash
+# berapa perangkat yang SEBENARNYA dipantau
+docker exec -u librenms librenms-librenms-1   php artisan tinker --execute="echo \App\Models\Device::count();"
+
+# berapa yang TERLIHAT oleh portal
+set -a; . .env.production; set +a
+curl -s -H "X-Auth-Token: $LIBRENMS_TOKEN" "$LIBRENMS_URL/api/v0/devices"   | python3 -c 'import json,sys; print(json.load(sys.stdin)["count"])'
+```
+
+Kedua angka harus sama. Kalau yang pertama > 0 dan yang kedua 0, masalahnya
+**token atau alamat**, bukan perangkatnya — jangan mencari-cari di kode portal.
+
+`php artisan` menolak jalan sebagai root; pakai `-u librenms`. Token diterbitkan
+dengan menyisipkan baris ke tabel `api_tokens` (`user_id`, `token_hash`,
+`description`, `disabled=0`).
+
+## 12. Impor data jaringan dari CRM
+
+CRM sudah memuat situs, subnet, ODP, port, dan OLT yang dimasukkan orang dengan
+susah payah. `npm run impor:crm` memindahkannya ke portal ini supaya tidak ada
+yang perlu mengisi ulang.
+
+```bash
+cd ~/apps/noc-portal
+set -a; . ~/apps/crm/.env; set +a
+CRMIP=$(docker inspect perumnet-crm-db-1   --format '{{range .NetworkSettings.Networks}}{{.IPAddress}}{{end}}')
+export CRM_DATABASE_URL="postgres://${POSTGRES_USER}:${POSTGRES_PASSWORD}@${CRMIP}:5432/${POSTGRES_DB}"
+set -a; . ./.env.production; set +a
+NODE_ENV=production npx tsx scripts/impor-dari-crm.ts --dry-run   # lihat dulu
+NODE_ENV=production npx tsx scripts/impor-dari-crm.ts             # baru jalankan
+```
+
+Port database CRM sengaja tidak dipetakan ke host, jadi alamatnya diambil dari
+IP container — bukan `localhost`.
+
+**Sifatnya:** baca-saja terhadap CRM, dan **idempoten** — dijalankan dua kali
+menghasilkan `0 baru, semuanya diperbarui`, bukan duplikat. Sudah dibuktikan
+19 Agustus 2026 (577 ODP dan 8.632 port tetap 577 dan 8.632).
+
+**Yang sengaja TIDAK dibawa:** identitas pelanggan. Dari `OdpPort` hanya
+`subscriptionId` yang diambil — ID di sistem lain, bukan nama/alamat/nomor.
+`credentialRef` OLT juga ditinggal. **Repo ini publik**; kalau CRM kelak
+menambah kolom identitas, skrip impor tidak boleh ikut mengambilnya.
