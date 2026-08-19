@@ -4,6 +4,16 @@
 #   DATABASE_URL=postgres://perumnet:perumnet@localhost:5432/perumnet
 # Tanpa ini aplikasi memakai PGlite (./data/pglite) — cukup untuk 1 proses.
 
+# WAJIB: nama proyek dikunci di sini, JANGAN dihapus.
+# Tanpa baris ini Compose menurunkan nama proyek dari nama folder, sehingga
+# mengganti nama folder membuat Compose membuat volume BARU yang kosong —
+# database naik seolah-olah datanya hilang. Sudah pernah terjadi: volume
+# "prtgperumnet_perumnet-pgdata" adalah sisa dari waktu folder ini masih
+# bernama "PRTG PerumNet". Volume yang benar dan berisi data:
+#   monitoringnoc-perumnet_perumnet-pgdata
+# Container ini juga dipakai PerumNet CRM lewat localhost:5433.
+name: monitoringnoc-perumnet
+
 services:
   postgres:
     image: postgres:16-alpine
