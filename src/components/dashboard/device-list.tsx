@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import ApiErrorNotice from "@/components/api-error-notice";
 import StatusBadge from "@/components/status-badge";
 import {
   Table,
@@ -32,10 +33,11 @@ export default function DeviceList() {
   return (
     <div className="noc-device-list overflow-hidden">
       {error && (
-        <p className="border-b border-destructive/30 bg-destructive/10 px-4 py-2 text-xs text-destructive">
-          Gagal menyinkronkan data perangkat — menampilkan data terakhir yang
-          diketahui. Mencoba ulang otomatis…
-        </p>
+        <ApiErrorNotice
+          error={error}
+          fallback="Gagal menyinkronkan data perangkat — menampilkan data terakhir yang diketahui."
+          className="rounded-none border-x-0 border-t-0 py-2 text-xs"
+        />
       )}
       {sorted.length === 0 ? (
         <p className="px-4 py-8 text-center text-sm text-muted-foreground">

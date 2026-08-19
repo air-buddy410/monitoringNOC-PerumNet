@@ -22,6 +22,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { useAuthMode } from "@/hooks/use-auth-mode";
 import { useSession } from "@/hooks/use-session";
 import { ApiError, getJson, sendJson } from "@/lib/api/http";
 import { ROLE_LABELS, type UserRole } from "@/types/user";
@@ -53,6 +54,11 @@ function formatDate(iso: string) {
 export default function UserTable() {
   const { session } = useSession();
   const isAdmin = session?.user.role === "admin";
+  const {
+    data: authMode,
+    error: authModeError,
+    isLoading: authModeLoading,
+  } = useAuthMode();
   const { data, error, mutate } = useSWR("/api/users", getJson<UsersResponse>, {
     revalidateOnFocus: false,
   });
@@ -82,8 +88,10 @@ export default function UserTable() {
       await sendJson("POST", "/api/users", {
         name: form.name,
         email: form.email,
-        password: form.password,
         role: form.role,
+        ...(authMode?.passwordRequiredOnCreate
+          ? { password: form.password }
+          : {}),
       });
       setForm({ name: "", email: "", password: "", role: "engineer" });
       setFormOpen(false);
@@ -151,18 +159,32 @@ export default function UserTable() {
               onChange={(event) => setForm({ ...form, email: event.target.value })}
             />
           </div>
-          <div className="space-y-1.5">
-            <Label htmlFor="new-user-password">Password (min. 8)</Label>
-            <Input
-              id="new-user-password"
-              type="password"
-              required
-              minLength={8}
-              autoComplete="new-password"
-              value={form.password}
-              onChange={(event) => setForm({ ...form, password: event.target.value })}
-            />
-          </div>
+          {authModeLoading ? (
+            <p className="self-end text-xs text-muted-foreground" aria-busy="true">
+              Memuat aturan password…
+            </p>
+          ) : authModeError || !authMode ? (
+            <p className="self-end text-xs text-destructive" role="alert">
+              Mode login belum dapat dibaca. Pembuatan akun ditahan.
+            </p>
+          ) : authMode.passwordRequiredOnCreate ? (
+            <div className="space-y-1.5">
+              <Label htmlFor="new-user-password">Password (min. 8)</Label>
+              <Input
+                id="new-user-password"
+                type="password"
+                required
+                minLength={8}
+                autoComplete="new-password"
+                value={form.password}
+                onChange={(event) => setForm({ ...form, password: event.target.value })}
+              />
+            </div>
+          ) : (
+            <p className="self-end text-xs leading-5 text-muted-foreground">
+              Password mengikuti akun email di mailserver.
+            </p>
+          )}
           <div className="space-y-1.5">
             <Label htmlFor="new-user-role">Peran</Label>
             <Select
@@ -182,7 +204,11 @@ export default function UserTable() {
             </Select>
           </div>
           <div className="flex items-end">
-            <Button type="submit" size="sm" disabled={saving}>
+            <Button
+              type="submit"
+              size="sm"
+              disabled={saving || authModeLoading || Boolean(authModeError) || !authMode}
+            >
               {saving ? "Menyimpan…" : "Buat Akun"}
             </Button>
           </div>

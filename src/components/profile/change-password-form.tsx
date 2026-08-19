@@ -5,9 +5,11 @@ import { CircleAlert, CircleCheck } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { useAuthMode } from "@/hooks/use-auth-mode";
 import { ApiError, sendJson } from "@/lib/api/http";
 
 export default function ChangePasswordForm() {
+  const { data: authMode, error: authModeError, isLoading: authModeLoading } = useAuthMode();
   const [current, setCurrent] = useState("");
   const [next, setNext] = useState("");
   const [confirm, setConfirm] = useState("");
@@ -63,6 +65,57 @@ export default function ChangePasswordForm() {
     } finally {
       setSaving(false);
     }
+  }
+
+  if (authModeLoading) {
+    return (
+      <section
+        className="flex h-full flex-col rounded-lg border bg-card"
+        aria-busy="true"
+      >
+        <div className="border-b px-4 py-3">
+          <p className="text-sm font-medium">Keamanan — Ubah Kata Sandi</p>
+        </div>
+        <p className="px-4 py-6 text-sm text-muted-foreground">
+          Memeriksa aturan keamanan akun…
+        </p>
+      </section>
+    );
+  }
+
+  if (authModeError || !authMode) {
+    return (
+      <section
+        className="flex h-full flex-col rounded-lg border border-destructive/30 bg-card"
+        role="alert"
+      >
+        <div className="border-b px-4 py-3">
+          <p className="text-sm font-medium">Keamanan — Ubah Kata Sandi</p>
+        </div>
+        <p className="px-4 py-6 text-sm text-destructive">
+          {authModeError instanceof Error
+            ? authModeError.message
+            : "Mode login belum dapat dibaca. Form password ditahan demi keamanan."}
+        </p>
+      </section>
+    );
+  }
+
+  if (!authMode.passwordChangeAvailable) {
+    return (
+      <section className="flex h-full flex-col rounded-lg border bg-card">
+        <div className="border-b px-4 py-3">
+          <p className="text-sm font-medium">Keamanan — Ubah Kata Sandi</p>
+        </div>
+        <div className="flex flex-1 flex-col justify-center gap-2 px-4 py-6">
+          <p className="text-sm font-medium">Password dikelola melalui webmail</p>
+          <p className="text-xs leading-5 text-muted-foreground">
+            Mode {authMode.provider} tidak memiliki password portal terpisah.
+            Perubahan password dilakukan melalui webmail, bukan dari halaman ini.
+          </p>
+        </div>
+      </section>
+    );
   }
 
   return (

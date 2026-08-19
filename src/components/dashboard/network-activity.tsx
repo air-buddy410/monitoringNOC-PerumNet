@@ -5,6 +5,7 @@
 
 import Link from "next/link";
 import useSWR from "swr";
+import ApiErrorNotice from "@/components/api-error-notice";
 import { Check, ChevronRight } from "lucide-react";
 import MiniMap from "@/components/dashboard/mini-map";
 import { useSession } from "@/hooks/use-session";
@@ -22,7 +23,7 @@ export default function NetworkActivity() {
   const role = session?.user.role;
   const canAcknowledge = role === "admin" || role === "noc" || role === "engineer";
 
-  const { data, mutate } = useSWR<IncidentsResponse>(
+  const { data, error, mutate } = useSWR<IncidentsResponse>(
     "/api/v1/incidents?limit=50",
     getJson,
     { refreshInterval: 10_000, refreshWhenHidden: true, revalidateOnFocus: false },
@@ -59,7 +60,13 @@ export default function NetworkActivity() {
             </Link>
           </div>
           <div className="noc-incident-list">
-            {incidents.length === 0 ? (
+            {error ? (
+              <ApiErrorNotice
+                error={error}
+                fallback="Insiden aktif tidak dapat dimuat."
+                className="border-0 bg-transparent px-4 py-5 text-xs"
+              />
+            ) : incidents.length === 0 ? (
               <div className="noc-empty-state">Tidak ada insiden aktif saat ini.</div>
             ) : (
               incidents.map((incident) => (

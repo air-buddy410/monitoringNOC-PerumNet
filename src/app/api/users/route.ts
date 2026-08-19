@@ -1,9 +1,10 @@
 import { NextResponse } from "next/server";
-import { asc, eq } from "drizzle-orm";
+import { asc } from "drizzle-orm";
 import { db } from "@/db";
 import { user } from "@/db/auth-schema";
-import { auth } from "@/server/auth";
 import { withRole, type Role } from "@/server/rbac";
+import { authProviderMode } from "@/server/mail-auth";
+import { createPortalUser } from "@/server/user-provisioning";
 
 export const dynamic = "force-dynamic";
 
@@ -39,9 +40,16 @@ interface CreateUserBody {
 }
 
 /**
- * POST /api/users — buat pengguna baru beserta perannya (khusus Admin NOC).
- * Body: { name, email, password, role? } — role default "engineer".
- * Registrasi publik ditutup, jadi ini satu-satunya pintu pembuatan akun.
+ * POST /api/users — daftarkan pengguna baru beserta perannya (khusus Admin NOC).
+ *
+ * Body: { name, email, role? } — role default "engineer".
+ *
+ * `password` hanya berarti bila AUTH_PROVIDER=LOCAL. Di mode MAILSERVER
+ * identitas tinggal di mailcow: yang didaftarkan di sini adalah ALAMAT dan
+ * PERANNYA, dan mengirim password justru ditolak supaya tidak ada yang
+ * mengira ada password portal terpisah yang perlu diingat.
+ *
+ * Pendaftaran mandiri ditutup, jadi ini satu-satunya pintu pembuatan akun.
  */
 export const POST = withRole(["admin"], async (request) => {
   let body: CreateUserBody;
@@ -54,31 +62,8 @@ export const POST = withRole(["admin"], async (request) => {
     );
   }
 
-  const name = typeof body.name === "string" ? body.name.trim() : "";
-  const email =
-    typeof body.email === "string" ? body.email.trim().toLowerCase() : "";
-  const password = typeof body.password === "string" ? body.password : "";
   const role =
     typeof body.role === "string" ? (body.role as Role) : "engineer";
-
-  if (!name || name.length > MAX_NAME_LENGTH) {
-    return NextResponse.json(
-      { error: `Nama wajib diisi (maksimal ${MAX_NAME_LENGTH} karakter).` },
-      { status: 400 },
-    );
-  }
-  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
-    return NextResponse.json(
-      { error: "Email tidak valid." },
-      { status: 400 },
-    );
-  }
-  if (password.length < 8) {
-    return NextResponse.json(
-      { error: "Password minimal 8 karakter." },
-      { status: 400 },
-    );
-  }
   if (!VALID_ROLES.includes(role)) {
     return NextResponse.json(
       { error: `role wajib salah satu dari: ${VALID_ROLES.join(", ")}` },
@@ -86,33 +71,26 @@ export const POST = withRole(["admin"], async (request) => {
     );
   }
 
-  try {
-    const created = await auth.api.signUpEmail({
-      body: { name, email, password },
-    });
-    await db.update(user).set({ role }).where(eq(user.id, created.user.id));
+  const name = typeof body.name === "string" ? body.name.trim() : "";
+  if (name.length > MAX_NAME_LENGTH) {
     return NextResponse.json(
-      {
-        user: {
-          id: created.user.id,
-          name: created.user.name,
-          email: created.user.email,
-          role,
-        },
-      },
-      { status: 201 },
-    );
-  } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    if (message.toLowerCase().includes("user already exists")) {
-      return NextResponse.json(
-        { error: `Email ${email} sudah terdaftar.` },
-        { status: 409 },
-      );
-    }
-    return NextResponse.json(
-      { error: "Gagal membuat pengguna." },
+      { error: `Nama maksimal ${MAX_NAME_LENGTH} karakter.` },
       { status: 400 },
     );
   }
+
+  const hasil = await createPortalUser({
+    name,
+    email: typeof body.email === "string" ? body.email : "",
+    role,
+    password: typeof body.password === "string" ? body.password : undefined,
+  });
+
+  if (!hasil.ok) {
+    return NextResponse.json({ error: hasil.error }, { status: hasil.status });
+  }
+  return NextResponse.json(
+    { user: hasil.user, authProvider: authProviderMode() },
+    { status: 201 },
+  );
 });
