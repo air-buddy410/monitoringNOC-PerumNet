@@ -15,12 +15,14 @@ checklist go-live, dan prosedur rollback. Melengkapi
 | `LIBRENMS_URL` | ya* | `https://nms.perumnet.id` — tanpa ini mode fixture |
 | `LIBRENMS_TOKEN` | ya* | token API LibreNMS (read-only, server-side) |
 | `LIBRENMS_WEBHOOK_SECRET` | produksi | header `x-webhook-token` dari LibreNMS |
+| `NOTIFICATION_BOT_SECRET` | **wajib bila memakai bot** | header `x-bot-token` pada `POST /api/notifications/channels/verify`. Tanpa ini rute itu menjawab **503** — sengaja tertutup, bukan terbuka |
 | `CUSTOMER_PORTAL_SECRET` | ya | HMAC deep-link portal customer |
 | `CUSTOMER_SUPPORT_CONTACT` | opsional | kontak pada halaman status pelanggan |
-| `CRM_WEBHOOK_URL` | opsional | notifikasi incident outbound ke CRM |
+| `OUTWARD_ACTIONS` | opsional | **bawaan `BLOCKED`.** `ALLOWED` hanya setelah cutover dari ALUS — lihat §9 |
+| `CRM_WEBHOOK_URL` | opsional | notifikasi incident outbound ke CRM — **tidak berpengaruh selama `OUTWARD_ACTIONS=BLOCKED`** |
 | `CRM_WEBHOOK_TOKEN` | opsional | Bearer token webhook CRM |
-| `TELEGRAM_BOT_TOKEN` | opsional | notifikasi Telegram nyata (tanpa ini = simulasi) |
-| `WHATSAPP_API_URL` / `WHATSAPP_API_TOKEN` | opsional | gateway WhatsApp |
+| `TELEGRAM_BOT_TOKEN` | opsional | notifikasi Telegram nyata (tanpa ini = simulasi) — **ditahan selama `BLOCKED`** |
+| `WHATSAPP_API_URL` / `WHATSAPP_API_TOKEN` | opsional | gateway WhatsApp — **ditahan selama `BLOCKED`** |
 | `REDIS_URL` | opsional | cache Redis; tanpa ini cache in-memory |
 | `ADMIN_EMAIL` / `ADMIN_PASSWORD` / `ADMIN_NAME` | opsional | bootstrap admin pertama |
 
@@ -117,12 +119,19 @@ hostname, IP manajemen, vendor/model, topologi, atau raw grafik.
    berlabel fixture development (bukan operasional).
 5. **Webhook**: matikan transport API di LibreNMS / hapus secret — Portal
    tetap polling status via API.
+6. **Semua aksi keluar sekaligus**: setel `OUTWARD_ACTIONS=BLOCKED` lalu
+   restart. Satu variabel menutup ketiga transport (CRM, Telegram, WhatsApp) —
+   lebih cepat dan lebih sulit salah daripada mencabut tiga URL satu per satu.
+   Ini kill switch tercepat kalau portal ternyata mengirim sesuatu yang tidak
+   diharapkan.
 
 ## 7. Item yang belum dapat divalidasi tanpa infrastruktur nyata
 
 - Integrasi penuh dengan device SNMP nyata (LibreNMS saat ini 0 perangkat —
   impor aset & discovery topologi teruji dengan mock/test unit).
-- Pengiriman Telegram/WhatsApp nyata (teruji mode simulasi).
+- Pengiriman Telegram/WhatsApp nyata (teruji mode simulasi). **Memang
+  disengaja**: `OUTWARD_ACTIONS=BLOCKED` menahannya. Validasi nyata
+  ditunda sampai cutover, terhadap target staging yang ditentukan lebih dulu.
 - Webhook ingress dari LibreNMS nyata (teruji HTTP langsung + unit test).
 - CRM nyata (contract + adapter diuji dengan stub).
 
@@ -180,3 +189,19 @@ dibuatkan password oleh admin.
 - Portal tidak pernah menyimpan password email, juga tidak mencatatnya di log
   maupun audit. Yang tercatat di `audit_logs` hanya berhasil/gagal, alasannya,
   dan jalur yang dipakai (`mailserver` atau `lokal-darurat`).
+
+## 9. Mode baca-saja (aksi keluar)
+
+Portal tidak mengirim notifikasi dan tidak mendorong data ke sistem lain selama
+`OUTWARD_ACTIONS` bukan `ALLOWED` — dan **bawaannya bukan**. Aturan lengkap,
+alasannya, dan daftar apa yang TIDAK dijamin ada di
+[`docs/MODE-BACA-SAJA.md`](MODE-BACA-SAJA.md).
+
+Periksa keadaannya: `GET /api/read-only-mode` (cukup login).
+
+**Kalau notifikasi/CRM tidak terkirim padahal sudah dikonfigurasi**, itu
+kemungkinan besar bukan gangguan — cek endpoint di atas lebih dulu. `BLOCKED`
+adalah keadaan yang BENAR sampai ALUS berhenti melakukan hal yang sama.
+
+Bedanya di `audit_logs`: `crm_webhook.failed` = dicoba lalu gagal (perlu
+ditindaklanjuti); `outward.blocked` = tidak pernah dicoba (tidak perlu).

@@ -21,6 +21,11 @@ import { randomUUID } from "node:crypto";
 import { db } from "@/db";
 import { auditLogs, crmServiceMappings } from "@/db/schema";
 import { sanitizeForCustomer } from "@/server/customer-store";
+import {
+  isOutwardBlocked,
+  outwardFetch,
+  recordOutwardBlocked,
+} from "@/server/outward-guard";
 
 interface IncidentForCrm {
   id: string;
@@ -58,6 +63,19 @@ export async function notifyCrm(
 ): Promise<{ sent: boolean; reason?: string }> {
   const url = process.env.CRM_WEBHOOK_URL?.trim();
   if (!url) return { sent: false, reason: "not-configured" };
+
+  // Mode baca-saja. Diperiksa SESUDAH cek URL: kalau CRM_WEBHOOK_URL belum
+  // diisi, tidak ada niat mengirim apa pun dan tidak ada yang perlu dicatat.
+  // Begitu URL-nya ada, penahanan ini adalah keputusan yang layak berjejak.
+  if (isOutwardBlocked()) {
+    await recordOutwardBlocked(
+      "crm-webhook",
+      { type: "incident", id: incident.id },
+      { intendedType: action === "open" ? "incident.open" : "incident.recovered" },
+    );
+    return { sent: false, reason: "read-only-mode" };
+  }
+
   if (!incident.assetId) return { sent: false, reason: "no-asset-mapping" };
 
   const [mapping] = await db
@@ -81,7 +99,7 @@ export async function notifyCrm(
   let lastError = "";
   for (let attempt = 0; attempt <= RETRY_DELAYS_MS.length; attempt += 1) {
     try {
-      const response = await fetch(url, {
+      const response = await outwardFetch("crm-webhook", url, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",

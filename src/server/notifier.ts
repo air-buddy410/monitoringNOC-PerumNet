@@ -16,6 +16,11 @@ import { randomUUID } from "node:crypto";
 import { eq } from "drizzle-orm";
 import { db } from "@/db";
 import { notificationChannels, notificationDeliveries } from "@/db/schema";
+import {
+  isOutwardBlocked,
+  outwardFetch,
+  recordOutwardBlocked,
+} from "@/server/outward-guard";
 
 type ChannelRow = typeof notificationChannels.$inferSelect;
 
@@ -31,7 +36,13 @@ export interface AlertPayload {
 interface SendOutcome {
   ok: boolean;
   detail: string;
+  /** Ditahan mode baca-saja — bukan kegagalan pengiriman. Tidak menghasilkan
+   *  baris notification_deliveries; jejaknya di audit_logs. */
+  blocked?: true;
 }
+
+/** Alasan tunggal supaya teks yang sama tidak ditulis ulang di dua tempat. */
+const BLOCKED_DETAIL = "ditahan: mode baca-saja";
 
 async function sendTelegram(
   channel: ChannelRow,
@@ -48,7 +59,15 @@ async function sendTelegram(
     return { ok: true, detail: "simulasi" };
   }
 
-  const response = await fetch(
+  // Penjaga sengaja diletakkan SESUDAH cabang simulasi: simulasi tidak
+  // menghubungi siapa pun, jadi tidak ada yang perlu ditahan — dan mematikannya
+  // akan melumpuhkan satu-satunya cara menguji alur alert sebelum cutover.
+  if (isOutwardBlocked()) {
+    return { ok: false, blocked: true, detail: BLOCKED_DETAIL };
+  }
+
+  const response = await outwardFetch(
+    "telegram",
     `https://api.telegram.org/bot${token}/sendMessage`,
     {
       method: "POST",
@@ -77,7 +96,11 @@ async function sendWhatsApp(
     return { ok: true, detail: "simulasi" };
   }
 
-  const response = await fetch(gatewayUrl, {
+  if (isOutwardBlocked()) {
+    return { ok: false, blocked: true, detail: BLOCKED_DETAIL };
+  }
+
+  const response = await outwardFetch("whatsapp", gatewayUrl, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
@@ -132,6 +155,15 @@ export async function dispatchAlert(
       outcome = { ok: false, detail: String(error) };
     }
 
+    // Ditahan mode baca-saja: TIDAK menulis baris delivery. "failed" akan
+    // jadi tembok kegagalan palsu yang melatih NOC mengabaikan angka gagal;
+    // "sent" adalah kebohongan dalam catatan operasional. Tidak ada yang
+    // dicoba, jadi tidak ada pengiriman untuk dicatat — jejaknya di audit_logs.
+    if (outcome.blocked) {
+      result.skipped += 1;
+      continue;
+    }
+
     const deliveryId = randomUUID();
     await db.insert(notificationDeliveries).values({
       id: deliveryId,
@@ -147,6 +179,19 @@ export async function dispatchAlert(
     result.logIds.push(deliveryId);
     if (outcome.ok) result.sent += 1;
     else result.failed += 1;
+  }
+
+  // Satu baris audit per alert, bukan per channel — yang perlu diketahui adalah
+  // "alert ini tidak jadi keluar", bukan daftar penerima yang gagal dihubungi.
+  if (result.skipped > 0) {
+    await recordOutwardBlocked(
+      "telegram",
+      {
+        type: "incident",
+        id: payload.incidentId || payload.librenmsAlertId,
+      },
+      { suppressedChannels: result.skipped },
+    );
   }
 
   return result;

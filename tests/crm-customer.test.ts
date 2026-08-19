@@ -293,6 +293,7 @@ describe("crm-webhook outbound", () => {
 
   it("dengan URL + mapping → terkirim, payload & header benar, audit sent", async () => {
     vi.stubEnv("CRM_WEBHOOK_URL", "https://crm.example.test/hooks/incidents");
+    vi.stubEnv("OUTWARD_ACTIONS", "ALLOWED"); // tes ini menguji transport, bukan gerbangnya
     vi.stubEnv("CRM_WEBHOOK_TOKEN", "crm-secret");
     const mock = stubFetch({
       "/devices?type=all": { devices: [] },
@@ -325,6 +326,7 @@ describe("crm-webhook outbound", () => {
 
   it("CRM error → retry lalu gagal, audit failed, tidak throw", async () => {
     vi.stubEnv("CRM_WEBHOOK_URL", "https://crm.example.test/hooks/incidents");
+    vi.stubEnv("OUTWARD_ACTIONS", "ALLOWED"); // tes ini menguji transport, bukan gerbangnya
     const mock = stubFetch(
       {
         "/devices?type=all": { devices: [] },
@@ -351,6 +353,7 @@ describe("crm-webhook outbound", () => {
 
   it("incident tanpa assetId / tanpa mapping → dilewati tanpa error", async () => {
     vi.stubEnv("CRM_WEBHOOK_URL", "https://crm.example.test/hooks/incidents");
+    vi.stubEnv("OUTWARD_ACTIONS", "ALLOWED"); // tes ini menguji transport, bukan gerbangnya
     const noAsset = await notifyCrm(
       { ...incidentForCrm, assetId: null },
       "open",
@@ -364,6 +367,52 @@ describe("crm-webhook outbound", () => {
     );
     expect(noMapping.sent).toBe(false);
     expect(noMapping.reason).toBe("no-crm-mapping");
+  });
+
+  it("mode baca-saja: URL terpasang tapi TIDAK dikirim, audit outward.blocked", async () => {
+    vi.stubEnv("CRM_WEBHOOK_URL", "https://crm.example.test/hooks/incidents");
+    // OUTWARD_ACTIONS sengaja TIDAK di-stub — bawaannya harus memblokir.
+    const mock = stubFetch({ "/devices?type=all": { devices: [] } });
+
+    const before = await client.query<{ n: string }>(
+      "SELECT count(*) AS n FROM audit_logs WHERE action = 'crm_webhook.failed'",
+    );
+
+    const result = await notifyCrm(incidentForCrm, "open");
+    expect(result.sent).toBe(false);
+    expect(result.reason).toBe("read-only-mode");
+
+    // Tidak satu pun percobaan keluar.
+    const attempts = mock.mock.calls.filter(([url]) =>
+      String(url).startsWith("https://crm.example.test"),
+    );
+    expect(attempts.length).toBe(0);
+
+    const blocked = await client.query<{ n: string }>(
+      "SELECT count(*) AS n FROM audit_logs WHERE action = 'outward.blocked' AND entity_id = 'inc-crm-1'",
+    );
+    expect(Number(blocked.rows[0].n)).toBeGreaterThanOrEqual(1);
+
+    // "ditahan" harus bisa dibedakan dari "gagal terkirim" di tabel audit —
+    // tanpa itu, operator tidak bisa tahu mana yang perlu ditindaklanjuti.
+    const after = await client.query<{ n: string }>(
+      "SELECT count(*) AS n FROM audit_logs WHERE action = 'crm_webhook.failed'",
+    );
+    expect(Number(after.rows[0].n)).toBe(Number(before.rows[0].n));
+  });
+
+  it("salah ketik pada OUTWARD_ACTIONS tetap memblokir", async () => {
+    vi.stubEnv("CRM_WEBHOOK_URL", "https://crm.example.test/hooks/incidents");
+    vi.stubEnv("OUTWARD_ACTIONS", "ALOWED"); // salah ketik yang gampang terjadi
+    const mock = stubFetch({ "/devices?type=all": { devices: [] } });
+
+    const result = await notifyCrm(incidentForCrm, "open");
+    expect(result.reason).toBe("read-only-mode");
+    expect(
+      mock.mock.calls.filter(([url]) =>
+        String(url).startsWith("https://crm.example.test"),
+      ).length,
+    ).toBe(0);
   });
 
   it("getIncidentById dipakai webhook ingress → row terbaca", async () => {
