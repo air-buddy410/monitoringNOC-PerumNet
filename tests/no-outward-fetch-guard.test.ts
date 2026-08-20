@@ -36,6 +36,10 @@ const NETWORK_ALLOWLIST: Record<string, string> = {
     "telnet BACA-SAJA ke konsol OLT yang tidak mendukung SNMP. Perintahnya disaring " +
     "daftar putih kata pertama sebelum menyentuh soket — lihat tests/olt-cli-baca-saja.test.ts. " +
     "Bukan aksi keluar: ia membaca keadaan perangkat, tidak mengubahnya",
+  [path.join("server", "routeros.ts")]:
+    "klien RouterOS REST bersama (diangkat dari pppoe.ts, 20 Agu 2026). HANYA GET; " +
+    "tidak ada satu pun jalur di berkas ini yang mengirim POST/PUT/PATCH ke router. " +
+    "Yang memakainya — pppoe.ts dan traffic.ts — sama-sama membaca",
   [path.join("server", "pppoe.ts")]:
     "GET /rest/ppp/active ke router — hanya MEMBACA daftar sesi, tidak mengubah " +
     "satu pun konfigurasi router. Sekategori dengan pembacaan LibreNMS",
