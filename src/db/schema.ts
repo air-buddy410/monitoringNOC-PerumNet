@@ -934,3 +934,43 @@ export const trafficSamples = pgTable(
     primaryKey({ columns: [table.interfaceId, table.sampledAt] }),
   ],
 );
+
+// ───────────────────────────────────────────────────────────────────────────
+// Layar TV
+// ───────────────────────────────────────────────────────────────────────────
+
+/**
+ * Token untuk layar TV wallboard.
+ *
+ * **Token polosnya tidak pernah disimpan** — hanya SHA-256-nya. Yang bocor
+ * dari database tidak bisa dipakai membuka layar.
+ *
+ * SHA-256, bukan bcrypt/argon2, dan itu disengaja: ini rahasia acak 256 bit,
+ * bukan kata sandi manusia. Tidak ada yang bisa ditebak beruntun, jadi hash
+ * lambat tidak membeli apa pun — sementara hash ber-salt tidak bisa
+ * diindeks, sehingga verifikasi harus memindai seluruh tabel. Ini pola kunci
+ * API, dan pilihannya memang berbeda dari kata sandi.
+ *
+ * `expires_at` WAJIB. Token abadi di dalam URL adalah kredensial permanen di
+ * riwayat browser sebuah TV yang siapa pun bisa sentuh.
+ */
+export const tvTokens = pgTable("tv_tokens", {
+  id: text("id").primaryKey(),
+  name: text("name").notNull(),
+  tokenHash: text("token_hash").notNull().unique(),
+  /** Delapan karakter awal, supaya token bisa dikenali tanpa menyimpannya. */
+  tokenPrefix: text("token_prefix").notNull(),
+  createdBy: text("created_by").references(() => user.id, {
+    onDelete: "set null",
+  }),
+  createdAt: timestamp("created_at", { withTimezone: true })
+    .notNull()
+    .defaultNow(),
+  expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+  lastUsedAt: timestamp("last_used_at", { withTimezone: true }),
+  useCount: integer("use_count").notNull().default(0),
+  revokedAt: timestamp("revoked_at", { withTimezone: true }),
+  revokedBy: text("revoked_by").references(() => user.id, {
+    onDelete: "set null",
+  }),
+});

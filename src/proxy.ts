@@ -12,7 +12,11 @@ import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 import { auth } from "@/server/auth";
 
-const PUBLIC_PATHS = ["/login", "/register", "/customer"];
+// `/tv` publik DENGAN SENGAJA: layar wallboard tidak punya keyboard, dan
+// pengalihan ke /login berarti layar mati permanen sampai ada yang datang
+// membawanya. Penjagaannya bukan sesi melainkan token yang ditukar jadi
+// cookie — lihat src/server/tv-token.ts.
+const PUBLIC_PATHS = ["/login", "/register", "/customer", "/tv"];
 
 export async function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;
