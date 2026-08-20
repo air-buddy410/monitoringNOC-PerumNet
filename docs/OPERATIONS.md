@@ -405,6 +405,40 @@ Kedua angka harus sama. Kalau yang pertama > 0 dan yang kedua 0, masalahnya
 dengan menyisipkan baris ke tabel `api_tokens` (`user_id`, `token_hash`,
 `description`, `disabled=0`).
 
+## 11.4. `probe.sync` — supaya jebakan §11.3 tidak terulang
+
+§11.3 diselesaikan sekali dengan SQL. Itu memperbaiki hari itu saja: aset
+berikutnya akan mengulang jebakan yang sama, dan **gejalanya tidak terlihat
+seperti kesalahan** — perangkat baru sekadar muncul kuning, dan tidak ada yang
+tahu kenapa.
+
+Sampai 20 Agustus, `probe_targets` **hanya bisa dibuat manual** lewat
+`POST /api/v1/probe-targets`. Tidak ada apa pun yang menautkannya ke aset;
+ketujuh baris di produksi punya `asset_id` kosong sejak awal.
+
+Tugas berjadwal `probe.sync` (tiap jam) menutupnya:
+
+- aset punya `management_ip` tapi belum ada sasarannya → **dibuat**
+- sasaran alamatnya cocok tapi `asset_id` kosong → **ditautkan**
+
+Port sasaran baru: **`telnet_port` OLT-nya** kalau aset itu OLT, selain itu
+**443**. Menyambung ke 443 pada OLT yang hanya membuka 1023 berarti DOWN palsu
+tiap 60 detik — alarm yang tidak mengatakan apa pun tentang perangkatnya.
+
+**Tiga hal yang sengaja TIDAK dilakukannya:**
+
+1. **Tidak pernah menghapus.** Berhenti memantau sesuatu adalah keputusan,
+   bukan efek samping penyelarasan.
+2. **Tidak membajak sasaran yang sudah tertaut ke aset lain.** Kalau dua aset
+   berbagi alamat, memindah tautannya diam-diam membuat status satu perangkat
+   muncul di perangkat lain.
+3. **Tidak membuat sasaran kedua untuk alamat yang sudah punya** — termasuk
+   yang sengaja dinonaktifkan.
+
+**Cara berhenti memantau sebuah perangkat: setel `is_active = false`, JANGAN
+dihapus.** Sasaran yang dinonaktifkan tetap ada, jadi sinkron membiarkannya.
+Sasaran yang dihapus akan dibuat ulang pada putaran berikutnya.
+
 ## 11.3. Status perangkat tanpa SNMP datang dari probe
 
 `192.168.100.10` tidak akan pernah masuk LibreNMS (§11.1). Sampai 20 Agustus
