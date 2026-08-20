@@ -49,11 +49,12 @@ async function main() {
   // `loadEnvConfig` sempat mengisinya.
   const { PROBE_TASKS } = await import("@/server/probe");
   const { PPPOE_TASKS } = await import("@/server/pppoe");
+  const { TRAFFIC_TASKS } = await import("@/server/traffic");
   const { registerTask, runDueTasks, syncTaskRegistry } = await import(
     "@/server/scheduler"
   );
 
-  const TUGAS = [...PROBE_TASKS, ...PPPOE_TASKS];
+  const TUGAS = [...PROBE_TASKS, ...PPPOE_TASKS, ...TRAFFIC_TASKS];
   for (const task of TUGAS) registerTask(task);
   await syncTaskRegistry();
   console.log(

@@ -43,6 +43,13 @@
       "when": 1787215820362,
       "tag": "0005_fondasi_peta",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1787217866254,
+      "tag": "0006_trafik",
+      "breakpoints": true
     }
   ]
 }
