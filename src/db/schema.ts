@@ -14,6 +14,7 @@
 // - Migrasi data dari SQLite + rollback: lihat docs/DB_MIGRATION.md.
 
 import { sql } from "drizzle-orm";
+import type { AnyPgColumn } from "drizzle-orm/pg-core";
 import {
   boolean,
   doublePrecision,
@@ -696,6 +697,20 @@ export const odps = pgTable(
     name: text("name").notNull(),
     siteId: text("site_id").references(() => networkSites.id, { onDelete: "set null" }),
     oltId: text("olt_id").references(() => oltDevices.id, { onDelete: "set null" }),
+    /**
+     * `MS` = master splitter (ODC / rumah kabel), `ODP` = terminasi lapangan.
+     *
+     * Keduanya sengaja di TABEL YANG SAMA, mengikuti CRM: keduanya punya port,
+     * punya induk PON, dan bisa berkaskade. Yang membedakan hanya posisinya di
+     * rantai — dan itu sudah ditentukan `parentId`, bukan oleh tabel terpisah.
+     * `role` hanya untuk ikon dan penyaringan.
+     */
+    role: text("role", { enum: ["MS", "ODP"] }).notNull().default("ODP"),
+    /** Induk kaskade: ODP di bawah MS, atau ODP di bawah ODP. */
+    parentId: text("parent_id").references((): AnyPgColumn => odps.id, {
+      onDelete: "set null",
+    }),
+    status: text("status"),
     latitude: doublePrecision("latitude"),
     longitude: doublePrecision("longitude"),
     /** Kapasitas TOTAL port. Jumlah terpakai TIDAK disimpan di sini — ia
@@ -704,7 +719,46 @@ export const odps = pgTable(
     capacity: integer("capacity").notNull().default(8),
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
-  (table) => [index("odps_site_idx").on(table.siteId)],
+  (table) => [
+    index("odps_site_idx").on(table.siteId),
+    index("odps_parent_idx").on(table.parentId),
+  ],
+);
+
+/**
+ * Pelanggan yang menempel pada sebuah ODP — TANPA satu pun data pribadi.
+ *
+ * Yang disimpan hanya `pppoe_username` (sudah ada di `pppoe_sessions`) dan ID
+ * di sistem lain. Tidak ada nama, alamat, nomor, maupun koordinat: prinsip
+ * yang sama dengan `odp_ports.external_service_id`, dan repo ini publik.
+ *
+ * Gunanya satu: menjawab "pelanggan ODP mana yang hilang dari sesi PPPoE".
+ *
+ * `subscription_status` WAJIB ikut, dan bukan kelengkapan. Dari 1.687
+ * langganan yang menempel ODP, 113 berstatus ISOLATED/INACTIVE/PROSPECT —
+ * mereka memang tidak online, selamanya. Tanpa kolom ini, satu ODP dengan 3
+ * pelanggan terisolir akan terus-menerus dilaporkan sebagai gangguan massal,
+ * dan fitur itu mati sebelum sempat dipakai.
+ */
+export const odpCustomers = pgTable(
+  "odp_customers",
+  {
+    id: text("id").primaryKey(),
+    odpId: text("odp_id")
+      .notNull()
+      .references(() => odps.id, { onDelete: "cascade" }),
+    portNumber: integer("port_number"),
+    pppoeUsername: text("pppoe_username").notNull().unique(),
+    externalServiceId: text("external_service_id"),
+    subscriptionStatus: text("subscription_status").notNull(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => [
+    index("odp_customers_odp_idx").on(table.odpId),
+    index("odp_customers_status_idx").on(table.subscriptionStatus),
+  ],
 );
 
 export const odpPorts = pgTable(

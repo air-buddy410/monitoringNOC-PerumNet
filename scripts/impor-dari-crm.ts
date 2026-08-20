@@ -170,7 +170,9 @@ async function main() {
     const rOdp = await crm.query<{
       id: string; code: string; siteId: string | null; portCapacity: number | null;
       latitude: number | null; longitude: number | null; oltId: string | null;
+      role: string | null; parentId: string | null; status: string | null;
     }>(`SELECT d.id, d.code, d."siteId", d."portCapacity", d.latitude, d.longitude,
+               d.role, d."parentId", d.status,
                p."oltId"
           FROM "Odp" d
           LEFT JOIN "PonPort" p ON p.id = d."ponPortId"`);
@@ -181,13 +183,16 @@ async function main() {
       const oltId = o.oltId ? petaOlt.get(o.oltId) ?? null : null;
       if (!oltId) odpTanpaOlt += 1;
       const kapasitas = o.portCapacity ?? 8;
+      // `role` hanya boleh MS atau ODP; nilai lain diperlakukan ODP, sama
+      // seperti bawaan kolomnya. Nilai asing dari CRM tidak boleh menyelinap.
+      const peran = o.role?.trim().toUpperCase() === "MS" ? "MS" : "ODP";
       const ada = await noc.query<{ id: string }>("SELECT id FROM odps WHERE code = $1", [kode]);
       if (ada.rows[0]) {
         petaOdp.set(o.id, ada.rows[0].id);
         if (!DRY) {
           await noc.query(
-            `UPDATE odps SET name=$2, site_id=$3, capacity=$4, latitude=$5, longitude=$6, olt_id=$7 WHERE id=$1`,
-            [ada.rows[0].id, kode, siteId, kapasitas, o.latitude, o.longitude, oltId]);
+            `UPDATE odps SET name=$2, site_id=$3, capacity=$4, latitude=$5, longitude=$6, olt_id=$7, role=$8, status=$9 WHERE id=$1`,
+            [ada.rows[0].id, kode, siteId, kapasitas, o.latitude, o.longitude, oltId, peran, o.status]);
         }
         odp.diperbarui += 1;
       } else {
@@ -195,13 +200,39 @@ async function main() {
         petaOdp.set(o.id, id);
         if (!DRY) {
           await noc.query(
-            `INSERT INTO odps (id, code, name, site_id, capacity, latitude, longitude, olt_id)
-             VALUES ($1,$2,$3,$4,$5,$6,$7,$8)`,
-            [id, kode, kode, siteId, kapasitas, o.latitude, o.longitude, oltId]);
+            `INSERT INTO odps (id, code, name, site_id, capacity, latitude, longitude, olt_id, role, status)
+             VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10)`,
+            [id, kode, kode, siteId, kapasitas, o.latitude, o.longitude, oltId, peran, o.status]);
         }
         odp.dibuat += 1;
       }
     }
+
+    // Induk kaskade DITUNDA ke lintasan kedua: sebuah ODP bisa menyebut induk
+    // yang barisnya baru dibuat sesudahnya. Menautkannya di lintasan pertama
+    // berarti sebagian tautan hilang tergantung urutan baris — dan hilangnya
+    // tidak menghasilkan galat apa pun.
+    let indukTertaut = 0;
+    let indukTidakDikenal = 0;
+    for (const o of rOdp.rows) {
+      if (!o.parentId) continue;
+      const anak = petaOdp.get(o.id);
+      const induk = petaOdp.get(o.parentId);
+      if (!anak) continue;
+      if (!induk) {
+        indukTidakDikenal += 1;
+        continue;
+      }
+      if (anak === induk) continue; // ODP tidak boleh jadi induk dirinya sendiri
+      if (!DRY) {
+        await noc.query("UPDATE odps SET parent_id=$2 WHERE id=$1", [anak, induk]);
+      }
+      indukTertaut += 1;
+    }
+    console.log(
+      `  kaskade    : ${indukTertaut} induk tertaut` +
+        (indukTidakDikenal ? `, ${indukTidakDikenal} induk tidak dikenal` : ""),
+    );
     console.log(
       `  ODP        : ${odp.dibuat} baru, ${odp.diperbarui} diperbarui` +
         (odpTanpaOlt ? `, ${odpTanpaOlt} tanpa OLT` : ""),
@@ -240,6 +271,61 @@ async function main() {
       }
     }
     console.log(`  port ODP   : ${port.dibuat} baru, ${port.diperbarui} diperbarui`);
+
+    // ── Pelanggan per ODP ────────────────────────────────────────────────
+    // HANYA username PPPoE dan ID langganan. Tidak ada nama, alamat, nomor,
+    // maupun koordinat — repo ini publik, dan koordinat rumah adalah penanda
+    // yang lebih kuat daripada nama.
+    //
+    // `status` WAJIB ikut, dan bukan kelengkapan: dari 1.687 langganan yang
+    // menempel ODP, 113 berstatus ISOLATED/INACTIVE/PROSPECT. Mereka memang
+    // tidak online, selamanya. Tanpa kolom ini, satu ODP dengan 3 pelanggan
+    // terisolir akan terus-menerus dilaporkan sebagai gangguan massal — dan
+    // fitur itu mati sebelum sempat dipakai.
+    const pel = nol();
+    let pelTanpaOdp = 0;
+    const rPel = await crm.query<{
+      odpId: string; portNumber: number; subscriptionId: string;
+      pppoeUsername: string; status: string;
+    }>(`SELECT p."odpId", p."portNumber", p."subscriptionId",
+               s."pppoeUsername", s.status
+          FROM "OdpPort" p
+          JOIN "Subscription" s ON s.id = p."subscriptionId"
+         WHERE s."pppoeUsername" IS NOT NULL`);
+
+    for (const c of rPel.rows) {
+      const odpId = petaOdp.get(c.odpId);
+      if (!odpId) {
+        pelTanpaOdp += 1;
+        continue;
+      }
+      const username = c.pppoeUsername.trim().toLowerCase();
+      if (!username) continue;
+      const ada = await noc.query<{ id: string }>(
+        "SELECT id FROM odp_customers WHERE pppoe_username = $1", [username]);
+      if (ada.rows[0]) {
+        if (!DRY) {
+          await noc.query(
+            `UPDATE odp_customers SET odp_id=$2, port_number=$3, external_service_id=$4,
+                    subscription_status=$5, updated_at=now() WHERE id=$1`,
+            [ada.rows[0].id, odpId, c.portNumber, c.subscriptionId, c.status]);
+        }
+        pel.diperbarui += 1;
+      } else {
+        if (!DRY) {
+          await noc.query(
+            `INSERT INTO odp_customers (id, odp_id, port_number, pppoe_username,
+                    external_service_id, subscription_status)
+             VALUES ($1,$2,$3,$4,$5,$6)`,
+            [randomUUID(), odpId, c.portNumber, username, c.subscriptionId, c.status]);
+        }
+        pel.dibuat += 1;
+      }
+    }
+    console.log(
+      `  pelanggan  : ${pel.dibuat} baru, ${pel.diperbarui} diperbarui` +
+        (pelTanpaOdp ? `, ${pelTanpaOdp} ODP-nya tidak terimpor` : ""),
+    );
 
     console.log(`[impor] selesai${DRY ? " (tidak ada yang ditulis)" : ""}`);
   } finally {
