@@ -11,7 +11,7 @@ import path from "node:path";
 import { PGlite } from "@electric-sql/pglite";
 import { eq } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/pglite";
-import { afterEach, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
 import { vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({ db: undefined as unknown }));
@@ -200,5 +200,74 @@ describe("mode LOCAL", () => {
   it("password lokal salah → 401", async () => {
     const res = await masuk("budi@perumnet.id", "salah");
     expect(res.status).toBe(401);
+  });
+});
+
+describe("masuk dengan username saja", () => {
+  beforeAll(() => {
+    process.env.AUTH_PROVIDER = "MAILSERVER";
+    process.env.MAILSERVER_URL = "https://mail.perumnet.id";
+    process.env.LOGIN_DEFAULT_DOMAIN = "perumnet.id";
+  });
+
+  afterAll(() => {
+    delete process.env.LOGIN_DEFAULT_DOMAIN;
+  });
+
+  it("username polos diterima dan sesi terbit", async () => {
+    jawabanMailserver = { ok: true };
+    const res = await masuk("budi", "password-email-benar");
+
+    expect(res.status).toBe(200);
+    expect(res.headers.get("set-cookie")).toContain("session_token");
+  });
+
+  it("yang dicatat di audit alamat LENGKAPNYA, bukan yang diketik", async () => {
+    jawabanMailserver = { ok: true };
+    await masuk("budi", "password-email-benar");
+
+    // Kalau yang tercatat "budi", dua orang berbeda domain jadi tak
+    // terbedakan di jejak audit.
+    expect((await auditTerakhir())?.actorLabel).toBe("budi@perumnet.id");
+  });
+
+  it("mailserver tetap ditanya dengan alamat lengkap", async () => {
+    let ditanya = "";
+    const authLokal = betterAuth({
+      database: drizzleAdapter(db, { provider: "pg" }),
+      baseURL: BASE_URL,
+      trustedOrigins: [BASE_URL],
+      emailAndPassword: { enabled: true, minPasswordLength: 8 },
+      plugins: [
+        portalAuth({
+          probe: async (_host, email) => {
+            ditanya = email;
+            return { ok: true };
+          },
+        }),
+      ],
+    });
+    await authLokal.handler(
+      new Request(`${BASE_URL}/api/auth/sign-in/portal`, {
+        method: "POST",
+        headers: { "content-type": "application/json", origin: BASE_URL },
+        body: JSON.stringify({ email: "budi", password: "apa-saja" }),
+      }),
+    );
+    // Mailcow tidak mengenal "budi" — mailbox-nya bernama lengkap.
+    expect(ditanya).toBe("budi@perumnet.id");
+  });
+
+  it("username yang tidak terdaftar tetap 401, bukan bocor bahwa domainnya benar", async () => {
+    const res = await masuk("tidak_ada_orang", "apa-saja");
+    expect(res.status).toBe(401);
+    expect((await auditTerakhir())?.actorLabel).toBe("tidak_ada_orang@perumnet.id");
+  });
+
+  it("akun darurat juga bisa dipanggil dengan username saja", async () => {
+    jawabanMailserver = { ok: false, reason: "UNREACHABLE", detail: "mati" };
+    const res = await masuk("darurat", PASSWORD_LOKAL);
+    // Mailserver mati, tapi ini akun darurat: hash lokal yang dipakai.
+    expect(res.status).toBe(200);
   });
 });
