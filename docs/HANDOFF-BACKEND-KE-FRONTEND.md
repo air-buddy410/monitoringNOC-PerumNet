@@ -682,15 +682,15 @@ pekerjaan tampilan — datanya sudah tersedia di endpoint yang disebut, tidak
 ada yang perlu ditunggu dari backend. Tandai ✅ dan pindahkan ke §Selesai
 kalau sudah dikerjakan.
 
-### T-17. Layar login masih menjanjikan cara masuk yang sudah tidak berlaku
+### ✅ T-17. Layar login menyebut password email — SELESAI 2026-08-20
 
 Ditemukan Opus 20 Agustus saat memeriksa `/login` di browser, sesudah mode
 mailserver menyala.
 
-> **Yang tersisa tinggal SATU: butir kedua.** Butir pertama sudah dibatalkan
-> (diselesaikan dari sisi server), jadi jangan sampai tugas ini dianggap
-> selesai hanya karena butir pertama dicoret. Selama layar login belum
-> menyebut "password email", T-17 masih terbuka.
+> **T-17 sudah selesai.** Butir pertama dibatalkan (diselesaikan dari sisi
+> server), sedangkan butir kedua kini ditampilkan dari `provider` pada
+> `GET /api/auth-mode`: mode MAILSERVER menyebut password email (mailcow),
+> dan mode LOCAL mempertahankan tampilan lama.
 
 - ~~Label `Username atau Email` — hanya email yang berfungsi.~~
   **Dibatalkan 20 Agustus:** pemilik memilih menyelesaikannya dari sisi
@@ -911,6 +911,10 @@ orang mengetik.
 
 ### Selesai
 
+- **T-17** — `/login` membaca `provider` dari `GET /api/auth-mode` dan
+  menampilkan keterangan bahwa mode MAILSERVER memakai password email
+  (mailcow); mode LOCAL mempertahankan tampilan lama. Label `Username atau
+  Email` tidak diubah, dan aset SVG bawaan Next.js yang tidak dipakai dihapus.
 - **T-16** — `/profile` membaca `emailChangeAvailable`; input email dan
   peringatan verifikasi disembunyikan saat mode MAILSERVER, dengan fail-closed
   saat mode login belum terbaca.
