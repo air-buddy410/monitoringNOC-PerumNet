@@ -27,6 +27,10 @@ const BOLEH_PUBLIK: Record<string, string> = {
     "Dijaga header x-bot-token (NOTIFICATION_BOT_SECRET, wajib) + rate limit per IP.",
   "v1/customer/services/[serviceId]/status":
     "Portal pelanggan: dijaga token HMAC dari CUSTOMER_PORTAL_SECRET.",
+  "v1/tv/session":
+    "Penukaran token layar TV jadi cookie. Tidak bisa memakai withRole — layar wallboard tidak punya sesi. Dijaga token SHA-256 + rate limit per IP.",
+  "v1/tv/snapshot":
+    "Satu-satunya endpoint yang menerima cookie TV. Barisnya diperiksa tiap permintaan sehingga pencabutan berlaku seketika; muatannya dipangkas tanpa IP/hostname/vendor.",
   "v1/integrations/librenms/alerts":
     "Webhook masuk: dijaga header x-webhook-token (LIBRENMS_WEBHOOK_SECRET) + rate limit per IP.",
 };
