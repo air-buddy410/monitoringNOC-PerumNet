@@ -175,6 +175,37 @@ Kedua mode masuk lewat alamat yang sama: `POST /api/auth/sign-in/portal`.
    ```
    lalu restart. Uji dengan satu akun biasa **dan** akun darurat.
 
+### Keadaan nyata per 20 Agustus 2026 — kenapa saklarnya belum ditarik
+
+Diperiksa langsung ke produksi, bukan diperkirakan:
+
+| Prasyarat | Keadaan |
+|---|---|
+| 1. Migrasi `allow_local_login` | ✅ kolomnya ada di `perumnet_noc` |
+| 2. Alamat email cocok dengan mailcow | ❌ **2 dari 3 akun memakai `@perumnet.co.id`** |
+| 3. Akun darurat | ✅ `admin@perumnet.id` disetel `allow_local_login = true` (20 Agu) |
+| 4. Frontend di `/sign-in/portal` | ✅ T-4 selesai 18 Agustus |
+| 5. `AUTH_PROVIDER` di `.env.production` | belum ada sama sekali → bawaan `LOCAL` |
+
+Prasyarat 2 yang menahan. **`perumnet.co.id` tidak punya MX maupun A record** —
+ia bukan domain email, jadi tidak mungkin ada mailbox-nya di mailcow:
+
+```
+$ dig +short MX perumnet.id      → 5 mail.perumnet.id.
+$ dig +short MX perumnet.co.id   → (kosong)
+```
+
+Menyalakan `MAILSERVER` hari ini berarti dua akun itu **terkunci permanen**,
+dan satu-satunya akun yang tersisa (`admin@perumnet.id`) justru yang sengaja
+dibuat melewati mailcow sebagai pintu darurat — jadi mailcow tidak akan
+memeriksa siapa pun. Yang perlu terjadi lebih dulu adalah membuatkan akun NOC
+dengan alamat `@perumnet.id` yang sungguhan (CRM punya 20), lewat
+`POST /api/users`. Sesudah itu langkah 5 aman dijalankan.
+
+CRM sendiri **sudah** berjalan di `AUTH_PROVIDER=MAILSERVER` dengan pola yang
+sama: 20 akun `@perumnet.id`, satu di antaranya (`admin@perumnet.id`) memegang
+`allowLocalLogin = true`.
+
 ### Rollback
 
 Kembalikan `AUTH_PROVIDER=LOCAL` dan restart. Kolom `allow_local_login` boleh
