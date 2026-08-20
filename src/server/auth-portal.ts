@@ -35,6 +35,52 @@ const bodySchema = z.object({
   password: z.string().min(1).max(512),
 });
 
+/** Bagian depan alamat yang masuk akal — sengaja ketat, bukan permisif. */
+const BAGIAN_DEPAN = /^[a-z0-9._%+-]+$/;
+/** Domain yang masuk akal: ada titiknya, ada akhirannya. */
+const DOMAIN = /^[a-z0-9-]+(\.[a-z0-9-]+)*\.[a-z]{2,}$/;
+
+/**
+ * Domain yang dipakai saat orang mengetik username saja.
+ *
+ * Kosong = fitur mati, dan itu bawaannya. Nilai yang tidak berbentuk domain
+ * juga dianggap kosong — sama seperti `authProviderMode()` dan
+ * `outwardMode()`, salah ketik jatuh ke sisi yang tidak mengubah perilaku,
+ * bukan ke tebakan.
+ */
+export function domainLoginBawaan(): string | null {
+  const raw = (process.env.LOGIN_DEFAULT_DOMAIN ?? "").trim().toLowerCase();
+  if (!raw || !DOMAIN.test(raw)) return null;
+  return raw;
+}
+
+/**
+ * Mengubah apa yang diketik orang menjadi alamat yang dicari di database.
+ *
+ * Yang memuat "@" tidak disentuh selain dirapikan — jalur lama tetap persis
+ * seperti sebelumnya. Yang tidak memuat "@" dilengkapi domain bawaan.
+ *
+ * **Sengaja BUKAN dengan mencocokkan bagian depan alamat yang tersimpan.**
+ * Cara itu terlihat lebih pintar dan justru berbahaya di sini: portal memuat
+ * `admin@perumnet.id` DAN `admin@perumnet.co.id`, jadi "admin" jadi ambigu
+ * dan pemenangnya ditentukan urutan baris — pada akun darurat, tepat ketika
+ * keadaan sedang buruk. Dengan domain bawaan, "admin" selalu berarti akun
+ * yang sama.
+ *
+ * Username yang tidak masuk akal dikembalikan apa adanya, bukan disambung.
+ * Ia lalu tidak cocok dengan akun mana pun dan berhenti di "akun tidak
+ * ditemukan" — jalur yang sudah ada, dengan pesan yang sudah benar.
+ */
+export function normalkanIdentitas(
+  masukan: string,
+  domain: string | null,
+): string {
+  const bersih = (masukan ?? "").trim().toLowerCase();
+  if (bersih.includes("@")) return bersih;
+  if (!domain || !BAGIAN_DEPAN.test(bersih)) return bersih;
+  return `${bersih}@${domain}`;
+}
+
 /** Satu kalimat untuk semua kegagalan kredensial — jangan bocorkan mana yang salah. */
 const KREDENSIAL_SALAH = "Email atau password salah.";
 
@@ -94,7 +140,9 @@ export const portalAuth = (options: PortalAuthOptions = {}) => {
         "/sign-in/portal",
         { method: "POST", body: bodySchema },
         async (ctx) => {
-          const email = ctx.body.email.trim().toLowerCase();
+          // Orang boleh mengetik username saja; yang dicari tetap alamat
+          // lengkap, karena itu yang dikenal database DAN mailcow.
+          const email = normalkanIdentitas(ctx.body.email, domainLoginBawaan());
           const password = ctx.body.password;
           const mode = authProviderMode();
 

@@ -15,6 +15,7 @@ checklist go-live, dan prosedur rollback. Melengkapi
 | `LIBRENMS_URL` | ya* | **`http://127.0.0.1:8000`** — instans LOKAL. Lihat §11 sebelum menggantinya ke hostname publik |
 | `LIBRENMS_TOKEN` | ya* | token API LibreNMS (read-only, server-side) |
 | `LIBRENMS_WEBHOOK_SECRET` | produksi | header `x-webhook-token` dari LibreNMS |
+| `LOGIN_DEFAULT_DOMAIN` | opsional | domain yang dilengkapi saat orang mengetik **username saja** di layar login (§8.1). Kosong = harus alamat lengkap |
 | `CRM_DATABASE_URL` | hanya saat impor | koneksi BACA-SAJA ke database CRM untuk `npm run impor:crm` (§12) |
 | `NOTIFICATION_BOT_SECRET` | **wajib bila memakai bot** | header `x-bot-token` pada `POST /api/notifications/channels/verify`. Tanpa ini rute itu menjawab **503** — sengaja tertutup, bukan terbuka |
 | `CUSTOMER_PORTAL_SECRET` | ya | HMAC deep-link portal customer |
@@ -253,6 +254,30 @@ berisiko di aplikasi ini, itu berarti jejaknya tidak bisa menunjuk siapa pun.
 Belum diubah karena peran itu yang diminta pemilik. Kalau kelak jejak per orang
 lebih penting daripada kemudahan akun bersama, turunkan keduanya ke `engineer`
 dan biarkan orang memakai alamat pribadinya untuk konsol.
+
+### 8.1. Masuk dengan username saja
+
+`LOGIN_DEFAULT_DOMAIN=perumnet.id` membuat orang bisa mengetik
+`budi_prabhawa` alih-alih `budi_prabhawa@perumnet.id`. Yang memuat `@` tidak
+disentuh sama sekali — jalur lama tetap persis seperti sebelumnya.
+
+Kosong = fitur mati. Nilai yang tidak berbentuk domain juga dianggap kosong,
+sama seperti `AUTH_PROVIDER` dan `OUTWARD_ACTIONS`: salah ketik jatuh ke sisi
+yang tidak mengubah perilaku.
+
+**Kenapa domain bawaan, bukan mencocokkan bagian depan alamat tersimpan.**
+Mencocokkan `split_part(email,'@',1)` terlihat lebih pintar dan justru
+berbahaya di sini: portal memuat `admin@perumnet.id` **dan**
+`admin@perumnet.co.id`. Mengetik `admin` jadi ambigu, dan pemenangnya
+ditentukan urutan baris — pada akun darurat, tepat ketika keadaan sedang
+buruk. Dengan domain bawaan, `admin` selalu berarti akun yang sama.
+
+Yang tercatat di `audit_logs` selalu alamat **lengkapnya**, bukan yang
+diketik. Kalau yang tercatat `budi`, dua orang berbeda domain jadi tak
+terbedakan di jejak audit.
+
+Username yang tidak masuk akal (ada spasi, garis miring, `@` menggantung)
+tidak disambung — ia berhenti di "akun tidak ditemukan", jalur yang sudah ada.
 
 ### Rollback
 

@@ -687,11 +687,11 @@ kalau sudah dikerjakan.
 Ditemukan Opus 20 Agustus saat memeriksa `/login` di browser, sesudah mode
 mailserver menyala. Dua hal kecil, satu di antaranya bikin orang buntu.
 
-- **Label `Username atau Email` — hanya email yang berfungsi.**
-  `signInPortal` mencocokkan `user.email` persis; username saja tidak akan
-  pernah cocok. Labelnya menawarkan jalan yang pasti gagal, dan gagalnya
-  berbunyi *"Email atau password salah"* — jadi orang menyalahkan
-  passwordnya. Ganti jadi `Email`.
+- ~~Label `Username atau Email` — hanya email yang berfungsi.~~
+  **Dibatalkan 20 Agustus:** pemilik memilih menyelesaikannya dari sisi
+  server, bukan mengganti labelnya. `LOGIN_DEFAULT_DOMAIN=perumnet.id` kini
+  melengkapi username polos jadi alamat lengkap, jadi label yang ada sudah
+  benar apa adanya. **Jangan diubah jadi `Email`.**
 - **Layar tidak menyebut bahwa password-nya adalah password EMAIL.** Sejak
   20 Agustus password portal tidak berlaku lagi. Orang akan mengetik password
   lamanya, menerima 401, lalu mengira akunnya rusak.
@@ -956,10 +956,13 @@ orang mengetik.
 
 ## Riwayat
 
-- **2026-08-20** — T-17: layar login masih menulis "Username atau Email" dan
-  tidak menyebut password email, padahal mode mailserver sudah menyala.
-  Ditemukan saat memeriksa `/login` di browser — tidak terlihat dari kode
-  backend maupun dari kode HTTP mana pun.
+- **2026-08-20** — **Masuk dengan username saja** (`LOGIN_DEFAULT_DOMAIN`,
+  §8.1 OPERATIONS). Label `Username atau Email` yang sudah ada kini benar —
+  bagian T-17 yang menyuruh menggantinya DIBATALKAN. Sisa T-17 tinggal
+  menyebut bahwa password-nya password EMAIL.
+- **2026-08-20** — T-17: layar login tidak menyebut password email padahal
+  mode mailserver sudah menyala. Ditemukan saat memeriksa `/login` di
+  browser — tidak terlihat dari kode backend maupun dari kode HTTP mana pun.
 - **2026-08-20** — **`PATCH /api/profile/email` 403 di mode MAILSERVER** +
   `emailChangeAvailable` di `/api/auth-mode`. Tugas T-16. Lubang ini lahir
   beberapa jam sebelumnya saat mode mailserver dinyalakan: sampai pagi itu
