@@ -537,8 +537,15 @@ tapi untuk dua ini tidak ada bukti apa pun.
 pemeriksaan, supaya siapa pun yang meragukannya nanti tahu harus bertanya ke
 siapa dan tidak mencari bukti yang tidak pernah ada.
 
+Dikonfirmasi ulang pemilik kemudian hari yang sama, dengan kalimat yang sama:
+`.60` Kecicang, `.61` Abang. Dua kali sebut, konsisten.
+
 Kalau kelak `sysName` kedua OLT ini dikonfigurasi (mis. `prm_kecicang_olt`),
-keterangan ini bisa diganti bukti — dan itu perbaikan yang layak dilakukan.
+keterangan ini bisa diganti bukti. **Ditunda atas keputusan pemilik
+20 Agustus 2026** — jangan diangkat lagi sebagai langkah berikutnya. Ia juga
+satu-satunya perubahan di daftar ini yang menuntut perintah **TULIS** ke
+perangkat, jadi ia di luar batas baca-saja portal: yang menjalankannya harus
+orang, bukan portal ini.
 
 ### Kelemahan yang ini menyingkap: `konsolSiap` bukan "terjangkau"
 
