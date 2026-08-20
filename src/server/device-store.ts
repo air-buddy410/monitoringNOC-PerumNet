@@ -9,7 +9,7 @@
 
 import { assetToLegacyDevice, FIXTURE_ASSETS } from "@/lib/fixtures/assets";
 import { db } from "@/db";
-import { assets as assetsTable } from "@/db/schema";
+import { assets as assetsTable, probeTargets } from "@/db/schema";
 import { cache } from "@/server/cache";
 import {
   enrichAssetFromDevice,
@@ -108,11 +108,50 @@ async function loadAssetsFromDb(): Promise<Asset[]> {
   }));
 }
 
+/**
+ * Status aset dari hasil probe TCP, untuk aset yang TIDAK dipantau SNMP.
+ *
+ * Nilai yang tidak dikenal — termasuk yang belum pernah diperiksa — jatuh ke
+ * `warning`, bukan `online`. Menebak ke arah "sehat" membuat layar berbohong
+ * ke arah yang paling menenangkan, dan itu arah yang paling mahal.
+ */
+export function statusDariProbe(
+  lastStatus: string | null | undefined,
+): DeviceStatus {
+  if (lastStatus === "UP") return "online";
+  if (lastStatus === "DOWN") return "offline";
+  return "warning";
+}
+
+/** Hasil probe terakhir per `asset_id`, hanya untuk sasaran yang aktif. */
+async function loadProbeStatuses(): Promise<Map<string, DeviceStatus>> {
+  try {
+    const rows = await db
+      .select({
+        assetId: probeTargets.assetId,
+        lastStatus: probeTargets.lastStatus,
+        isActive: probeTargets.isActive,
+      })
+      .from(probeTargets);
+    const peta = new Map<string, DeviceStatus>();
+    for (const row of rows) {
+      if (!row.assetId || !row.isActive) continue;
+      peta.set(row.assetId, statusDariProbe(row.lastStatus));
+    }
+    return peta;
+  } catch {
+    // Probe adalah sumber CADANGAN. Kalau ia gagal dibaca, jangan jatuhkan
+    // seluruh daftar perangkat — kembalikan kosong dan biarkan perilaku lama.
+    return new Map();
+  }
+}
+
 async function buildLibrenmsSnapshot(): Promise<AssetsStatusSnapshot> {
-  const [dbAssets, devices, alertRows] = await Promise.all([
+  const [dbAssets, devices, alertRows, probeStatuses] = await Promise.all([
     loadAssetsFromDb(),
     fetchDevices(),
     fetchActiveAlerts(),
+    loadProbeStatuses(),
   ]);
 
   const byDeviceId = new Map(devices.map((device) => [device.device_id, device]));
@@ -132,8 +171,18 @@ async function buildLibrenmsSnapshot(): Promise<AssetsStatusSnapshot> {
         ? byDeviceId.get(asset.librenmsDeviceId)
         : undefined) ?? byHostname.get(asset.hostname.toLowerCase());
     if (!device) {
-      // Aset belum dikenal LibreNMS → butuh perhatian operator, bukan "down".
-      return { ...asset, status: "warning" as const };
+      // Aset tidak dikenal LibreNMS. Dua sebab yang berbeda jauh:
+      //
+      //   1. Salah konfigurasi — memang butuh perhatian operator.
+      //   2. Perangkatnya TIDAK mendukung SNMP dan memang tidak akan pernah
+      //      masuk LibreNMS (192.168.100.10, lihat OPERATIONS §11.1).
+      //
+      // Untuk yang kedua, `warning` tidak pernah bisa berubah jadi hijau —
+      // dan warna peringatan yang tidak pernah berubah mengajari orang
+      // mengabaikan warna peringatan. Probe TCP portal ini sudah memeriksa
+      // perangkat itu tiap 60 detik; kalau ada hasilnya, itu yang dipakai.
+      const dariProbe = probeStatuses.get(asset.assetId);
+      return { ...asset, status: dariProbe ?? ("warning" as const) };
     }
     return {
       ...enrichAssetFromDevice(asset, device),

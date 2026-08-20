@@ -405,6 +405,43 @@ Kedua angka harus sama. Kalau yang pertama > 0 dan yang kedua 0, masalahnya
 dengan menyisipkan baris ke tabel `api_tokens` (`user_id`, `token_hash`,
 `description`, `disabled=0`).
 
+## 11.3. Status perangkat tanpa SNMP datang dari probe
+
+`192.168.100.10` tidak akan pernah masuk LibreNMS (§11.1). Sampai 20 Agustus
+aset seperti itu jatuh ke **`warning`** dengan alasan yang tertulis di kode:
+*"belum dikenal LibreNMS → butuh perhatian operator"*.
+
+Alasan itu benar untuk aset yang salah konfigurasi, dan **salah** untuk aset
+yang memang tidak di-SNMP. Akibatnya perangkat itu kuning **selamanya**: tidak
+ada yang bisa dikerjakan untuk membuatnya hijau. Warna peringatan yang tidak
+pernah berubah mengajari orang mengabaikan warna peringatan — dan itu merusak
+kegunaan warna kuning untuk enam perangkat lainnya juga.
+
+Jawabannya ternyata sudah ada dan tidak terpakai: **probe TCP portal ini sudah
+memeriksa ketujuh perangkat tiap 60 detik**, termasuk `192.168.100.10:1023`,
+dan ketujuhnya menjawab UP. Yang kurang cuma tautannya — `probe_targets.asset_id`
+kosong di semua baris, jadi hasilnya tidak pernah sampai ke daftar perangkat.
+
+Sesudah ditautkan (`UPDATE probe_targets SET asset_id = … WHERE address =
+management_ip`), aset tanpa perangkat LibreNMS memakai hasil probe:
+
+| `probe_targets.last_status` | Status aset |
+|---|---|
+| `UP` | `online` |
+| `DOWN` | `offline` |
+| apa pun selain itu, termasuk belum pernah diperiksa | `warning` |
+
+**Nilai tak dikenal jatuh ke `warning`, bukan `online`.** Menebak ke arah
+"sehat" membuat layar berbohong ke arah yang paling menenangkan, dan itu arah
+yang paling mahal.
+
+Probe adalah sumber **cadangan**, bukan pengganti: aset yang punya perangkat
+LibreNMS tetap memakai status LibreNMS. Kalau tabel probe gagal dibaca,
+daftarnya tidak ikut jatuh — ia kembali ke perilaku lama.
+
+**Kalau kelak menambah aset baru, tautkan juga probe-nya**, kalau tidak ia
+muncul kuning tanpa sebab yang bisa ditindaklanjuti.
+
 ## 11.2. Aset nyata, dan jalur ALUS yang ternyata mati
 
 **20 Agustus 2026.** Sampai tanggal itu tabel `assets` berisi **15 perangkat
