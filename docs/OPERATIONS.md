@@ -380,6 +380,25 @@ Kedua angka harus sama. Kalau yang pertama > 0 dan yang kedua 0, masalahnya
 dengan menyisipkan baris ke tabel `api_tokens` (`user_id`, `token_hash`,
 `description`, `disabled=0`).
 
+## 11.1. `192.168.100.10` sengaja TIDAK di-SNMP-kan
+
+`HSGQ-100-Kecicang` di `192.168.100.10` tidak mendukung SNMP. **Diputuskan
+pemilik 20 Agustus 2026: memang tidak akan di-SNMP-kan** — jalan bacanya
+konsol CLI dari dalam portal (§13), bukan LibreNMS.
+
+Jadi ia tidak akan pernah muncul di daftar perangkat LibreNMS, dan itu **bukan
+gejala kerusakan**. Jangan menyarankan menambahkannya lewat community
+`perumnetro`; saran itu sudah ditolak sadar.
+
+Keadaannya hari ini: terdaftar di `olt_devices`, `telnet_port` 1023,
+`credential_ref` `OLT_KCC_HSGQ_CRED`, `konsolSiap: true`. Diuji 19 Agustus —
+`show version` mengembalikan 12 baris.
+
+Konsekuensinya, dan ini yang perlu diingat: **satu-satunya cara membacanya
+dari portal adalah layar konsol (T-15).** Selama layar itu belum ada, perangkat
+ini cuma nama di daftar — endpointnya jalan, tapi tidak ada yang bisa
+memanggilnya tanpa curl.
+
 ## 12. Impor data jaringan dari CRM
 
 CRM sudah memuat situs, subnet, ODP, port, dan OLT yang dimasukkan orang dengan
