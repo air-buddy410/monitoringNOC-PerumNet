@@ -682,6 +682,49 @@ pekerjaan tampilan — datanya sudah tersedia di endpoint yang disebut, tidak
 ada yang perlu ditunggu dari backend. Tandai ✅ dan pindahkan ke §Selesai
 kalau sudah dikerjakan.
 
+### T-19. Peta membuka di Jakarta, padahal seluruh jaringan di Bali
+
+Ditemukan 20 Agustus dengan membuka portal di browser dalam keadaan login —
+tidak terlihat dari kode HTTP mana pun, dan tidak terlihat dari isi API:
+**API-nya benar.**
+
+`GET /api/devices/geo` memulangkan ketujuh perangkat dengan koordinat Bali
+(115.58–115.67, −8.39…−8.46). Tapi `/dashboard` dan `/map` membuka di
+**Jakarta**, kosong tanpa titik.
+
+**Sebabnya bukan `DEFAULT_CENTER`.** `network-map.tsx:19` memang menyimpan
+`[-6.21, 106.845]`, tapi komponennya SUDAH punya auto-fit yang benar
+(`FitToVisibleDevices`). Yang salah kapan ia berjalan:
+
+```ts
+useEffect(() => {
+  if (devices.length === 0) return;   // ← saat mount, data belum datang
+  …
+}, [filterKey, map]);                 // ← devices sengaja tidak masuk deps
+```
+
+Saat mount `devices` masih kosong (datanya async), jadi efeknya keluar lebih
+awal. Ketika data tiba, efeknya **tidak dijalankan ulang** karena `devices`
+sengaja dikeluarkan dari deps — dan alasan itu **benar**: tanpa itu peta
+terbang ulang tiap kali data disegarkan 10 detik sekali.
+
+Jadi jangan hapus alasannya, tambahkan pemicunya: fit **sekali** saat data
+pertama kali tidak kosong. Mis. masukkan `devices.length > 0` (bukan
+`devices`) ke deps, atau buang early-return lalu lewati bila
+`hasFitted.current` sudah true.
+
+Bukti auto-fit-nya sendiri benar: begitu filter diubah, peta langsung terbang
+ke Bali. Cacatnya murni "tidak pernah terpicu pertama kali".
+
+**Sekalian, kecil:** beberapa placeholder masih dari zaman data fiktif Jakarta
+— form ODP di `/ftth` menyarankan `ODP-JKT-001`, `-6.2`, `106.8`, padahal
+seluruh 577 ODP ada di sekitar `-8.4, 115.6`. Form situs di `/sites` sama.
+Placeholder yang menyesatkan bukan bug, tapi ia mengajari orang memasukkan
+angka yang salah.
+
+**Kenapa tidak bisa diperbaiki dari backend:** datanya sudah benar sampai ke
+GeoJSON. Yang salah kapan peta memutuskan ke mana ia melihat.
+
 ### ✅ T-18. Kesehatan penjadwal — SELESAI 2026-08-20
 
 **T-18 selesai:** `/probe` sekarang membaca `GET /api/v1/scheduler` dan
@@ -1018,6 +1061,15 @@ orang mengetik.
 ---
 
 ## Riwayat
+
+- **2026-08-20** — T-19: peta membuka di Jakarta padahal API-nya sudah benar;
+  auto-fit tidak pernah terpicu saat pemuatan pertama. Ditemukan dengan
+  membuka portal di browser dalam keadaan login.
+- **2026-08-20** — Koordinat ketujuh aset diisi dari situsnya; sebelumnya
+  kosong semua, jadi peta tidak punya apa pun untuk digambar.
+- **2026-08-20** — ⚠️ Commit `66ec492` berpesan "T-19" padahal isinya catatan
+  T-18 selesai milik Luna. Salah label dari Opus, bukan salah isi; riwayat
+  yang sudah ter-merge tidak ditulis ulang.
 
 - **2026-08-20** — T-18: `GET /api/v1/scheduler` hidup sejak Fase 9 tapi NOL
   layar memanggilnya. Kalau worker mati, tidak ada apa pun di layar yang
