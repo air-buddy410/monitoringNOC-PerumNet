@@ -405,6 +405,72 @@ Kedua angka harus sama. Kalau yang pertama > 0 dan yang kedua 0, masalahnya
 dengan menyisipkan baris ke tabel `api_tokens` (`user_id`, `token_hash`,
 `description`, `disabled=0`).
 
+## 11.2. Aset nyata, dan jalur ALUS yang ternyata mati
+
+**20 Agustus 2026.** Sampai tanggal itu tabel `assets` berisi **15 perangkat
+fiktif** — Menteng, Cawang, Kuningan, Bintaro, IP `10.x.x.x`. PerumNet ada di
+Bali. Tidak satu pun punya `librenms_device_id`, jadi tidak satu pun pernah
+menampilkan data sungguhan. Sudah dihapus bersama 15 baris `sla_monthly`
+fiktifnya.
+
+Penggantinya datang dari dua sumber, dan perlu dua-duanya:
+
+| Sumber | Perangkat | Kenapa perlu |
+|---|---|---|
+| LibreNMS (SNMP) | 6 | menautkan telemetry hidup lewat `librenms_device_id` |
+| Konsol CLI | 1 | `192.168.100.10` tidak mendukung SNMP (§11.1) |
+
+Aset dari konsol (`cli-192-168-100-10`) memuat yang justru **tidak** diberikan
+SNMP: nomor seri `H8GB202107230003`, versi firmware, versi perangkat keras.
+Dibaca dengan `show version` lewat `POST /api/v1/devices/console` — satu
+perintah baca, tercatat di audit seperti semua yang lain.
+
+### `172.30.10.6` tidak terjangkau dari VPS
+
+Diuji langsung: ports 23, 231, 232, 1024, 1025 di `172.30.10.6` **tidak satu
+pun menjawab**. Itu jalur port-forwarding milik ALUS. Artinya **5 dari 6 OLT
+terdaftar dengan alamat yang portal tidak akan pernah bisa hubungi** — dan
+tidak ada yang tahu, karena tidak ada yang pernah mencoba menghubunginya.
+
+Semua OLT menjawab di jaringan dalam. Nomor portnya **diteruskan apa adanya**
+oleh ALUS, jadi pemetaannya bukan tebakan:
+
+| OLT | Dulu (mati) | Sekarang | Bukti |
+|---|---|---|---|
+| HSGQ-100-Kecicang | — | `192.168.100.10:1023` | sudah benar sejak awal |
+| HSGQ-102-SerayaBarat | `172.30.10.6:1024` | `192.168.100.11:1024` | port cocok persis; `show version` berhasil |
+| HSGQ-102-SerayaTengah | `172.30.10.6:1025` | `192.168.100.12:1025` | port cocok persis; `show version` berhasil |
+| ZTE-C300-102-Pesagi | `172.30.10.6:23` | `192.168.100.30:23` | satu-satunya C300, dipastikan dari `sysDescr` |
+| ZTE-C600-100-Kecicang | `172.30.10.6:231` | **belum dipindah** | lihat di bawah |
+| ZTE-C600-104-Abang | `172.30.10.6:232` | **belum dipindah** | lihat di bawah |
+
+Ini pengulangan persis pelajaran MikroTik: `managementUrl` router dulu juga
+memakai alamat luar, dan penarikan PPPoE berhenti gagal begitu ia dipindah ke
+IP internal. **VPS satu jaringan dengan MikroTik, OLT, dan switch** — alamat
+luar tidak diperlukan, dan diam-diam tidak berfungsi.
+
+### Dua C600 belum dipastikan — sengaja tidak ditebak
+
+`192.168.100.60` dan `192.168.100.61` keduanya ZTE C600, keduanya di port 23.
+Tidak ada yang membedakan keduanya dari luar: `sysName` keduanya `zxan`
+(bawaan pabrik, tidak pernah dikonfigurasi), `sysDescr` sama, lokasi di
+LibreNMS masih alamat pabrik ZTE di Shanghai.
+
+Menebak berarti perintah konsol bisa mendarat di OLT yang salah — persis
+kegagalan yang seluruh rancangan §13 dibuat untuk mencegah. Jadi keduanya
+ditinggal menunjuk alamat yang mati, dan asetnya ditandai `BELUM DIPASTIKAN`
+sampai ada yang tahu mana Kecicang mana Abang.
+
+### Kelemahan yang ini menyingkap: `konsolSiap` bukan "terjangkau"
+
+`GET /api/v1/ftth/olts` melaporkan `konsolSiap: true` untuk keenam OLT bahkan
+ketika lima di antaranya menunjuk alamat mati. Field itu memeriksa
+**kelengkapan konfigurasi** — ada `telnet_port`, ada kredensial — bukan apakah
+perangkatnya menjawab. Itu memang rancangannya (memeriksa jangkauan berarti
+membuka koneksi ke enam perangkat setiap kali daftar dimuat), tapi namanya
+menjanjikan lebih dari yang ia periksa. Yang tidak terjangkau muncul sebagai
+**502** saat perintah dijalankan.
+
 ## 11.1. `192.168.100.10` sengaja TIDAK di-SNMP-kan
 
 `HSGQ-100-Kecicang` di `192.168.100.10` tidak mendukung SNMP. **Diputuskan
