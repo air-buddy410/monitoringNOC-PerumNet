@@ -23,6 +23,12 @@ export function GET() {
       passwordChangeAvailable: provider === "LOCAL",
       /** Password baru ditentukan admin hanya di mode LOCAL. */
       passwordRequiredOnCreate: provider === "LOCAL",
+      /**
+       * Ganti email sendiri hanya ada di mode LOCAL. Di mode MAILSERVER
+       * alamat email ADALAH identitas di mailcow — menggantinya sendiri ke
+       * alamat tanpa mailbox mengunci akun itu selamanya.
+       */
+      emailChangeAvailable: provider === "LOCAL",
     },
     { headers: { "Cache-Control": "no-store" } },
   );

@@ -11,22 +11,33 @@ import {
 } from "react";
 import useSWR from "swr";
 import {
+  Archive,
   Bell,
   BarChart3,
+  Cable,
   ChevronDown,
   ChevronRight,
   ClipboardList,
+  Database,
+  Gauge,
   LayoutDashboard,
   Map,
+  MapPinned,
   Menu,
   Network,
+  Router,
   Search,
+  ShieldCheck,
+  Terminal,
+  TriangleAlert,
   UserRound,
   Users,
   Wifi,
   X,
 } from "lucide-react";
 import LogoutButton from "@/components/logout-button";
+import { useBackupFreshness } from "@/hooks/use-backup-freshness";
+import { useReadOnlyMode } from "@/hooks/use-read-only-mode";
 import { useSession } from "@/hooks/use-session";
 import { getJson } from "@/lib/api/http";
 import type {
@@ -36,23 +47,23 @@ import type {
 
 const fetcher = (url: string) => fetch(url).then((r) => r.json());
 
-function useLibrenmsLive(): {
+function useLibrenmsLive(enabled = true): {
   data?: LibrenmsStatusResponse;
   loading: boolean;
   error?: unknown;
 } {
   const { data, isLoading, error } = useSWR<LibrenmsStatusResponse>(
-    "/api/v1/integrations/librenms/status",
+    enabled ? "/api/v1/integrations/librenms/status" : null,
     getJson<LibrenmsStatusResponse>,
     { refreshInterval: 30_000, revalidateOnFocus: false, refreshWhenHidden: true },
   );
   return { data, loading: isLoading, error };
 }
 
-function useActiveIncidentCount(): number {
-  const { session } = useSession();
+function useActiveIncidentCount(enabled = true): number {
+  const { session } = useSession(enabled);
   const { data } = useSWR<IncidentsResponse>(
-    session ? "/api/v1/incidents?limit=50" : null,
+    enabled && session ? "/api/v1/incidents?limit=50" : null,
     fetcher,
     { refreshInterval: 30_000, revalidateOnFocus: false, refreshWhenHidden: true },
   );
@@ -67,6 +78,13 @@ const navigation = [
   { href: "/notifications", label: "Notifikasi", icon: Bell },
   { href: "/reports", label: "Laporan", icon: ClipboardList },
   { href: "/users", label: "Pengguna", icon: Users },
+  { href: "/sites", label: "Situs", icon: MapPinned },
+  { href: "/ipam", label: "IPAM", icon: Database },
+  { href: "/ftth", label: "FTTH", icon: Cable },
+  { href: "/pppoe", label: "PPPoE", icon: Router },
+  { href: "/probe", label: "Probe", icon: Gauge },
+  { href: "/alarms", label: "Alarm", icon: TriangleAlert },
+  { href: "/console", label: "Konsol", icon: Terminal },
 ];
 
 const pageNames: Record<string, string> = {
@@ -77,6 +95,13 @@ const pageNames: Record<string, string> = {
   "/notifications": "Notifikasi",
   "/reports": "Laporan",
   "/users": "Pengguna",
+  "/sites": "Situs",
+  "/ipam": "IPAM",
+  "/ftth": "FTTH",
+  "/pppoe": "PPPoE",
+  "/probe": "Probe",
+  "/alarms": "Alarm",
+  "/console": "Konsol",
   "/profile": "Profil",
 };
 
@@ -88,7 +113,6 @@ function currentPage(pathname: string) {
 export default function NocShell({ children }: { children: ReactNode }) {
   const pathname = usePathname();
   const router = useRouter();
-  const { session, isLoading: isSessionLoading } = useSession();
   const [menuOpen, setMenuOpen] = useState(false);
   const [profileOpen, setProfileOpen] = useState(false);
   const profileMenuRef = useRef<HTMLDivElement>(null);
@@ -97,6 +121,9 @@ export default function NocShell({ children }: { children: ReactNode }) {
     pathname === "/register" ||
     pathname.startsWith("/customer/") ||
     pathname === "/customer";
+  const { session, isLoading: isSessionLoading } = useSession(!isPublicPage);
+  const { data: readOnlyMode } = useReadOnlyMode(Boolean(session) && !isPublicPage);
+  const { data: backupFreshness } = useBackupFreshness(Boolean(session) && !isPublicPage);
 
   useEffect(() => {
     if (!menuOpen) return;
@@ -138,8 +165,8 @@ export default function NocShell({ children }: { children: ReactNode }) {
     };
   }, [profileOpen]);
 
-  const incidentCount = useActiveIncidentCount();
-  const librenmsLive = useLibrenmsLive();
+  const incidentCount = useActiveIncidentCount(!isPublicPage);
+  const librenmsLive = useLibrenmsLive(!isPublicPage);
   const librenmsLabel = librenmsLive.loading && !librenmsLive.data
     ? "..."
     : librenmsLive.data
@@ -322,6 +349,26 @@ export default function NocShell({ children }: { children: ReactNode }) {
             </div>
           </div>
         </header>
+        {(readOnlyMode?.readOnly || backupFreshness?.needsAttention) && (
+          <div className="noc-shell-notices">
+            {readOnlyMode?.readOnly && (
+              <div className="noc-shell-notice is-read-only" title={readOnlyMode.reason}>
+                <ShieldCheck aria-hidden="true" />
+                <span><strong>Mode baca-saja</strong><span>{readOnlyMode.reason}</span></span>
+              </div>
+            )}
+            {backupFreshness?.needsAttention && (
+              <details className="noc-shell-notice is-backup-warning">
+                <summary><Archive aria-hidden="true" /><span><strong>Cadangan perlu diperiksa</strong><span>{backupFreshness.apps.filter((app) => app.health !== "ok").length} aplikasi perlu perhatian</span></span><TriangleAlert aria-hidden="true" /></summary>
+                <div className="noc-backup-details">
+                  {backupFreshness.apps.filter((app) => app.health !== "ok").map((app) => (
+                    <div key={app.key}><strong>{app.label}</strong><span>{app.reason}</span></div>
+                  ))}
+                </div>
+              </details>
+            )}
+          </div>
+        )}
         <div className="noc-content">{children}</div>
       </div>
     </div>
