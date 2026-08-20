@@ -11,11 +11,17 @@
 // yang tertulis — bukan gagal, dan bukan pula diam. Tugas yang diam saat belum
 // dikonfigurasi tidak bisa dibedakan dari tugas yang rusak.
 
-import https from "node:https";
 import { randomUUID } from "node:crypto";
 import { eq } from "drizzle-orm";
 import { db } from "@/db";
 import { pppoePollRuns, pppoeSessions } from "@/db/schema";
+import {
+  ambilJson,
+  headerAuth,
+  normalkanUrlRouter,
+  routerConfig,
+  sebabBelumSiap,
+} from "@/server/routeros";
 import type { TaskDefinition } from "@/server/scheduler";
 
 export interface PppoeActive {
@@ -35,53 +41,19 @@ export interface PppoeConfig {
 }
 
 /**
- * Rapikan alamat router jadi URL yang sah.
+ * Diangkat ke `src/server/routeros.ts` pada 20 Agustus 2026 supaya pengambil
+ * trafik memakai klien yang SAMA. Alasannya bukan kerapian: logika
+ * pelonggaran TLS tidak boleh punya dua salinan — kalau kelak salah satunya
+ * dikencangkan, salinan kedua tetap longgar tanpa ada yang tahu.
  *
- * Menerima `192.168.100.1` maupun `https://192.168.100.1` — orang wajar
- * mengetik alamatnya saja, dan menolaknya karena kurang `https://` adalah
- * kekakuan yang tidak membeli apa pun. Terjadi 19 Agustus 2026: alamat
- * ditulis tanpa skema, `new URL()` melempar "Invalid URL", dan tugasnya
- * gagal dengan pesan yang tidak menyebut alamat sama sekali.
- *
- * Bawaannya `https` — RouterOS REST memang di sana, dan menebak `http`
- * berarti kredensial melintas polos di jaringan.
+ * Di-export ulang di sini supaya permukaan publik modul ini tidak berubah.
  */
-export function normalkanUrlRouter(raw: string | undefined | null): string | null {
-  const v = (raw ?? "").trim();
-  if (!v) return null;
-  const lengkap = /^https?:\/\//i.test(v) ? v : `https://${v}`;
-  try {
-    const u = new URL(lengkap);
-    if (!u.hostname) return null;
-    return lengkap.replace(/\/+$/, "");
-  } catch {
-    return null;
-  }
-}
+export { normalkanUrlRouter, sebabBelumSiap };
 
+/** Konfigurasi router untuk penarikan PPPoE. Bentuknya sama dengan
+ *  `routerConfig()`; namanya dipertahankan karena sudah dipakai di tes. */
 export function pppoeConfig(): PppoeConfig | null {
-  const baseUrl = normalkanUrlRouter(process.env.MIKROTIK_URL);
-  const user = process.env.MIKROTIK_USER?.trim();
-  const password = process.env.MIKROTIK_PASSWORD?.trim();
-  if (!baseUrl || !user || !password) return null;
-  return {
-    baseUrl,
-    user,
-    password,
-    routerName: process.env.MIKROTIK_NAME?.trim() || new URL(baseUrl).hostname,
-  };
-}
-
-/** Sebab konfigurasi belum bisa dipakai — supaya SKIPPED menyebut yang benar,
- *  bukan selalu "belum diisi" padahal sudah diisi tapi bentuknya salah. */
-export function sebabBelumSiap(): string | null {
-  const kosong = (["MIKROTIK_URL", "MIKROTIK_USER", "MIKROTIK_PASSWORD"] as const)
-    .filter((n) => !process.env[n]?.trim());
-  if (kosong.length) return `${kosong.join(", ")} belum diisi`;
-  if (!normalkanUrlRouter(process.env.MIKROTIK_URL)) {
-    return `MIKROTIK_URL="${process.env.MIKROTIK_URL}" bukan alamat yang sah`;
-  }
-  return null;
+  return routerConfig();
 }
 
 /**
@@ -126,75 +98,8 @@ export function parseUptime(raw: string | undefined): number | null {
   );
 }
 
-/**
- * RouterOS memakai sertifikat yang diterbitkannya sendiri, jadi verifikasi TLS
- * akan MENOLAK sambungan walau kredensialnya benar — dan galatnya tidak
- * menyebut sertifikat sama sekali, jadi orang akan mengira kata sandinya salah.
- *
- * Karena itu ia dilewati HANYA bila `MIKROTIK_INSECURE_TLS=true` disetel dengan
- * sengaja. Tidak dijadikan bawaan: mematikan verifikasi diam-diam berarti
- * portal ini akan menerima siapa pun yang bisa menyamar sebagai router, dan
- * kelak saat router dipasangi sertifikat yang benar tidak ada yang tahu bahwa
- * perlindungannya sudah lama dimatikan.
- *
- * Yang membuatnya bisa diterima di sini: jaringannya internal (192.168.100.0/24
- * lewat 10.10.222.1), dan yang dikirim cuma permintaan BACA.
- */
-function tlsLonggar(): boolean {
-  return (process.env.MIKROTIK_INSECURE_TLS ?? "").trim().toLowerCase() === "true";
-}
-
-/** Dipakai langsung, bukan lewat fetch: `fetch` Node tidak menyediakan cara
- *  melonggarkan verifikasi sertifikat per-permintaan tanpa menambah dependensi
- *  atau mematikannya untuk SELURUH proses. */
-function ambilJson(url: string, headers: Record<string, string>): Promise<unknown> {
-  return new Promise((resolve, reject) => {
-    const u = new URL(url);
-    const req = https.request(
-      {
-        hostname: u.hostname,
-        port: u.port || 443,
-        path: u.pathname + u.search,
-        method: "GET",
-        headers,
-        timeout: 15_000,
-        rejectUnauthorized: !tlsLonggar(),
-      },
-      (res) => {
-        let isi = "";
-        res.setEncoding("utf8");
-        res.on("data", (c) => (isi += c));
-        res.on("end", () => {
-          if ((res.statusCode ?? 0) === 401) {
-            return reject(new Error("RouterOS menolak kredensial (HTTP 401)."));
-          }
-          if ((res.statusCode ?? 0) >= 400) {
-            return reject(new Error(`RouterOS menjawab HTTP ${res.statusCode}`));
-          }
-          try {
-            resolve(JSON.parse(isi));
-          } catch {
-            reject(new Error("Jawaban RouterOS bukan JSON yang sah."));
-          }
-        });
-      },
-    );
-    req.on("timeout", () => req.destroy(new Error("RouterOS tidak menjawab dalam 15 detik.")));
-    req.on("error", (e) => {
-      const pesan = /self.signed|unable to verify|DEPTH_ZERO/i.test(e.message)
-        ? `Sertifikat router tidak tepercaya. Setel MIKROTIK_INSECURE_TLS=true bila ini memang router internal kita. (${e.message})`
-        : e.message;
-      reject(new Error(pesan));
-    });
-    req.end();
-  });
-}
-
 async function ambilDariRouter(cfg: PppoeConfig): Promise<PppoeActive[]> {
-  const data = await ambilJson(`${cfg.baseUrl}/rest/ppp/active`, {
-    Authorization: `Basic ${Buffer.from(`${cfg.user}:${cfg.password}`).toString("base64")}`,
-    Accept: "application/json",
-  });
+  const data = await ambilJson(`${cfg.baseUrl}/rest/ppp/active`, headerAuth(cfg));
   if (!Array.isArray(data)) throw new Error("Jawaban RouterOS bukan larik.");
   return data as PppoeActive[];
 }
