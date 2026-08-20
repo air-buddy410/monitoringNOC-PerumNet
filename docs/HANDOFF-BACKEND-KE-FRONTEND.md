@@ -682,6 +682,54 @@ pekerjaan tampilan — datanya sudah tersedia di endpoint yang disebut, tidak
 ada yang perlu ditunggu dari backend. Tandai ✅ dan pindahkan ke §Selesai
 kalau sudah dikerjakan.
 
+### T-18. Kesehatan penjadwal — satu-satunya bagian portal yang tak terlihat
+
+**`GET /api/v1/scheduler` sudah hidup sejak Fase 9 dan sampai hari ini NOL
+layar memanggilnya.** Diperiksa 20 Agustus: tidak ada satu pun rujukan di
+`src/components` maupun `src/app`.
+
+- **Layar:** bebas — kartu di `/dashboard`, atau bagian di `/probe` (halaman
+  itu sudah menampilkan hasil kerja penjadwal, tinggal menambahkan sumbernya).
+- **Peran:** cukup login.
+
+**Kenapa ini bukan hiasan.** Seluruh data bergerak di portal ini datang dari
+worker: probe tiap 60 detik, sesi PPPoE tiap 60 detik. Kalau worker-nya mati
+atau satu tugas mulai gagal, **layar tidak berubah sama sekali** — `/probe`
+dan `/pppoe` tetap menampilkan angka terakhir, dan daftar yang membeku
+terlihat persis seperti jaringan yang stabil. Pelajaran yang sama sudah
+tertulis untuk `lastRun` di T-13; ini versi seluruh portalnya.
+
+**Bentuk jawaban** — `{ tasks: [...] }`, tiap tugas:
+
+| Field | Isi |
+|---|---|
+| `code` · `name` · `description` | `pppoe.poll`, `probe.run`, `probe.prune` |
+| `isEnabled` · `intervalSec` | tiap berapa detik seharusnya jalan |
+| `lastRunAt` · `lastStatus` | `SUCCESS` / gagal; **`null` = belum pernah jalan** |
+| `lastError` · `lastDurationMs` | isi `lastError` saat gagal |
+| `runCount` · `failCount` | kumulatif, bukan hari ini |
+| `overdueSec` | **berapa detik terlambat dari jadwalnya** |
+| `stalled` | **boolean — sudah lewat jauh dari jadwal** |
+
+**Yang penting benar:**
+
+- **`stalled: true` itu sinyalnya, bukan `lastStatus`.** Tugas bisa berstatus
+  `SUCCESS` dan tetap macet — statusnya milik putaran terakhir yang berhasil,
+  yang mungkin dua jam lalu. Layar yang cuma membaca `lastStatus` akan
+  menampilkan hijau untuk worker yang sudah mati.
+- **`lastRunAt: null` = belum pernah jalan**, bukan gagal. Bedakan.
+- **`failCount` kumulatif sejak awal.** `pppoe.poll` hari ini
+  `runCount 965, failCount 5` — lima kegagalan itu dari 18 Agustus, sebelum
+  alamat router dipindah ke IP internal. Menampilkannya sebagai "5 gagal"
+  tanpa konteks membuat orang mengejar hantu.
+- **`probe.prune` jalannya sekali sehari** (`intervalSec: 86400`). Terakhir
+  jalan kemarin itu **normal** — jangan tampilkan sebagai basi.
+- **Jangan bikin tombol jalankan/matikan.** Penjadwal dikendalikan dari
+  database dan worker; layar ini **melaporkan**, tidak memerintah.
+
+**Kenapa tidak bisa diakali di sisi backend:** endpointnya sudah benar dan
+sudah hidup. Yang hilang cuma mata yang membacanya.
+
 ### ✅ T-17. Layar login menyebut password email — SELESAI 2026-08-20
 
 Ditemukan Opus 20 Agustus saat memeriksa `/login` di browser, sesudah mode
@@ -965,6 +1013,12 @@ orang mengetik.
 
 ## Riwayat
 
+- **2026-08-20** — T-18: `GET /api/v1/scheduler` hidup sejak Fase 9 tapi NOL
+  layar memanggilnya. Kalau worker mati, tidak ada apa pun di layar yang
+  berubah — daftar yang membeku terlihat seperti jaringan yang stabil.
+- **2026-08-20** — Perangkat tanpa SNMP tidak lagi `warning` selamanya:
+  statusnya kini datang dari probe TCP yang memang sudah memeriksanya tiap
+  60 detik. Dashboard sekarang 7/7 online, 0 warning.
 - **2026-08-20** — **Masuk dengan username saja** (`LOGIN_DEFAULT_DOMAIN`,
   §8.1 OPERATIONS). Label `Username atau Email` yang sudah ada kini benar —
   bagian T-17 yang menyuruh menggantinya DIBATALKAN. Sisa T-17 tinggal
