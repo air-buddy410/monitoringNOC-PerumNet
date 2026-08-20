@@ -682,6 +682,32 @@ pekerjaan tampilan — datanya sudah tersedia di endpoint yang disebut, tidak
 ada yang perlu ditunggu dari backend. Tandai ✅ dan pindahkan ke §Selesai
 kalau sudah dikerjakan.
 
+### T-17. Layar login masih menjanjikan cara masuk yang sudah tidak berlaku
+
+Ditemukan Opus 20 Agustus saat memeriksa `/login` di browser, sesudah mode
+mailserver menyala. Dua hal kecil, satu di antaranya bikin orang buntu.
+
+- **Label `Username atau Email` — hanya email yang berfungsi.**
+  `signInPortal` mencocokkan `user.email` persis; username saja tidak akan
+  pernah cocok. Labelnya menawarkan jalan yang pasti gagal, dan gagalnya
+  berbunyi *"Email atau password salah"* — jadi orang menyalahkan
+  passwordnya. Ganti jadi `Email`.
+- **Layar tidak menyebut bahwa password-nya adalah password EMAIL.** Sejak
+  20 Agustus password portal tidak berlaku lagi. Orang akan mengetik password
+  lamanya, menerima 401, lalu mengira akunnya rusak.
+  **Ambil dari `GET /api/auth-mode`, jangan tulis statis** — `provider` sudah
+  ada di sana, dan halaman login boleh memanggilnya tanpa sesi (endpoint itu
+  memang publik untuk keperluan ini). `MAILSERVER` → sebut "password email
+  (mailcow)"; `LOCAL` → biarkan seperti sekarang.
+- Sekalian, kalau sempat: `public/` masih memuat `next.svg`, `vercel.svg`,
+  `file.svg`, `globe.svg`, `window.svg` bawaan Next.js. Tidak ada yang
+  memakainya. Checklist design system menyebut aset brand resmi; ini sisa
+  yang belum disapu.
+
+**Kenapa tidak bisa dikerjakan dari backend:** servernya sudah benar — ia
+menolak dengan pesan yang tepat. Yang salah adalah janji di layar sebelum
+orang mengetik.
+
 ### ✅ T-16. Sembunyikan isian ganti email di `/profile` — SELESAI 2026-08-20
 
 - **Layar:** `src/components/profile/profile-form.tsx`.
@@ -930,6 +956,10 @@ kalau sudah dikerjakan.
 
 ## Riwayat
 
+- **2026-08-20** — T-17: layar login masih menulis "Username atau Email" dan
+  tidak menyebut password email, padahal mode mailserver sudah menyala.
+  Ditemukan saat memeriksa `/login` di browser — tidak terlihat dari kode
+  backend maupun dari kode HTTP mana pun.
 - **2026-08-20** — **`PATCH /api/profile/email` 403 di mode MAILSERVER** +
   `emailChangeAvailable` di `/api/auth-mode`. Tugas T-16. Lubang ini lahir
   beberapa jam sebelumnya saat mode mailserver dinyalakan: sampai pagi itu
