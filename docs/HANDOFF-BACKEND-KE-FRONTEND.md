@@ -174,8 +174,8 @@ links: {
   | `GET /api/users` | **admin** | `{ users: [{ id, name, email, role, emailVerified, createdAt }], total }`, urut `createdAt` naik |
   | `POST /api/users` | **admin** | body `{ name, email, role?, password? }` → **201** `{ user: { id, name, email, role }, authProvider }` |
   | `PATCH /api/users/:id` | **admin** | body `{ role }` → `{ user: { id, name, email, role } }` |
-  | `PATCH /api/profile/email` | login | body `{ email }` → `{ user: { id, name, email } }` |
-  | **`GET /api/auth-mode`** | publik | `{ provider, passwordChangeAvailable, passwordRequiredOnCreate }` — sumber kebenaran untuk merender form |
+  | `PATCH /api/profile/email` | login | body `{ email }` → `{ user: { id, name, email } }`. **403 di mode MAILSERVER** — lihat T-16 |
+  | **`GET /api/auth-mode`** | publik | `{ provider, passwordChangeAvailable, passwordRequiredOnCreate, emailChangeAvailable }` — sumber kebenaran untuk merender form |
 - **Batas perilaku:**
   - `POST /api/users`: nama wajib ≤ 80 karakter, email harus valid, `role`
     harus salah satu dari empat peran. Email sudah terpakai → **409**
@@ -682,7 +682,25 @@ pekerjaan tampilan — datanya sudah tersedia di endpoint yang disebut, tidak
 ada yang perlu ditunggu dari backend. Tandai ✅ dan pindahkan ke §Selesai
 kalau sudah dikerjakan.
 
-### T-15. Konsol perangkat
+### T-16. Sembunyikan isian ganti email di `/profile`
+
+- **Layar:** `src/components/profile/profile-form.tsx`.
+- **Butuh:** `emailChangeAvailable` dari `GET /api/auth-mode` (**baru
+  20 Agustus**). `false` → jangan tampilkan isian emailnya sama sekali, sama
+  seperti yang sudah kamu lakukan untuk form ganti password.
+- **Kenapa ini penting, bukan kerapian:** sejak login lewat mailcow, alamat
+  email **adalah** identitas. Mengubahnya ke alamat tanpa mailbox membuat akun
+  itu tidak bisa dimasuki lagi — **dan tidak bisa dibatalkan**, karena
+  membatalkannya menuntut login. Tidak ada endpoint admin yang bisa
+  memperbaikinya; pemulihannya lewat database langsung.
+- Server sudah menolak dengan **403**, jadi tidak ada lubang yang menganga.
+  Yang tersisa adalah layar yang menawarkan sesuatu yang pasti ditolak —
+  persis jenis tawaran yang membuat orang mengira aplikasinya rusak.
+- Catatan di bawah isian yang berbunyi *"Mengganti email akan mereset status
+  verifikasi"* ikut hilang; di mode mailserver kalimat itu tidak lagi
+  menggambarkan apa pun yang bisa terjadi.
+
+### ✅ T-15. Konsol perangkat — SELESAI 2026-08-20
 
 - **Layar:** halaman baru, mis. `/console` — atau tab di halaman detail OLT.
 - **Butuh:** §13, dan `GET /api/v1/ftth/olts` (§13.1) untuk mengisi
@@ -862,6 +880,9 @@ kalau sudah dikerjakan.
 
 ### Selesai
 
+- **T-15** — `/console` memakai `GET /api/v1/ftth/olts`, menampilkan kesiapan
+  OLT sebelum perintah dijalankan, menonaktifkan pilihan yang belum siap, dan
+  menyembunyikan form untuk peran yang tidak memiliki akses konsol.
 - **T-7** — Shell internal menampilkan penanda mode baca-saja yang tenang hanya
   saat `readOnly: true`, tanpa membocorkan status internal ke halaman publik.
 - **T-8** — Token warna, kanvas mint, shell dark-teal, login satu-kartu,
@@ -906,6 +927,11 @@ kalau sudah dikerjakan.
 
 ## Riwayat
 
+- **2026-08-20** — **`PATCH /api/profile/email` 403 di mode MAILSERVER** +
+  `emailChangeAvailable` di `/api/auth-mode`. Tugas T-16. Lubang ini lahir
+  beberapa jam sebelumnya saat mode mailserver dinyalakan: sampai pagi itu
+  ganti email tidak berbahaya, sesudahnya ia mengunci akun tanpa bisa
+  dibatalkan.
 - **2026-08-20** — **577 ODP kini tertaut ke OLT-nya** (sebelumnya `oltId`
   kosong semua, dan `odpCount` di §13.1 selalu 0). `/ftth` sekarang bisa
   dikelompokkan per OLT kalau itu membantu — 6 OLT, terbesar 180 ODP.
