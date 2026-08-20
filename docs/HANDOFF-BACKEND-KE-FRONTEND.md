@@ -150,11 +150,13 @@ links: {
 ### 1. Sesi & akun
 
 - **Dipakai untuk:** login, profil, manajemen pengguna.
-- **Satu pintu (2026-08-17):** login memakai **password email mailcow**, sama
-  seperti CRM. Yang menentukan bagaimana password diperiksa adalah server
-  (`AUTH_PROVIDER`), bukan frontend — kirim saja `{ email, password }` ke
-  `/api/auth/sign-in/portal` dan tangani jawabannya. Tidak ada yang perlu
-  dibaca atau ditebak dari sisi klien tentang mode yang sedang aktif.
+- **Satu pintu (2026-08-17):** semua login lewat `/api/auth/sign-in/portal`.
+  Yang menentukan bagaimana password diperiksa adalah server (`AUTH_PROVIDER`),
+  bukan frontend — kirim saja `{ email, password }` dan tangani jawabannya.
+  Tidak ada yang perlu dibaca atau ditebak dari sisi klien.
+  **Yang aktif di produksi hari ini masih `LOCAL`** (diperiksa 20 Agustus 2026
+  lewat `GET /api/auth-mode`), bukan mailcow — jadi jangan menulis "password
+  email" secara statis di layar; ambil dari `/api/auth-mode` seperti biasa.
 - **Cara pakai:**
   | Endpoint | Peran | Catatan |
   |---|---|---|
@@ -571,6 +573,40 @@ telnet sendiri dari laptop — tanpa jejak, tanpa batas perintah.
   dimakan parser VTY-nya. Itu perilaku perangkat, bukan bug portal; tampilkan
   jawaban perangkat apa adanya supaya orang bisa mencoba bentuk lain.
 
+### 13.1. Daftar OLT — `GET /api/v1/ftth/olts`
+
+Pengisi pilihan untuk §13. Ada karena §13 sengaja hanya menerima `oltId`:
+layar konsol butuh daftar perangkat yang sah, dan tidak boleh menyusunnya
+sendiri dari alamat yang diketik orang.
+
+- **Peran:** cukup login. Yang membedakan adalah **isi** jawabannya, bukan
+  aksesnya (lihat `konsolTersedia` di bawah).
+- **Jawaban:** `{ olts: [...], konsolTersedia }`, urut menurut `name`.
+
+  | Field | Isi |
+  |---|---|
+  | `id` | dipakai sebagai `oltId` pada §13 |
+  | `name` · `managementIp` · `vendor` · `model` | identitas perangkat |
+  | `siteId` · `siteName` | situs; `siteName` bisa `null` |
+  | `telnetPort` | `null` berarti konsol tidak bisa dibuka |
+  | `assetId` | tautan ke `/api/v1/assets/:assetId`, bisa `null` |
+  | `odpCount` | jumlah ODP di bawah OLT ini |
+  | `konsolSiap` | **boolean** — bisa dibuka SEKARANG atau tidak |
+  | `alasan` | `null` bila siap; kalimat siap tampil bila tidak |
+
+- **`konsolSiap` bukan tebakan.** Ia dihitung dengan pemeriksaan kredensial
+  yang sama persis dengan yang dipakai saat menyambung. Matikan pilihan yang
+  `false` dan tampilkan `alasan`-nya — kalau tidak, orang mengetik perintah
+  lebih dulu lalu menerima **409**, dan 409 itu sebetulnya sudah bisa
+  diketahui sebelum ia mengetik apa pun.
+- **`konsolTersedia`** = `true` hanya untuk `admin`/`noc`, peran yang sama
+  dengan §13. Bila `false`, **jangan tampilkan form perintahnya sama sekali** —
+  dan sadari bahwa `alasan` yang diterima peran itu sengaja diperumum, karena
+  ia menyebut nama env var kredensial bagi peran yang boleh memperbaikinya.
+- **`credentialRef` tidak pernah dikirim.** Ia hanya nama env var, bukan kata
+  sandi, tapi ia menunjuk langsung ke tempat kata sandi disimpan dan tidak ada
+  layar yang membutuhkannya. Ada tes yang menahannya tetap begitu.
+
 ---
 
 ## Jebakan nama & bentuk
@@ -645,10 +681,9 @@ kalau sudah dikerjakan.
 ### T-15. Konsol perangkat
 
 - **Layar:** halaman baru, mis. `/console` — atau tab di halaman detail OLT.
-- **Butuh:** §13. Pilihan OLT dari `GET /api/v1/ftth/odps`… **bukan** —
-  daftar OLT-nya perlu endpoint sendiri; untuk sekarang ambil dari
-  `olt_devices` lewat halaman yang sudah kamu buat, atau minta saya bikinkan
-  `GET /api/v1/ftth/olts` (tulis di PERMINTAAN-FRONTEND-KE-BACKEND).
+- **Butuh:** §13, dan `GET /api/v1/ftth/olts` (§13.1) untuk mengisi
+  pilihannya — endpoint itu **sudah ada sejak 2026-08-20**; catatan lama yang
+  menyuruhmu membacanya sendiri dari `olt_devices` tidak berlaku lagi.
 - **Yang WAJIB benar, ini endpoint paling berisiko di aplikasi:**
   - **Jangan sediakan isian host/port.** Perangkat dipilih dari daftar. Kalau
     frontend mengirim alamat bebas, seluruh penjagaan di server jadi sia-sia.
@@ -659,10 +694,17 @@ kalau sudah dikerjakan.
     ini soal peran dan menyerah, padahal cukup mengubah perintahnya.
   - **409 bukan kerusakan** — itu konfigurasi yang belum lengkap.
   - `output` teks mentah: monospace, pertahankan baris, jangan dirapikan.
+  - **Matikan pilihan yang `konsolSiap: false`** dan tampilkan `alasan`-nya di
+    situ juga. Perangkat yang belum punya `telnet_port` atau kredensialnya
+    belum disetel akan gagal — lebih baik terbaca sebelum perintah diketik
+    daripada muncul sebagai 409 sesudahnya.
+  - `konsolTersedia: false` berarti peran orang ini memang tidak boleh membuka
+    konsol. Jangan tampilkan formnya sama sekali; `alasan` yang ia terima
+    sengaja tidak menyebut nama env var.
 - **Kenapa tidak bisa diakali di sisi frontend:** kredensial perangkat tidak
   pernah sampai ke browser, dan memang tidak boleh.
 
-### T-11. Halaman Situs & IPAM
+### ✅ T-11. Halaman Situs & IPAM — SELESAI 2026-08-19
 
 - **Layar:** `/sites` dan `/ipam` (nama bebas), plus entri nav — **tambahkan**,
   jangan menata ulang.
@@ -675,7 +717,7 @@ kalau sudah dikerjakan.
   - 409 berarti duplikat — itu bukan galat sistem, tampilkan sebagai koreksi
     yang bisa ditindaklanjuti pengguna.
 
-### T-12. Halaman FTTH (ODP & port)
+### ✅ T-12. Halaman FTTH (ODP & port) — SELESAI 2026-08-19
 
 - **Layar:** `/ftth`, dengan tampilan port per ODP.
 - **Butuh:** §12 "FTTH".
@@ -689,7 +731,7 @@ kalau sudah dikerjakan.
   - Peta: ODP punya `latitude`/`longitude` — bisa menyatu dengan `/map` yang
     sudah ada. Kalau iya, **tambahkan lapisan**, jangan ubah lapisan yang ada.
 
-### T-13. Halaman PPPoE
+### ✅ T-13. Halaman PPPoE — SELESAI 2026-08-19
 
 - **Layar:** `/pppoe`.
 - **Butuh:** §12 "PPPoE".
@@ -703,7 +745,7 @@ kalau sudah dikerjakan.
     kosongkan layar.
   - Tidak ada nama pelanggan — jangan sediakan kolomnya.
 
-### T-14. Riwayat pada halaman insiden
+### ✅ T-14. Riwayat pada halaman insiden — SELESAI 2026-08-19
 
 - **Layar:** detail insiden (menyatu dengan `/notifications` atau halaman baru).
 - **Butuh:** §12 "Riwayat insiden".
@@ -715,7 +757,7 @@ kalau sudah dikerjakan.
     yang dicari orang saat menelusuri ulang.
   - `authorLabel: null` = catatan sistem; bedakan dari catatan orang.
 
-### T-10. Halaman Probe & Alarm
+### ✅ T-10. Halaman Probe & Alarm — SELESAI 2026-08-19
 
 - **Layar:** halaman baru (mis. `/alarms` dan `/probe`), plus entri nav —
   **tambahkan** entri, jangan menata ulang yang sudah ada.
@@ -732,7 +774,7 @@ kalau sudah dikerjakan.
 - **Kenapa tidak bisa diakali di sisi frontend:** seluruh pengukuran dan daur
   hidup alarm terjadi di worker + database.
 
-### T-9. Penanda "cadangan bermasalah"
+### ✅ T-9. Penanda "cadangan bermasalah" — SELESAI 2026-08-19
 
 - **Layar:** bebas — shell (`noc-shell.tsx`) atau kartu di `/dashboard`.
 - **Butuh:** `GET /api/backup-freshness` (§10). Tampilkan penanda **hanya bila**
@@ -749,7 +791,7 @@ kalau sudah dikerjakan.
 - **Jangan** menyembunyikan `health: "tidak-ada"` sebagai "belum ada data" —
   aplikasi tanpa cadangan sama sekali justru yang paling perlu terlihat.
 
-### T-7. Penanda "mode baca-saja" di shell
+### ✅ T-7. Penanda "mode baca-saja" di shell — SELESAI 2026-08-19
 
 - **Layar:** `src/components/layout/noc-shell.tsx` — penempatan terserah kamu,
   yang penting terlihat di semua halaman internal.
@@ -771,7 +813,7 @@ kalau sudah dikerjakan.
   Tanpa itu, satu-satunya cara mengetahui portal sedang menahan aksi keluar
   adalah membaca `.env` di server.
 
-### T-8. Terapkan design system PerumNet
+### ✅ T-8. Terapkan design system PerumNet — SELESAI 2026-08-19
 
 - **Layar:** seluruh shell + halaman login.
 - **Butuh:** `docs/PERUMNET_FRONTEND_DESIGN_SYSTEM.md` diterapkan, lalu
@@ -816,6 +858,28 @@ kalau sudah dikerjakan.
 
 ### Selesai
 
+- **T-7** — Shell internal menampilkan penanda mode baca-saja yang tenang hanya
+  saat `readOnly: true`, tanpa membocorkan status internal ke halaman publik.
+- **T-8** — Token warna, kanvas mint, shell dark-teal, login satu-kartu,
+  drawer responsif, dan checklist design system diterapkan; diverifikasi pada
+  desktop, tablet, dan mobile tanpa overflow.
+- **T-9** — Shell menampilkan daftar aplikasi backup bermasalah hanya saat
+  `needsAttention: true`, dengan `reason` server apa adanya dan tanpa pola alarm
+  merah berkedip.
+- **T-10** — Halaman `/probe` dan `/alarms` menampilkan status null secara
+  netral, `workerLikelyDown`, alarm teragregasi, sumber alarm, dan aksi
+  "Tandai sudah dilihat" tanpa menyamakan acknowledge dengan penutupan.
+- **T-11** — Halaman `/sites` dan `/ipam` ditambahkan dengan form server-backed,
+  pesan validasi server, `usedCount` dari server, serta detail alamat yang dapat
+  dibuka per subnet.
+- **T-12** — Halaman `/ftth` ditambahkan untuk ODP dan port, memakai angka
+  `usedPorts`/`brokenPorts` dari server, tanpa form port satu per satu maupun
+  identitas pelanggan.
+- **T-13** — Halaman `/pppoe` menonjolkan `lastRun`, membedakan SUCCESS/FAILED/
+  SKIPPED/RUNNING, dan mempertahankan sesi terakhir ketika polling gagal.
+- **T-14** — Riwayat incident append-only ditambahkan ke `/notifications`
+  dengan urutan kronologis, visual `kind`, dan label `Sistem` untuk author null.
+
 - **T-4** — `login-form.tsx` memakai `POST /api/auth/sign-in/portal` dan
   membedakan mailserver mati dari kredensial salah. Diverifikasi dari kode.
 - **T-5** — `/register` diubah jadi pengalihan ke `/login`, bukan dihapus.
@@ -838,6 +902,10 @@ kalau sudah dikerjakan.
 
 ## Riwayat
 
+- **2026-08-20** — `GET /api/v1/ftth/olts` (§13.1) — pengisi pilihan layar
+  konsol. Membawa `konsolSiap` supaya perangkat yang pasti gagal terbaca
+  SEBELUM perintah diketik, bukan sebagai 409 sesudahnya. T-15 tidak lagi
+  memblokir apa pun.
 - **2026-08-19** — Konsol perangkat (§13) + tugas T-15. Lahir karena sebagian
   OLT tidak mendukung SNMP; daripada orang membuka telnet sendiri tanpa jejak,
   portal menyediakannya dengan daftar putih perintah dan audit penuh.
