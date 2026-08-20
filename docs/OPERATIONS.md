@@ -405,5 +405,31 @@ menghasilkan `0 baru, semuanya diperbarui`, bukan duplikat. Sudah dibuktikan
 
 **Yang sengaja TIDAK dibawa:** identitas pelanggan. Dari `OdpPort` hanya
 `subscriptionId` yang diambil — ID di sistem lain, bukan nama/alamat/nomor.
-`credentialRef` OLT juga ditinggal. **Repo ini publik**; kalau CRM kelak
-menambah kolom identitas, skrip impor tidak boleh ikut mengambilnya.
+**Repo ini publik**; kalau CRM kelak menambah kolom identitas, skrip impor
+tidak boleh ikut mengambilnya.
+
+`credentialRef` OLT **ikut dibawa** — catatan lama di sini yang bilang
+"ditinggal" salah. Ia NAMA env var, bukan kata sandinya, dan justru itu yang
+membuat portal tahu env mana yang harus diisi. Kata sandinya tidak pernah
+keluar dari env server.
+
+`site_id` OLT sengaja **tidak** ditulis oleh impor: CRM tidak punya kolomnya,
+jadi menulisnya berarti menimpa tautan situs yang benar dengan null tiap kali
+impor dijalankan. Tautan itu dibuat sekali dari akhiran nama OLT (20 Agustus
+2026) dan bertahan melewati impor berikutnya — sudah dibuktikan.
+
+**ODP ke OLT (20 Agustus 2026).** Sampai tanggal itu ke-577 ODP punya
+`olt_id` kosong, jadi tiap OLT melaporkan 0 ODP. Sempat dikira harus ditebak
+dari nama situs — **tidak perlu**: CRM menyimpannya lewat `Odp.ponPortId` →
+`PonPort.oltId`, dan ke-577-nya punya `ponPortId`. Menebak dari situs justru
+pasti salah untuk sebagian, karena **Kecicang punya dua OLT** dan ODP-nya
+terbagi 20 / 180. Sesudah impor: 577 tertaut, 0 yatim.
+
+| OLT | Situs | ODP |
+|---|---|---|
+| HSGQ-100-Kecicang | Kecicang | 20 |
+| HSGQ-102-SerayaBarat | Seraya Barat | 77 |
+| HSGQ-102-SerayaTengah | Seraya Tengah | 55 |
+| ZTE-C300-102-Pesagi | Pesagi | 114 |
+| ZTE-C600-100-Kecicang | Kecicang | 180 |
+| ZTE-C600-104-Abang | Abang | 131 |
