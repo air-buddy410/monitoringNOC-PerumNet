@@ -6,15 +6,18 @@ import { CircleAlert } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { useAuthMode } from "@/hooks/use-auth-mode";
 import { ApiError, sendJson } from "@/lib/api/http";
 
 export default function LoginForm() {
   const router = useRouter();
   const searchParams = useSearchParams();
+  const { data: authMode } = useAuthMode();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const mailserverLogin = authMode?.provider === "MAILSERVER";
 
   async function handleSubmit(event: React.FormEvent) {
     event.preventDefault();
@@ -71,9 +74,18 @@ export default function LoginForm() {
           autoComplete="current-password"
           required
           placeholder="Masukkan password"
+          aria-describedby={mailserverLogin ? "login-password-hint" : undefined}
           value={password}
           onChange={(event) => setPassword(event.target.value)}
         />
+        {mailserverLogin && (
+          <p
+            id="login-password-hint"
+            className="text-xs leading-5 text-muted-foreground"
+          >
+            Gunakan password email (mailcow) untuk masuk ke portal.
+          </p>
+        )}
       </div>
 
       {error && (
