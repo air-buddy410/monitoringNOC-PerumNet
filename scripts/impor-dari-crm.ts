@@ -113,19 +113,25 @@ async function main() {
     console.log(`  subnet     : ${subnet.dibuat} baru, ${subnet.diperbarui} diperbarui`);
 
     // ── OLT ──────────────────────────────────────────────────────────────
-    // `credentialRef` SENGAJA tidak diambil: itu penunjuk ke kredensial, dan
-    // repo ini publik. Kredensial tetap tinggal di CRM.
+    // `credentialRef` IKUT dibawa. Ia NAMA env var, bukan kata sandinya — dan
+    // justru itu yang membuat portal tahu env mana yang harus diisi. Kata
+    // sandinya sendiri tidak pernah keluar dari env server.
+    //
+    // `site_id` sengaja TIDAK disentuh: CRM tidak punya kolomnya, jadi
+    // menuliskannya di sini berarti menimpa tautan situs yang sudah benar
+    // dengan null setiap kali impor dijalankan.
     const olt = nol();
-    // `credentialRef` adalah NAMA env var, bukan kata sandinya — aman dibawa,
-    // dan justru itu yang membuat portal tahu env mana yang harus diisi.
+    /** id OLT di CRM → id OLT di NOC, dipakai saat menautkan ODP. */
+    const petaOlt = new Map<string, string>();
     const rOlt = await crm.query<{
-      name: string; managementIp: string; vendor: string | null; model: string | null;
-      telnetPort: number | null; credentialRef: string | null;
-    }>(`SELECT name, "managementIp", vendor, model, "telnetPort", "credentialRef" FROM "OltDevice"`);
+      id: string; name: string; managementIp: string; vendor: string | null;
+      model: string | null; telnetPort: number | null; credentialRef: string | null;
+    }>(`SELECT id, name, "managementIp", vendor, model, "telnetPort", "credentialRef" FROM "OltDevice"`);
 
     for (const o of rOlt.rows) {
       const ada = await noc.query<{ id: string }>(
         "SELECT id FROM olt_devices WHERE name = $1", [o.name]);
+      if (ada.rows[0]) petaOlt.set(o.id, ada.rows[0].id);
       if (ada.rows[0]) {
         if (!DRY) {
           await noc.query(
@@ -134,11 +140,13 @@ async function main() {
         }
         olt.diperbarui += 1;
       } else {
+        const idBaru = randomUUID();
+        petaOlt.set(o.id, idBaru);
         if (!DRY) {
           await noc.query(
             `INSERT INTO olt_devices (id, name, management_ip, vendor, model, telnet_port, credential_ref)
              VALUES ($1,$2,$3,$4,$5,$6,$7)`,
-            [randomUUID(), o.name, o.managementIp, o.vendor, o.model, o.telnetPort, o.credentialRef]);
+            [idBaru, o.name, o.managementIp, o.vendor, o.model, o.telnetPort, o.credentialRef]);
         }
         olt.dibuat += 1;
       }
@@ -147,24 +155,39 @@ async function main() {
 
     // ── ODP ──────────────────────────────────────────────────────────────
     // CRM tidak punya kolom `name` pada Odp — kodenya dipakai untuk keduanya.
+    //
+    // ODP mana milik OLT mana TIDAK perlu ditebak: CRM menyimpannya lewat
+    // `Odp.ponPortId` → `PonPort.oltId`. Itu penting karena satu situs bisa
+    // punya lebih dari satu OLT (Kecicang punya dua), sehingga menebak dari
+    // situs saja pasti salah untuk sebagian ODP.
+    //
+    // LEFT JOIN, bukan JOIN: ODP tanpa PON port tetap harus ikut terimpor
+    // dengan `olt_id` kosong. Kalau dipakai JOIN, ODP seperti itu hilang
+    // diam-diam dari portal — dan hilangnya tidak menghasilkan galat apa pun.
     const odp = nol();
     const petaOdp = new Map<string, string>();
+    let odpTanpaOlt = 0;
     const rOdp = await crm.query<{
       id: string; code: string; siteId: string | null; portCapacity: number | null;
-      latitude: number | null; longitude: number | null;
-    }>(`SELECT id, code, "siteId", "portCapacity", latitude, longitude FROM "Odp"`);
+      latitude: number | null; longitude: number | null; oltId: string | null;
+    }>(`SELECT d.id, d.code, d."siteId", d."portCapacity", d.latitude, d.longitude,
+               p."oltId"
+          FROM "Odp" d
+          LEFT JOIN "PonPort" p ON p.id = d."ponPortId"`);
 
     for (const o of rOdp.rows) {
       const kode = o.code.trim().toUpperCase();
       const siteId = o.siteId ? petaSitus.get(o.siteId) ?? null : null;
+      const oltId = o.oltId ? petaOlt.get(o.oltId) ?? null : null;
+      if (!oltId) odpTanpaOlt += 1;
       const kapasitas = o.portCapacity ?? 8;
       const ada = await noc.query<{ id: string }>("SELECT id FROM odps WHERE code = $1", [kode]);
       if (ada.rows[0]) {
         petaOdp.set(o.id, ada.rows[0].id);
         if (!DRY) {
           await noc.query(
-            `UPDATE odps SET name=$2, site_id=$3, capacity=$4, latitude=$5, longitude=$6 WHERE id=$1`,
-            [ada.rows[0].id, kode, siteId, kapasitas, o.latitude, o.longitude]);
+            `UPDATE odps SET name=$2, site_id=$3, capacity=$4, latitude=$5, longitude=$6, olt_id=$7 WHERE id=$1`,
+            [ada.rows[0].id, kode, siteId, kapasitas, o.latitude, o.longitude, oltId]);
         }
         odp.diperbarui += 1;
       } else {
@@ -172,14 +195,17 @@ async function main() {
         petaOdp.set(o.id, id);
         if (!DRY) {
           await noc.query(
-            `INSERT INTO odps (id, code, name, site_id, capacity, latitude, longitude)
-             VALUES ($1,$2,$3,$4,$5,$6,$7)`,
-            [id, kode, kode, siteId, kapasitas, o.latitude, o.longitude]);
+            `INSERT INTO odps (id, code, name, site_id, capacity, latitude, longitude, olt_id)
+             VALUES ($1,$2,$3,$4,$5,$6,$7,$8)`,
+            [id, kode, kode, siteId, kapasitas, o.latitude, o.longitude, oltId]);
         }
         odp.dibuat += 1;
       }
     }
-    console.log(`  ODP        : ${odp.dibuat} baru, ${odp.diperbarui} diperbarui`);
+    console.log(
+      `  ODP        : ${odp.dibuat} baru, ${odp.diperbarui} diperbarui` +
+        (odpTanpaOlt ? `, ${odpTanpaOlt} tanpa OLT` : ""),
+    );
 
     // ── Port ODP ─────────────────────────────────────────────────────────
     // HANYA subscriptionId yang dibawa. Bukan nama, alamat, atau nomor.
