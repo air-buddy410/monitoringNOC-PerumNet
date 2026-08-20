@@ -441,25 +441,33 @@ oleh ALUS, jadi pemetaannya bukan tebakan:
 | HSGQ-102-SerayaBarat | `172.30.10.6:1024` | `192.168.100.11:1024` | port cocok persis; `show version` berhasil |
 | HSGQ-102-SerayaTengah | `172.30.10.6:1025` | `192.168.100.12:1025` | port cocok persis; `show version` berhasil |
 | ZTE-C300-102-Pesagi | `172.30.10.6:23` | `192.168.100.30:23` | satu-satunya C300, dipastikan dari `sysDescr` |
-| ZTE-C600-100-Kecicang | `172.30.10.6:231` | **belum dipindah** | lihat di bawah |
-| ZTE-C600-104-Abang | `172.30.10.6:232` | **belum dipindah** | lihat di bawah |
+| ZTE-C600-100-Kecicang | `172.30.10.6:231` | `192.168.100.60:23` | dipastikan pemilik 20 Agu (lihat di bawah) |
+| ZTE-C600-104-Abang | `172.30.10.6:232` | `192.168.100.61:23` | dipastikan pemilik 20 Agu (lihat di bawah) |
+
+**Keenam OLT kini menjawab `show version` lewat konsol** — sebelumnya hanya
+satu. Diuji langsung 20 Agustus.
 
 Ini pengulangan persis pelajaran MikroTik: `managementUrl` router dulu juga
 memakai alamat luar, dan penarikan PPPoE berhenti gagal begitu ia dipindah ke
 IP internal. **VPS satu jaringan dengan MikroTik, OLT, dan switch** — alamat
 luar tidak diperlukan, dan diam-diam tidak berfungsi.
 
-### Dua C600 belum dipastikan — sengaja tidak ditebak
+### Dua C600: dipastikan orang, bukan disimpulkan sistem
 
 `192.168.100.60` dan `192.168.100.61` keduanya ZTE C600, keduanya di port 23.
-Tidak ada yang membedakan keduanya dari luar: `sysName` keduanya `zxan`
+**Tidak ada yang membedakan keduanya dari luar**: `sysName` keduanya `zxan`
 (bawaan pabrik, tidak pernah dikonfigurasi), `sysDescr` sama, lokasi di
-LibreNMS masih alamat pabrik ZTE di Shanghai.
+LibreNMS masih alamat pabrik ZTE di Shanghai. Empat OLT lain terpetakan dari
+bukti — nomor port yang diteruskan apa adanya, atau model dari `sysDescr` —
+tapi untuk dua ini tidak ada bukti apa pun.
 
-Menebak berarti perintah konsol bisa mendarat di OLT yang salah — persis
-kegagalan yang seluruh rancangan §13 dibuat untuk mencegah. Jadi keduanya
-ditinggal menunjuk alamat yang mati, dan asetnya ditandai `BELUM DIPASTIKAN`
-sampai ada yang tahu mana Kecicang mana Abang.
+**Pemilik memastikan 20 Agustus 2026: `192.168.100.60` = Kecicang,
+`192.168.100.61` = Abang.** Dicatat sebagai keterangan orang, bukan hasil
+pemeriksaan, supaya siapa pun yang meragukannya nanti tahu harus bertanya ke
+siapa dan tidak mencari bukti yang tidak pernah ada.
+
+Kalau kelak `sysName` kedua OLT ini dikonfigurasi (mis. `prm_kecicang_olt`),
+keterangan ini bisa diganti bukti — dan itu perbaikan yang layak dilakukan.
 
 ### Kelemahan yang ini menyingkap: `konsolSiap` bukan "terjangkau"
 
