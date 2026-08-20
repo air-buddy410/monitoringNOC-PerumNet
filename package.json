@@ -10,7 +10,8 @@
     "test": "vitest run",
     "typecheck": "tsc --noEmit",
     "worker": "tsx scripts/worker.ts",
-    "impor:crm": "tsx scripts/impor-dari-crm.ts"
+    "impor:crm": "tsx scripts/impor-dari-crm.ts",
+    "seed:akun": "tsx scripts/seed-akun-tim.ts"
   },
   "dependencies": {
     "@base-ui/react": "^1.7.0",
