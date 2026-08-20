@@ -682,7 +682,7 @@ pekerjaan tampilan — datanya sudah tersedia di endpoint yang disebut, tidak
 ada yang perlu ditunggu dari backend. Tandai ✅ dan pindahkan ke §Selesai
 kalau sudah dikerjakan.
 
-### T-16. Sembunyikan isian ganti email di `/profile`
+### ✅ T-16. Sembunyikan isian ganti email di `/profile` — SELESAI 2026-08-20
 
 - **Layar:** `src/components/profile/profile-form.tsx`.
 - **Butuh:** `emailChangeAvailable` dari `GET /api/auth-mode` (**baru
@@ -880,6 +880,9 @@ kalau sudah dikerjakan.
 
 ### Selesai
 
+- **T-16** — `/profile` membaca `emailChangeAvailable`; input email dan
+  peringatan verifikasi disembunyikan saat mode MAILSERVER, dengan fail-closed
+  saat mode login belum terbaca.
 - **T-15** — `/console` memakai `GET /api/v1/ftth/olts`, menampilkan kesiapan
   OLT sebelum perintah dijalankan, menonaktifkan pilihan yang belum siap, dan
   menyembunyikan form untuk peran yang tidak memiliki akses konsol.
