@@ -405,6 +405,83 @@ Kedua angka harus sama. Kalau yang pertama > 0 dan yang kedua 0, masalahnya
 dengan menyisipkan baris ke tabel `api_tokens` (`user_id`, `token_hash`,
 `description`, `disabled=0`).
 
+## 11.6. Trafik: pengambilan, privasi, dan batas presisi
+
+Tiga tugas berjadwal di `src/server/traffic.ts`:
+
+| Kode | Tiap | Kerja |
+|---|---|---|
+| `traffic.poll` | **30 detik** (kolom `scheduled_tasks.interval_sec`, bisa diubah tanpa deploy) | menanyakan counter tiap interface yang dipantau |
+| `traffic.discover` | 1 jam | menyapu ethernet & VLAN untuk menemukan interface baru |
+| `traffic.prune` | 24 jam | membuang sampel > 7 hari |
+
+### Kenapa penemuan dan pengambilan dipisah
+
+**Ini soal privasi, bukan kerapian.** Router punya **1.638 interface**, dan
+mayoritasnya `pppoe-in` dinamis yang **namanya adalah username pelanggan**.
+Repo ini publik.
+
+Karena itu penemuan hanya menyapu `/rest/interface/ethernet` dan
+`/rest/interface/vlan` — dua resource yang secara bentuk tidak pernah memuat
+interface pelanggan — sementara counter ditanyakan **satu per satu berdasarkan
+nama**. Menyaring setelah diterima berarti kita sudah menerimanya; menyaring
+di router berarti data itu tidak pernah dikirim. Ada tes yang menahannya tetap
+begitu.
+
+**Diperiksa di router sungguhan 20 Agustus 2026: resource per-tipe hanya
+memberi NAMA, tidak memberi counter.** Karena itu dua langkah ini tidak bisa
+digabung jadi satu panggilan — rancangan yang mengasumsikannya akan gagal di
+produksi, bukan di tes.
+
+### Batas presisi yang akan menggigit dalam hitungan bulan
+
+`rx-byte` datang sebagai **string**, dan `Number("9007199254740993")`
+menghasilkan `…992`. Pada uplink ±3 Gbps (≈375 MB/detik), counter melewati
+`Number.MAX_SAFE_INTEGER` setelah **±280 hari uptime**. Sesudah itu dua
+pembacaan berdekatan membulat ke angka yang sama, deltanya jadi **0**, dan
+grafik trafik turun ke nol **tanpa satu galat pun**.
+
+Ini bukan kekhawatiran teoretis: counter `sfp-sfpplus1` saat ditulis sudah
+**2,54 × 10¹⁵** — 28% jalan menuju batasnya. Karena itu parsing wajib
+`BigInt`, dan ada tes yang membuktikan versi `Number()` gagal HANYA di kasus
+itu (lulus 14 dari 15 kasus lain).
+
+### Aturan yang menolak titik, bukan mengarang angka
+
+| Keadaan | Yang terjadi |
+|---|---|
+| Cuplikan pertama | disimpan sebagai ACUAN (`dt_ms = 0`), tidak jadi titik |
+| Counter turun | **RESET** — tidak ada titik. Bukan wrap: counter 64-bit butuh ratusan tahun, dan "menangani wrap" mengubah tiap reboot jadi lonjakan 18 exabyte |
+| Reset satu arah | membatalkan **keduanya** — reset itu peristiwa perangkat |
+| Jeda < 2 detik | ditolak: satu paket jitter jadi galat puluhan Mbps |
+| Jeda > 6 menit | ditolak: satu titik rata-rata **menutupi** matinya collector |
+| Laju mustahil | ditolak |
+
+**Jitter tidak merusak kebenaran.** `dt_ms` diukur dari stempel waktu nyata,
+bukan diasumsikan 30.000 ms — tick yang meleset jadi 33 detik menghasilkan
+rata-rata 33 detik yang benar. Jitter membeli resolusi, bukan kesalahan.
+
+### Memberi label interface
+
+Penemuan tidak pernah menimpa `label`, `role`, `site_id`, `capacity_bps`, atau
+`is_enabled` — deploy tidak boleh menyalakan kembali apa yang sengaja
+dimatikan orang. Pelabelan dilakukan sekali lewat SQL:
+
+```sql
+UPDATE traffic_interfaces SET role='uplink', label='Uplink Utama',
+       capacity_bps=10000000000 WHERE if_name='sfp-sfpplus1';
+```
+
+**`role='site'` boleh tanpa `site_id`.** `102-VLAN-Seraya` menaungi Seraya
+Barat DAN Seraya Tengah; menautkannya ke salah satu akan salah, jadi ia diberi
+label `Seraya (Barat + Tengah)` tanpa situs.
+
+### Keadaan saat ditulis
+
+27 interface ditemukan, 17 dipantau. Uplink 3.034 Mbps masuk / 315 Mbps
+keluar — sekelas dengan `ifInOctets_rate` LibreNMS (2.826/236); bedanya
+jendela waktu, dan itu **normal**, bukan gangguan.
+
 ## 11.5. Deteksi gangguan massal
 
 `GET /api/v1/outages` menjawab **"apa yang harus didatangi"**, bukan "berapa
