@@ -33,9 +33,10 @@ interface NetworkMapProps {
 function FitToVisibleDevices({ devices, filterKey }: NetworkMapProps) {
   const map = useMap();
   const hasFitted = useRef(false);
+  const hasVisibleDevices = devices.length > 0;
 
   useEffect(() => {
-    if (devices.length === 0) return;
+    if (!hasVisibleDevices) return;
     const bounds = latLngBounds(
       devices.map((device) => [device.latitude, device.longitude]),
     );
@@ -53,8 +54,10 @@ function FitToVisibleDevices({ devices, filterKey }: NetworkMapProps) {
       }
     }
     // Sengaja hanya bereaksi pada perubahan filter, bukan refresh data 10 detik.
+    // hasVisibleDevices hanya menjadi pemicu saat data pertama kali tiba atau
+    // saat filter mengosongkan lalu menampilkan titik kembali.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [filterKey, map]);
+  }, [filterKey, hasVisibleDevices, map]);
 
   return null;
 }

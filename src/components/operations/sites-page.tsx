@@ -106,7 +106,7 @@ export default function SitesPage() {
               <div className="noc-form-grid is-two">
                 <div className="noc-field">
                   <Label htmlFor="site-code">Kode situs</Label>
-                  <Input id="site-code" required maxLength={40} value={form.code} onChange={(event) => setForm({ ...form, code: event.target.value })} placeholder="JKT-CORE" />
+                  <Input id="site-code" required maxLength={40} value={form.code} onChange={(event) => setForm({ ...form, code: event.target.value })} placeholder="BALI-CORE" />
                 </div>
                 <div className="noc-field">
                   <Label htmlFor="site-name">Nama situs</Label>
@@ -120,11 +120,11 @@ export default function SitesPage() {
               <div className="noc-form-grid is-two">
                 <div className="noc-field">
                   <Label htmlFor="site-latitude">Latitude <span>(opsional)</span></Label>
-                  <Input id="site-latitude" inputMode="decimal" value={form.latitude} onChange={(event) => setForm({ ...form, latitude: event.target.value })} placeholder="-6.200000" />
+                  <Input id="site-latitude" inputMode="decimal" value={form.latitude} onChange={(event) => setForm({ ...form, latitude: event.target.value })} placeholder="-8.400000" />
                 </div>
                 <div className="noc-field">
                   <Label htmlFor="site-longitude">Longitude <span>(opsional)</span></Label>
-                  <Input id="site-longitude" inputMode="decimal" value={form.longitude} onChange={(event) => setForm({ ...form, longitude: event.target.value })} placeholder="106.816666" />
+                  <Input id="site-longitude" inputMode="decimal" value={form.longitude} onChange={(event) => setForm({ ...form, longitude: event.target.value })} placeholder="115.600000" />
                 </div>
               </div>
               <div className="noc-field">
