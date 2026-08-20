@@ -1,5 +1,15 @@
 # Rencana firewall keluar — untuk dijalankan pemilik VPS
 
+> **DITANGGUHKAN atas keputusan pemilik, 20 Agustus 2026.** Port 8444
+> (`103.187.113.225:8444`, antarmuka manajemen MikroTik) memang masih terbuka
+> dari internet dan memang sudah tidak ada yang memakainya sejak worker CRM
+> pindah ke jaringan dalam. Pemilik memutuskan **diabaikan untuk sekarang**.
+>
+> Rencana di bawah tetap disimpan utuh dan tetap berlaku kalau keputusannya
+> berubah — tidak dihapus, karena temuan yang dihapus akan ditemukan lagi dari
+> nol oleh orang berikutnya. Yang berubah hanya prioritasnya.
+
+
 `docs/MODE-BACA-SAJA.md` §Yang TIDAK dijamin butir 2 menyebut bahwa jaminan
 sesungguhnya bukan uji penyisir sumber (itu grep, bukan sandbox) melainkan
 aturan firewall keluar di VPS. Berkas ini menjabarkannya.
