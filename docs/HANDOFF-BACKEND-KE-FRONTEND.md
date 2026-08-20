@@ -154,9 +154,13 @@ links: {
   Yang menentukan bagaimana password diperiksa adalah server (`AUTH_PROVIDER`),
   bukan frontend — kirim saja `{ email, password }` dan tangani jawabannya.
   Tidak ada yang perlu dibaca atau ditebak dari sisi klien.
-  **Yang aktif di produksi hari ini masih `LOCAL`** (diperiksa 20 Agustus 2026
-  lewat `GET /api/auth-mode`), bukan mailcow — jadi jangan menulis "password
-  email" secara statis di layar; ambil dari `/api/auth-mode` seperti biasa.
+  **Produksi berjalan di `MAILSERVER` sejak 20 Agustus 2026** — password yang
+  berlaku adalah password EMAIL mailcow. Tetap jangan menulisnya statis di
+  layar: ambil dari `/api/auth-mode`. Keduanya kini menjawab `false`
+  (`passwordChangeAvailable`, `passwordRequiredOnCreate`) — dan
+  `change-password-form.tsx` serta `user-table.tsx` **sudah** menanganinya
+  lewat `useAuthMode()`, jadi tidak ada yang perlu kamu ubah. Diperiksa
+  20 Agustus 2026; disebut di sini supaya tidak dikira terlewat.
 - **Cara pakai:**
   | Endpoint | Peran | Catatan |
   |---|---|---|
@@ -902,6 +906,10 @@ kalau sudah dikerjakan.
 
 ## Riwayat
 
+- **2026-08-20** — **Login satu pintu mailcow HIDUP di produksi.**
+  `AUTH_PROVIDER=MAILSERVER`. 8 akun: 5 lewat mailcow, `admin@perumnet.id`
+  akun darurat, 2 akun `@perumnet.co.id` lama kini tidak bisa masuk (domainnya
+  memang bukan domain email). Yang perlu kamu ubah ada di §1.
 - **2026-08-20** — `GET /api/v1/ftth/olts` (§13.1) — pengisi pilihan layar
   konsol. Membawa `konsolSiap` supaya perangkat yang pasti gagal terbaca
   SEBELUM perintah diketik, bukan sebagai 409 sesudahnya. T-15 tidak lagi
