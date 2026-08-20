@@ -16,12 +16,14 @@
 import { sql } from "drizzle-orm";
 import type { AnyPgColumn } from "drizzle-orm/pg-core";
 import {
+  bigint,
   boolean,
   doublePrecision,
   index,
   integer,
   jsonb,
   pgTable,
+  primaryKey,
   text,
   timestamp,
   uniqueIndex,
@@ -844,4 +846,91 @@ export const incidentUpdates = pgTable(
     createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   },
   (table) => [index("incident_updates_incident_idx").on(table.incidentId, table.createdAt)],
+);
+
+// ───────────────────────────────────────────────────────────────────────────
+// Trafik
+// ───────────────────────────────────────────────────────────────────────────
+
+/**
+ * Interface router yang DIPANTAU trafiknya.
+ *
+ * Daftarnya tidak pernah ditulis di kode. Router ini punya 1.638 interface,
+ * dan mayoritasnya `pppoe-in` dinamis yang **namanya adalah username
+ * pelanggan** — repo ini publik, jadi nama-nama itu tidak boleh menyentuh
+ * disk maupun baris log. Karena itu penemuannya hanya menyapu
+ * `/rest/interface/ethernet` dan `/rest/interface/vlan`, dua resource yang
+ * secara bentuk tidak pernah memuat interface pelanggan.
+ *
+ * `is_enabled`, `label`, `role`, `site_id`, dan `capacity_bps` adalah kolom
+ * OPERATOR. Penemuan berkala tidak pernah menimpanya — doktrin yang sama
+ * dengan `syncTaskRegistry`: deploy tidak boleh menyalakan kembali apa yang
+ * sengaja dimatikan orang.
+ */
+export const trafficInterfaces = pgTable(
+  "traffic_interfaces",
+  {
+    id: text("id").primaryKey(),
+    routerName: text("router_name").notNull(),
+    ifName: text("if_name").notNull(),
+    /** `ether` atau `vlan` — dari resource mana ia ditemukan. */
+    ifType: text("if_type"),
+    label: text("label").notNull(),
+    role: text("role", { enum: ["uplink", "site", "other"] })
+      .notNull()
+      .default("other"),
+    siteId: text("site_id").references(() => networkSites.id, {
+      onDelete: "set null",
+    }),
+    /**
+     * Kapasitas port. Boleh null, dan bila null utilisasi persen TIDAK
+     * dikirim — bukan 0. Bar 0% pada uplink 2,8 Gbps lebih menyesatkan
+     * daripada tidak ada bar sama sekali.
+     */
+    capacityBps: doublePrecision("capacity_bps"),
+    isEnabled: boolean("is_enabled").notNull().default(false),
+    /** Terisi saat interface tidak lagi dijawab router; kosong lagi saat muncul. */
+    missingSince: timestamp("missing_since", { withTimezone: true }),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => [
+    uniqueIndex("traffic_interfaces_key_idx").on(table.routerName, table.ifName),
+    index("traffic_interfaces_enabled_idx").on(table.isEnabled),
+  ],
+);
+
+/**
+ * Satu titik laju.
+ *
+ * Sengaja TANPA kolom `id`, menyimpang dari seluruh skema lain: tabel ini
+ * tumbuh ribuan baris per hari, dan kunci primer gabungan
+ * `(interface_id, sampled_at)` PERSIS indeks yang dibutuhkan tiap kueri.
+ * UUID beserta indeks uniknya adalah biaya tanpa pembeli.
+ *
+ * Counter mentah ikut disimpan. Kalau kelak ketahuan matematikanya salah,
+ * lajunya bisa dihitung ulang dari sini; tanpa itu, satu bug matematika
+ * berarti data yang sudah masuk hilang selamanya.
+ */
+export const trafficSamples = pgTable(
+  "traffic_samples",
+  {
+    interfaceId: text("interface_id")
+      .notNull()
+      .references(() => trafficInterfaces.id, { onDelete: "cascade" }),
+    sampledAt: timestamp("sampled_at", { withTimezone: true }).notNull(),
+    rxBps: doublePrecision("rx_bps").notNull(),
+    txBps: doublePrecision("tx_bps").notNull(),
+    rxByte: bigint("rx_byte", { mode: "bigint" }).notNull(),
+    txByte: bigint("tx_byte", { mode: "bigint" }).notNull(),
+    /** Jarak waktu nyata ke cuplikan sebelumnya — bukan interval yang diasumsikan. */
+    dtMs: integer("dt_ms").notNull(),
+  },
+  (table) => [
+    primaryKey({ columns: [table.interfaceId, table.sampledAt] }),
+  ],
 );
