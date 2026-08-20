@@ -405,6 +405,57 @@ Kedua angka harus sama. Kalau yang pertama > 0 dan yang kedua 0, masalahnya
 dengan menyisipkan baris ke tabel `api_tokens` (`user_id`, `token_hash`,
 `description`, `disabled=0`).
 
+## 11.5. Deteksi gangguan massal
+
+`GET /api/v1/outages` menjawab **"apa yang harus didatangi"**, bukan "berapa
+yang padam". Angka total sendirian tidak bisa dipakai memutuskan apa pun: 39
+padam tersebar di 39 ODP adalah 39 modem yang dicabut sendiri, tidak ada yang
+perlu didatangi. 39 padam dengan 20 di antaranya pada SATU ODP adalah jalur
+putus, dan satu teknisi menyelesaikan 20 keluhan. Angka totalnya sama persis.
+
+```
+diharapkan = odp_customers WHERE subscription_status = 'ACTIVE'
+hadir      = pppoe_sessions.username          (ditulis ulang tiap 60 detik)
+padam      = diharapkan − hadir
+```
+
+**Aturan per tingkat:**
+
+| Tingkat | Menyala bila |
+|---|---|
+| ODP | padam ≥ **2** |
+| OLT | padam ≥ 2 **DAN** ≥ 50% pelanggannya **DAN tersebar di >1 ODP** |
+| SITUS | sama, dihitung atas seluruh pelanggan situs |
+
+Tingkat yang lebih tinggi **menelan** yang lebih rendah — satu situs padam
+tidak boleh muncul sebagai 40 alarm ODP yang mengubur satu-satunya baris
+berguna.
+
+**Syarat "tersebar di lebih dari satu ODP" itu yang paling penting**, dan baru
+terlihat perlunya setelah tesnya dijalankan. Tanpa itu, satu kabel drop yang
+memutus dua tetangga pada ODP yang sama dilaporkan sebagai "OLT padam" — dan
+orang dikirim memeriksa perangkat yang sehat sementara kabel yang putus tidak
+disebut sama sekali. Salahkan tingkat **terdalam** yang masih menjelaskan
+seluruh padamnya.
+
+**Ambang 2 sama dengan CRM, dan itu disengaja.** Dua aplikasi yang menyebut
+angka berbeda untuk gangguan yang sama membuat orang berhenti mempercayai
+keduanya.
+
+**ISOLATED/INACTIVE tidak pernah dihitung.** 85 pelanggan terisolir memang
+tidak online, selamanya; tanpa aturan ini mereka menyalakan gerombol permanen
+yang tidak bisa dipadamkan siapa pun, dan orang berhenti membaca alarmnya
+dalam seminggu.
+
+`padamTersebar` dilaporkan terpisah dan **sengaja tidak jadi alarm** — berguna
+sebagai latar ("29 tersebar" itu hari normal), tapi mendatanginya satu per
+satu bukan pekerjaan siapa pun.
+
+**Keadaan saat ditulis (20 Agustus 2026):** 1.574 pelanggan aktif, **29
+padam, 0 gerombol** — semuanya tersebar satu-satu. Itu jaringan sehat, dan
+jawaban yang benar adalah "tidak ada yang perlu didatangi". Angkanya bergerak
+tiap putaran polling 60 detik; selisih 1–2 antar pembacaan itu normal.
+
 ## 11.4. `probe.sync` — supaya jebakan §11.3 tidak terulang
 
 §11.3 diselesaikan sekali dengan SQL. Itu memperbaiki hari itu saja: aset
