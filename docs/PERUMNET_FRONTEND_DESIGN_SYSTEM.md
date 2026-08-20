@@ -166,16 +166,16 @@ Pada `≤580px`:
 
 ## Checklist Implementasi
 
-- [ ] Menggunakan mark, wordmark, favicon, dan app icon resmi PerumNet.
-- [ ] Login satu-kartu terpusat, bukan desain dua-panel.
-- [ ] Lebar login maksimum `400px`.
-- [ ] Sidebar desktop `264px` dan dark-teal gradient.
-- [ ] Tablet/mobile memakai drawer yang benar-benar dapat dibuka dan ditutup.
-- [ ] Topbar sticky pada viewport tablet/mobile.
-- [ ] Profile menu dapat ditutup dengan Escape dan klik luar.
-- [ ] Tidak ada horizontal overflow di mobile.
-- [ ] Tidak ada perubahan pada backend, API, RBAC, atau autentikasi tanpa instruksi eksplisit.
-- [ ] Diuji secara visual pada desktop, tablet, dan mobile; cek juga console browser.
+- [x] Menggunakan mark, wordmark, favicon, dan app icon resmi PerumNet.
+- [x] Login satu-kartu terpusat, bukan desain dua-panel.
+- [x] Lebar login maksimum `400px`.
+- [x] Sidebar desktop `264px` dan dark-teal gradient.
+- [x] Tablet/mobile memakai drawer yang benar-benar dapat dibuka dan ditutup.
+- [x] Topbar sticky pada viewport tablet/mobile.
+- [x] Profile menu dapat ditutup dengan Escape dan klik luar.
+- [x] Tidak ada horizontal overflow di mobile.
+- [x] Tidak ada perubahan pada backend, API, RBAC, atau autentikasi tanpa instruksi eksplisit.
+- [x] Diuji secara visual pada desktop, tablet, dan mobile; cek juga console browser.
 
 ## Instruksi Singkat untuk AI Implementer
 

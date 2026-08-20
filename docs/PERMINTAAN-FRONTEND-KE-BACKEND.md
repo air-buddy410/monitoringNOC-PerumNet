@@ -21,13 +21,19 @@ field-nya di `docs/HANDOFF-BACKEND-KE-FRONTEND.md`, bukan di sini.
 
 ---
 
-## Terbuka
-
-_(belum ada — silakan diisi)_
-
----
-
 ## Selesai
+
+### ✅ Daftar OLT untuk layar konsol perangkat (T-15) — SELESAI 2026-08-20
+- **Layar:** `/console`
+- **Butuh:** `GET /api/v1/ftth/olts` untuk operator yang sudah login, dengan
+  respons `{ olts: [{ id, name, vendor, model }] }`. `id` harus merupakan
+  `olt_devices.id` yang diterima `POST /api/v1/devices/console`; frontend tidak
+  membutuhkan dan tidak boleh menerima host, port, atau kredensial perangkat.
+- **Kenapa tidak bisa di sisi frontend:** daftar aset memakai `assets.asset_id`,
+  sedangkan endpoint konsol mencari `olt_devices.id`; keduanya tidak selalu
+  sama. Memakai asset ID sebagai pengganti dapat mengarahkan perintah ke OLT
+  yang salah. Endpoint kini tersedia dan layar frontend memakai `olt_devices.id`
+  langsung tanpa menerima host, port, atau kredensial.
 
 ### Sinkronkan kolom `allow_local_login` untuk jalur login portal
 - **Layar:** `/login` → `POST /api/auth/sign-in/portal`

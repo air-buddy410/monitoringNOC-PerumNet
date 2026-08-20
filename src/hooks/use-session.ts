@@ -18,9 +18,9 @@ export interface SessionData {
 }
 
 /** Sesi Better Auth yang sedang aktif (null bila belum login). */
-export function useSession() {
+export function useSession(enabled = true) {
   const { data, isLoading, mutate } = useSWR(
-    "/api/auth/get-session",
+    enabled ? "/api/auth/get-session" : null,
     getJson<SessionData | null>,
     { revalidateOnFocus: false },
   );

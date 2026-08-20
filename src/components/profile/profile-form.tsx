@@ -15,6 +15,7 @@ export default function ProfileForm() {
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [saved, setSaved] = useState(false);
+  const [savedMessage, setSavedMessage] = useState("Profil tersimpan");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -32,6 +33,7 @@ export default function ProfileForm() {
     setSaving(true);
     setError(null);
     setSaved(false);
+    const emailChanged = email.trim().toLowerCase() !== session.user.email;
     try {
       if (name.trim() !== session.user.name) {
         await sendJson("POST", "/api/auth/update-user", { name: name.trim() });
@@ -40,6 +42,11 @@ export default function ProfileForm() {
         await sendJson("PATCH", "/api/profile/email", { email: email.trim() });
       }
       await mutate();
+      setSavedMessage(
+        emailChanged
+          ? "Profil tersimpan. Email baru perlu diverifikasi ulang."
+          : "Profil tersimpan",
+      );
       setSaved(true);
       setTimeout(() => setSaved(false), 3000);
     } catch (err) {
@@ -100,6 +107,12 @@ export default function ProfileForm() {
             value={email}
             onChange={(event) => setEmail(event.target.value)}
           />
+          {email.trim().toLowerCase() !== session.user.email && (
+            <p className="text-xs leading-5 text-muted-foreground">
+              Mengganti email akan mereset status verifikasi. Email baru perlu
+              diverifikasi ulang.
+            </p>
+          )}
         </div>
 
         {error && <p className="text-xs text-[#d03b3b]">{error}</p>}
@@ -111,7 +124,7 @@ export default function ProfileForm() {
           {saved && (
             <span className="flex items-center gap-1 text-xs font-medium text-[#0ca30c]">
               <CircleCheck className="size-3.5" aria-hidden />
-              Profil tersimpan
+              {savedMessage}
             </span>
           )}
         </div>

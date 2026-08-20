@@ -30,9 +30,9 @@ export default function LoginForm() {
         if (err.status === 401) {
           setError(err.message || "Email atau password salah.");
         } else if (err.status === 503) {
-          setError(`Mailserver tidak tersedia. ${err.message}`);
+          setError(err.message || "Mailserver tidak tersedia.");
         } else if (err.status === 429) {
-          setError(`${err.message} Tunggu sebentar sebelum mencoba lagi.`);
+          setError(err.message || "Terlalu banyak percobaan. Tunggu sebentar sebelum mencoba lagi.");
         } else {
           setError(err.message);
         }
