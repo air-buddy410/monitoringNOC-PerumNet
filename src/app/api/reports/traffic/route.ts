@@ -5,6 +5,7 @@ import {
   getTrafficReportRange,
   PERIOD_PATTERN,
 } from "@/server/reports";
+import { withRole } from "@/server/rbac";
 
 export const dynamic = "force-dynamic";
 
@@ -15,14 +16,15 @@ const MAX_RANGE_MONTHS = 12;
  *   ?period=YYYY-MM              → rekap satu bulan
  *   ?from=YYYY-MM&to=YYYY-MM     → agregasi rentang bulan (maks 12 bulan)
  */
-export async function GET(request: Request) {
+export const GET = withRole([], async (request) => {
   const { searchParams } = new URL(request.url);
   const period = searchParams.get("period");
   const from = searchParams.get("from");
   const to = searchParams.get("to");
 
   const headers = {
-    "Cache-Control": "public, s-maxage=300, stale-while-revalidate=60",
+    // Terikat sesi sejak 20 Agustus 2026 — jangan pernah `public`.
+    "Cache-Control": "private, max-age=0, must-revalidate",
   };
 
   if (period) {
@@ -58,4 +60,4 @@ export async function GET(request: Request) {
   }
 
   return NextResponse.json(await getTrafficReportRange(from, to), { headers });
-}
+});
