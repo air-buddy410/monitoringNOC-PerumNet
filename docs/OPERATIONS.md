@@ -175,36 +175,54 @@ Kedua mode masuk lewat alamat yang sama: `POST /api/auth/sign-in/portal`.
    ```
    lalu restart. Uji dengan satu akun biasa **dan** akun darurat.
 
-### Keadaan nyata per 20 Agustus 2026 — kenapa saklarnya belum ditarik
+### HIDUP sejak 20 Agustus 2026
 
-Diperiksa langsung ke produksi, bukan diperkirakan:
+`AUTH_PROVIDER=MAILSERVER` + `MAILSERVER_URL=https://mail.perumnet.id`.
+Cadangan env sebelum perubahan: `~/.env.production.noc.sebelum-mailcow-20260820`.
 
-| Prasyarat | Keadaan |
-|---|---|
-| 1. Migrasi `allow_local_login` | ✅ kolomnya ada di `perumnet_noc` |
-| 2. Alamat email cocok dengan mailcow | ❌ **2 dari 3 akun memakai `@perumnet.co.id`** |
-| 3. Akun darurat | ✅ `admin@perumnet.id` disetel `allow_local_login = true` (20 Agu) |
-| 4. Frontend di `/sign-in/portal` | ✅ T-4 selesai 18 Agustus |
-| 5. `AUTH_PROVIDER` di `.env.production` | belum ada sama sekali → bawaan `LOCAL` |
-
-Prasyarat 2 yang menahan. **`perumnet.co.id` tidak punya MX maupun A record** —
-ia bukan domain email, jadi tidak mungkin ada mailbox-nya di mailcow:
+Yang menahannya sampai pagi itu adalah alamat email: NOC hanya punya tiga akun
+dan dua di antaranya beralamat `@perumnet.co.id` — **domain tanpa MX maupun A
+record**, jadi mailbox-nya tidak mungkin ada.
 
 ```
 $ dig +short MX perumnet.id      → 5 mail.perumnet.id.
 $ dig +short MX perumnet.co.id   → (kosong)
 ```
 
-Menyalakan `MAILSERVER` hari ini berarti dua akun itu **terkunci permanen**,
-dan satu-satunya akun yang tersisa (`admin@perumnet.id`) justru yang sengaja
-dibuat melewati mailcow sebagai pintu darurat — jadi mailcow tidak akan
-memeriksa siapa pun. Yang perlu terjadi lebih dulu adalah membuatkan akun NOC
-dengan alamat `@perumnet.id` yang sungguhan (CRM punya 20), lewat
-`POST /api/users`. Sesudah itu langkah 5 aman dijalankan.
+Diselesaikan dengan mendaftarkan 5 akun beralamat mailbox sungguhan lewat
+`npm run seed:akun -- --dari <berkas di luar repo> --terapkan`. Daftar akunnya
+**tidak ada di repo ini** (repo publik); skripnya menolak berkas daftar yang
+berada di dalam repo.
 
-CRM sendiri **sudah** berjalan di `AUTH_PROVIDER=MAILSERVER` dengan pola yang
-sama: 20 akun `@perumnet.id`, satu di antaranya (`admin@perumnet.id`) memegang
-`allowLocalLogin = true`.
+**Bukti jalur mailcow benar-benar dipakai** — bukan sekadar 401 yang bisa
+datang dari mana saja. `audit_logs` membedakan cabangnya:
+
+| Percobaan | HTTP | `alasan` di audit |
+|---|---|---|
+| akun tim, password salah | 401 | **`ditolak mailserver`** |
+| akun darurat, password salah | 401 | `password lokal salah` |
+| alamat tanpa akun portal | 401 | `akun tidak ditemukan` |
+
+Baris pertama itu yang penting: kalau ada jalan mundur diam-diam ke hash
+lokal, ia akan berbunyi `password lokal salah` seperti baris kedua.
+
+**Dua akun `@perumnet.co.id` sengaja ditinggal.** Keduanya kini tidak bisa
+masuk (bukan mailbox, dan `allow_local_login = false`). Tidak dihapus supaya
+jejaknya di `audit_logs` tidak putus. Menghapusnya kapan saja aman; ia tidak
+mengubah siapa yang bisa masuk.
+
+**`noc@perumnet.id` TIDAK dibuat** — alamat itu tidak ada di mailcow, baik
+sebagai mailbox maupun alias (dicek lewat API, 34 mailbox). Membuat akun
+portal untuknya hanya menghasilkan akun yang tidak akan pernah bisa masuk.
+
+### Yang belum diuji
+
+Cabang **mailserver tak terjawab** (503) tidak diuji di produksi — mengujinya
+berarti mematikan `MAILSERVER_URL` sementara. Cabang itu punya uji unit
+(`tests/mail-auth.test.ts`, `tests/auth-portal.test.ts`), dan bukti di atas
+sudah menunjukkan jalur mailcow memang dipakai. Kalau suatu saat ingin
+dibuktikan langsung: kosongkan `MAILSERVER_URL`, restart, akun tim harus
+menjawab **503** dan akun darurat tetap **401**.
 
 ### Rollback
 
