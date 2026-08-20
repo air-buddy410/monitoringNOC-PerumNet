@@ -252,9 +252,23 @@ describe("probe & daur hidup alarm", () => {
     expect(await hitung("SELECT count(*) AS n FROM probe_results")).toBe(1);
   });
 
-  it("kedua tugas probe MEMBACA saja, jadi boleh menyala secara bawaan", () => {
+  it("ketiga tugas probe tidak BERTINDAK KELUAR, jadi boleh menyala secara bawaan", () => {
+    // Daftar ini sengaja lengkap dan berurutan, bukan sekadar hitungan:
+    // menambah tugas ke PROBE_TASKS harus memaksa seseorang membaca ulang
+    // apakah tugas itu benar-benar boleh menyala sendiri.
+    //
+    // Ukurannya BUKAN "tidak menulis" — ketiganya menulis ke database portal
+    // sendiri, dan itu memang diizinkan (docs/MODE-BACA-SAJA.md). Ukurannya
+    // "tidak bertindak keluar": tidak mengubah konfigurasi perangkat, tidak
+    // mengirim notifikasi, tidak mendorong data ke CRM/ALUS.
+    //
+    // `probe.sync` menulis baris probe_targets dan tidak menyentuh perangkat
+    // sama sekali. Ia memang menyebabkan probe.run menyambung ke alamat baru,
+    // tapi TCP connect yang langsung ditutup tidak mengubah apa pun — dan
+    // probe.run sendiri sudah menyala secara bawaan sejak Fase 9.
     expect(PROBE_TASKS.map((t) => [t.code, t.enabledByDefault])).toEqual([
       ["probe.run", true],
+      ["probe.sync", true],
       ["probe.prune", true],
     ]);
   });

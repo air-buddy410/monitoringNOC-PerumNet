@@ -24,7 +24,14 @@ import net from "node:net";
 import { randomUUID } from "node:crypto";
 import { eq, isNull, lt, sql } from "drizzle-orm";
 import { db } from "@/db";
-import { auditLogs, networkAlarms, probeResults, probeTargets } from "@/db/schema";
+import {
+  assets as assetsTable,
+  auditLogs,
+  networkAlarms,
+  oltDevices,
+  probeResults,
+  probeTargets,
+} from "@/db/schema";
 import type { TaskDefinition } from "@/server/scheduler";
 
 export interface ProbeOutcome {
@@ -252,6 +259,119 @@ export async function openAlarmCount(): Promise<number> {
  * Kedua tugas ini MEMBACA saja, jadi keduanya boleh menyala secara bawaan —
  * sesuai aturan pada `TaskDefinition.enabledByDefault`.
  */
+/** Port bawaan untuk aset yang bukan OLT. */
+export const PORT_PROBE_BAWAAN = 443;
+
+export interface AsetUntukProbe {
+  assetId: string;
+  managementIp: string | null;
+  /** Port konsol bila aset ini sebuah OLT; menentukan port yang diprobe. */
+  telnetPort: number | null;
+}
+
+export interface SasaranUntukSinkron {
+  id: string;
+  address: string;
+  assetId: string | null;
+}
+
+export interface RencanaSinkron {
+  dibuat: { assetId: string; address: string; port: number }[];
+  ditautkan: { id: string; assetId: string }[];
+}
+
+/**
+ * Menghitung apa yang perlu dilakukan supaya tiap aset punya probe yang
+ * tertaut — tanpa menyentuh database, supaya aturannya bisa diuji keras.
+ *
+ * Tiga hal yang SENGAJA tidak dilakukan:
+ *
+ * 1. **Tidak pernah menghapus.** Berhenti memantau sesuatu adalah keputusan,
+ *    bukan efek samping penyelarasan.
+ * 2. **Tidak membajak sasaran yang sudah tertaut ke aset lain.** Kalau dua
+ *    aset berbagi alamat, memindah tautannya diam-diam membuat status satu
+ *    perangkat muncul di perangkat lain.
+ * 3. **Tidak membuat sasaran kedua untuk alamat yang sudah punya** — termasuk
+ *    sasaran yang sengaja dinonaktifkan. Menonaktifkan adalah cara berhenti
+ *    memantau; sinkron tidak boleh menghidupkannya lewat pintu belakang.
+ */
+export function rencanaSinkronProbe(
+  aset: AsetUntukProbe[],
+  sasaran: SasaranUntukSinkron[],
+): RencanaSinkron {
+  const norm = (nilai: string | null | undefined) =>
+    (nilai ?? "").trim().toLowerCase();
+
+  const perAlamat = new Map<string, SasaranUntukSinkron>();
+  for (const s of sasaran) {
+    const alamat = norm(s.address);
+    if (alamat && !perAlamat.has(alamat)) perAlamat.set(alamat, s);
+  }
+
+  const dibuat: RencanaSinkron["dibuat"] = [];
+  const ditautkan: RencanaSinkron["ditautkan"] = [];
+
+  for (const a of aset) {
+    const alamat = norm(a.managementIp);
+    if (!alamat) continue; // Tanpa alamat, tidak ada yang bisa diprobe.
+
+    const ada = perAlamat.get(alamat);
+    if (!ada) {
+      // OLT hanya membuka port konsolnya; menyambung ke 443 di sana berarti
+      // DOWN palsu tiap 60 detik.
+      dibuat.push({
+        assetId: a.assetId,
+        address: alamat,
+        port: a.telnetPort ?? PORT_PROBE_BAWAAN,
+      });
+      continue;
+    }
+    if (!ada.assetId) ditautkan.push({ id: ada.id, assetId: a.assetId });
+  }
+
+  return { dibuat, ditautkan };
+}
+
+/** Menjalankan rencana di atas terhadap database. */
+export async function syncProbeTargets(): Promise<string> {
+  const aset = await db
+    .select({
+      assetId: assetsTable.assetId,
+      managementIp: assetsTable.managementIp,
+      telnetPort: oltDevices.telnetPort,
+    })
+    .from(assetsTable)
+    .leftJoin(oltDevices, eq(oltDevices.assetId, assetsTable.assetId));
+
+  const sasaran = await db
+    .select({
+      id: probeTargets.id,
+      address: probeTargets.address,
+      assetId: probeTargets.assetId,
+    })
+    .from(probeTargets);
+
+  const rencana = rencanaSinkronProbe(aset, sasaran);
+
+  for (const t of rencana.ditautkan) {
+    await db
+      .update(probeTargets)
+      .set({ assetId: t.assetId })
+      .where(eq(probeTargets.id, t.id));
+  }
+  for (const b of rencana.dibuat) {
+    await db.insert(probeTargets).values({
+      id: randomUUID(),
+      name: b.address,
+      address: b.address,
+      port: b.port,
+      assetId: b.assetId,
+    });
+  }
+
+  return `${rencana.dibuat.length} sasaran dibuat · ${rencana.ditautkan.length} ditautkan`;
+}
+
 export const PROBE_TASKS: TaskDefinition[] = [
   {
     code: "probe.run",
@@ -267,6 +387,15 @@ export const PROBE_TASKS: TaskDefinition[] = [
       const tutup = hasil.filter((r) => r.alarmCleared).length;
       return `${hasil.length} sasaran diperiksa · ${down} down · ${naik} alarm naik · ${tutup} alarm ditutup`;
     },
+  },
+  {
+    code: "probe.sync",
+    name: "Selaraskan sasaran probe dengan aset",
+    description:
+      "Menautkan sasaran probe ke asetnya dan membuat sasaran untuk aset yang belum punya. Tidak pernah menghapus.",
+    defaultIntervalSec: 3_600,
+    enabledByDefault: true,
+    run: syncProbeTargets,
   },
   {
     code: "probe.prune",
