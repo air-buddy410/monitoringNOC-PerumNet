@@ -6,18 +6,25 @@ import { CircleCheck } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { useAuthMode } from "@/hooks/use-auth-mode";
 import { useSession } from "@/hooks/use-session";
 import { sendJson } from "@/lib/api/http";
 import { ROLE_LABELS } from "@/types/user";
 
 export default function ProfileForm() {
   const { session, isLoading, mutate } = useSession();
+  const {
+    data: authMode,
+    error: authModeError,
+    isLoading: authModeLoading,
+  } = useAuthMode();
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [saved, setSaved] = useState(false);
   const [savedMessage, setSavedMessage] = useState("Profil tersimpan");
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const emailChangeAvailable = authMode?.emailChangeAvailable === true;
 
   // Prefill sekali per sesi login (pola "adjust state during render").
   const [initializedFor, setInitializedFor] = useState<string | null>(null);
@@ -33,12 +40,13 @@ export default function ProfileForm() {
     setSaving(true);
     setError(null);
     setSaved(false);
-    const emailChanged = email.trim().toLowerCase() !== session.user.email;
+    const emailChanged =
+      emailChangeAvailable && email.trim().toLowerCase() !== session.user.email;
     try {
       if (name.trim() !== session.user.name) {
         await sendJson("POST", "/api/auth/update-user", { name: name.trim() });
       }
-      if (email.trim().toLowerCase() !== session.user.email) {
+      if (emailChanged) {
         await sendJson("PATCH", "/api/profile/email", { email: email.trim() });
       }
       await mutate();
@@ -98,22 +106,37 @@ export default function ProfileForm() {
             onChange={(event) => setName(event.target.value)}
           />
         </div>
-        <div className="space-y-1.5">
-          <Label htmlFor="profile-email">Email</Label>
-          <Input
-            id="profile-email"
-            type="email"
-            required
-            value={email}
-            onChange={(event) => setEmail(event.target.value)}
-          />
-          {email.trim().toLowerCase() !== session.user.email && (
-            <p className="text-xs leading-5 text-muted-foreground">
-              Mengganti email akan mereset status verifikasi. Email baru perlu
-              diverifikasi ulang.
-            </p>
-          )}
-        </div>
+        {authModeLoading ? (
+          <p className="text-xs leading-5 text-muted-foreground" aria-busy="true">
+            Memeriksa aturan perubahan email…
+          </p>
+        ) : authModeError || !authMode ? (
+          <p className="text-xs leading-5 text-destructive" role="alert">
+            Mode login belum dapat dibaca. Isian email ditahan demi keamanan.
+          </p>
+        ) : emailChangeAvailable ? (
+          <div className="space-y-1.5">
+            <Label htmlFor="profile-email">Email</Label>
+            <Input
+              id="profile-email"
+              type="email"
+              required
+              value={email}
+              onChange={(event) => setEmail(event.target.value)}
+            />
+            {email.trim().toLowerCase() !== session.user.email && (
+              <p className="text-xs leading-5 text-muted-foreground">
+                Mengganti email akan mereset status verifikasi. Email baru perlu
+                diverifikasi ulang.
+              </p>
+            )}
+          </div>
+        ) : (
+          <p className="text-xs leading-5 text-muted-foreground">
+            Alamat email adalah identitas login dan tidak dapat diganti dari
+            portal pada mode {authMode.provider}.
+          </p>
+        )}
 
         {error && <p className="text-xs text-[#d03b3b]">{error}</p>}
 

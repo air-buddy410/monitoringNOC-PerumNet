@@ -9,6 +9,7 @@ export interface AuthModeResponse {
   provider: AuthProvider;
   passwordChangeAvailable: boolean;
   passwordRequiredOnCreate: boolean;
+  emailChangeAvailable: boolean;
 }
 
 /**
