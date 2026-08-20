@@ -540,6 +540,61 @@ sampai ada yang mendaftarkan datanya lewat layar.
   dan kapan. Jangan bangun tombol edit/hapus.
 - `authorLabel` terisi nama pengguna; `null` berarti catatan sistem.
 
+### 14. Trafik jaringan — `/api/v1/traffic/*`
+
+Kartu "Trafik jaringan" di `network-telemetry.tsx` sejak lahir bertuliskan
+*"belum tersedia"*. Sekarang datanya ada, dan **nyata**: uplink terbaca
+±3 Gbps masuk / 315 Mbps keluar, per situs juga terpisah.
+
+Trafik diambil worker dari MikroTik tiap **30 detik** dan disimpan; endpoint
+membacanya dari database. **Endpoint tidak pernah menghubungi router** — jadi
+berapa pun jumlah penonton, beban ke perangkat produksi tetap nol.
+
+#### `GET /api/v1/traffic/live` — cukup login
+
+```jsonc
+{
+  "generatedAt": "2026-08-20T…", "sampledAt": "2026-08-20T…",
+  "ageSeconds": 12, "stale": false,
+  "totals": { "uplinkRxBps": 3034700000, "uplinkTxBps": 315300000 },
+  "interfaces": [{
+    "id": "…", "ifName": "sfp-sfpplus1", "label": "Uplink Utama",
+    "role": "uplink",            // uplink | site | other
+    "siteId": null,
+    "rxBps": 3034700000, "txBps": 315300000,
+    "capacityBps": 10000000000, "utilizationPercent": 30.3,
+    "sampledAt": "…", "state": "ok", "missingSince": null
+  }]
+}
+```
+
+#### `GET /api/v1/traffic/series?interfaceId=…&hours=24` — cukup login
+
+`{ interfaceId, label, hours, points: [{ t, rxBps, txBps }], coverage }`
+
+#### Lima hal yang WAJIB benar
+
+1. **Satuannya bps (bit per detik), selalu `number`.** Jangan bikin pembagi
+   sendiri di komponen — kalau butuh formatter bersama, minta saya menambah
+   `formatBitrate` di `src/lib/noc-format.ts`. Dua definisi "Mbps" yang
+   pembulatannya berbeda akan menghasilkan dua angka untuk hal yang sama.
+2. **`state: "belum-ada-data"` BUKAN `rxBps: 0`.** Interface yang baru
+   dipantau belum punya pembanding; lajunya belum ada, bukan nol. Bedakan di
+   layar — nol yang dikarang terbaca sebagai "trafik berhenti".
+3. **`utilizationPercent` bisa `null`.** Jangan jadikan 0. Bar 0% pada uplink
+   3 Gbps lebih menyesatkan daripada tidak ada bar.
+4. **`stale` dan `ageSeconds` harus TERLIHAT.** Layar yang membeku terlihat
+   persis seperti jaringan yang tenang — itu kegagalan paling berbahaya di
+   fitur ini, karena ia terlihat meyakinkan. `stale: true` jangan halus.
+5. **Titik `null` di `series` bukan nol.** `connectNulls={false}`; garis
+   diputus, tidak ditarik ke dasar. Titik hilang saat worker restart atau
+   counter router di-reset — menggambarnya sebagai 0 memunculkan jurang yang
+   tidak pernah terjadi.
+
+`role: "site"` boleh punya `siteId: null` — satu VLAN bisa menaungi lebih dari
+satu situs (`102-VLAN-Seraya` menaungi Seraya Barat DAN Tengah). Pakai
+`label`, jangan menyimpulkan situs dari nama interface.
+
 ### 13. Konsol perangkat — `POST /api/v1/devices/console`
 
 Sebagian OLT tidak mendukung SNMP sama sekali (HSGQ-100-Kecicang), jadi
@@ -681,6 +736,21 @@ Papan permintaan Opus → Luna (`WORKFLOW-TIM.md` §5). Semua di sini murni
 pekerjaan tampilan — datanya sudah tersedia di endpoint yang disebut, tidak
 ada yang perlu ditunggu dari backend. Tandai ✅ dan pindahkan ke §Selesai
 kalau sudah dikerjakan.
+
+### T-20. Kartu trafik di dashboard
+
+- **Layar:** ganti placeholder `src/components/dashboard/network-telemetry.tsx`
+  (baris 24-37 masih menulis "Data dari LibreNMS / belum tersedia").
+- **Butuh:** §14. `recharts` **sudah ada** di dependencies dan sudah dipakai
+  di `src/components/devices/*` — ikuti pola itu, jangan tambah library.
+- **Bentuknya:** angka besar uplink (masuk & keluar) + kurva. SWR 10 detik,
+  `refreshWhenHidden: true` seperti hook dashboard lain.
+- **Lima jebakan ada di §14 dan semuanya nyata** — terutama `null` bukan nol,
+  dan `stale` yang harus terlihat.
+- Rincian per situs sudah tersedia lewat `role: "site"`; menampilkannya
+  sebagai baris kecil di bawah angka besar sudah cukup untuk sekarang.
+- **Kenapa tidak bisa diakali dari backend:** angkanya sudah ada di endpoint;
+  yang belum ada cuma yang menggambarnya.
 
 ### ✅ T-19. Peta membuka di Jakarta, padahal seluruh jaringan di Bali — SELESAI 2026-08-20
 
@@ -1066,6 +1136,10 @@ orang mengetik.
 
 ## Riwayat
 
+- **2026-08-20** — **Trafik nyata masuk portal** (§14). Worker mengambil dari
+  MikroTik tiap 30 detik; endpoint membaca dari database dan TIDAK pernah
+  menghubungi router. Uplink terbaca ±3 Gbps masuk / 315 Mbps keluar, cocok
+  sekelas dengan angka LibreNMS. Tugas T-20.
 - **2026-08-20** — T-19: peta membuka di Jakarta padahal API-nya sudah benar;
   auto-fit tidak pernah terpicu saat pemuatan pertama. Ditemukan dengan
   membuka portal di browser dalam keadaan login.
