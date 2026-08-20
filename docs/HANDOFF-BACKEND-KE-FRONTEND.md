@@ -682,11 +682,12 @@ pekerjaan tampilan — datanya sudah tersedia di endpoint yang disebut, tidak
 ada yang perlu ditunggu dari backend. Tandai ✅ dan pindahkan ke §Selesai
 kalau sudah dikerjakan.
 
-### T-18. Kesehatan penjadwal — satu-satunya bagian portal yang tak terlihat
+### ✅ T-18. Kesehatan penjadwal — SELESAI 2026-08-20
 
-**`GET /api/v1/scheduler` sudah hidup sejak Fase 9 dan sampai hari ini NOL
-layar memanggilnya.** Diperiksa 20 Agustus: tidak ada satu pun rujukan di
-`src/components` maupun `src/app`.
+**T-18 selesai:** `/probe` sekarang membaca `GET /api/v1/scheduler` dan
+menampilkan kesehatan setiap pekerjaan worker. Sebelum implementasi 20
+Agustus, endpoint ini sudah hidup sejak Fase 9 tetapi belum punya layar yang
+membacanya.
 
 - **Layar:** bebas — kartu di `/dashboard`, atau bagian di `/probe` (halaman
   itu sudah menampilkan hasil kerja penjadwal, tinggal menambahkan sumbernya).
@@ -959,6 +960,11 @@ orang mengetik.
 
 ### Selesai
 
+- **T-18** — `/probe` membaca `GET /api/v1/scheduler` dan menampilkan
+  status `stalled` terpisah dari status putaran terakhir, jadwal,
+  keterlambatan, timestamp, durasi, serta hitungan gagal kumulatif. Error,
+  loading, empty, dan data terakhir ditangani; panel bersifat read-only tanpa
+  kontrol untuk menjalankan atau mematikan worker.
 - **T-17** — `/login` membaca `provider` dari `GET /api/auth-mode` dan
   menampilkan keterangan bahwa mode MAILSERVER memakai password email
   (mailcow); mode LOCAL mempertahankan tampilan lama. Label `Username atau
