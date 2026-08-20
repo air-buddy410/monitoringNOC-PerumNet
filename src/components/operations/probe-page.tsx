@@ -10,7 +10,7 @@ import { ApiError, getJson, sendJson } from "@/lib/api/http";
 import { formatAge, formatDateTime, formatNumber } from "@/lib/noc-format";
 import { NocPageHeader, NocMetric, NocPanel, NocState, NocStatus } from "@/components/noc-ui";
 import { useSession } from "@/hooks/use-session";
-import type { ProbeStatus, ProbeTarget, ProbeTargetsResponse, SchedulerResponse } from "@/types/operations";
+import type { ProbeStatus, ProbeTarget, ProbeTargetsResponse, SchedulerResponse, SchedulerTask } from "@/types/operations";
 
 function probeTone(status: ProbeStatus) {
   if (status === "UP") return "positive" as const;
@@ -22,6 +22,46 @@ function probeLabel(status: ProbeStatus) {
   if (status === "UP") return "UP";
   if (status === "DOWN") return "DOWN";
   return "Belum diperiksa";
+}
+
+function schedulerIntervalLabel(intervalSec: number) {
+  if (intervalSec >= 86_400 && intervalSec % 86_400 === 0) {
+    return `Setiap ${intervalSec / 86_400} hari`;
+  }
+  if (intervalSec >= 3_600 && intervalSec % 3_600 === 0) {
+    return `Setiap ${intervalSec / 3_600} jam`;
+  }
+  if (intervalSec >= 60 && intervalSec % 60 === 0) {
+    return `Setiap ${intervalSec / 60} menit`;
+  }
+  return `Setiap ${intervalSec} detik`;
+}
+
+function schedulerDelayLabel(task: SchedulerTask) {
+  if (task.lastRunAt === null || task.overdueSec === null) {
+    return "Belum ada putaran";
+  }
+  if (task.overdueSec <= 0) return "Sesuai jadwal";
+  if (task.overdueSec < 60) return `${task.overdueSec} detik terlambat`;
+  const minutes = Math.floor(task.overdueSec / 60);
+  if (minutes < 60) return `${minutes} menit terlambat`;
+  const hours = Math.floor(minutes / 60);
+  return `${hours} jam terlambat`;
+}
+
+function schedulerDurationLabel(durationMs: number | null) {
+  if (durationMs === null) return "—";
+  if (durationMs < 1_000) return `${durationMs} ms`;
+  return `${(durationMs / 1_000).toFixed(durationMs >= 10_000 ? 0 : 1)} detik`;
+}
+
+function schedulerStatus(task: SchedulerTask) {
+  if (!task.isEnabled) return { label: "Nonaktif", tone: "neutral" as const };
+  if (task.stalled) return { label: "Macet", tone: "danger" as const };
+  if (task.lastRunAt === null) return { label: "Belum jalan", tone: "neutral" as const };
+  if (task.lastStatus === "FAILED") return { label: "Gagal terakhir", tone: "danger" as const };
+  if (task.lastStatus === "SUCCESS") return { label: "Berhasil", tone: "positive" as const };
+  return { label: task.lastStatus ?? "Belum jalan", tone: "neutral" as const };
 }
 
 interface ProbeForm {
@@ -57,11 +97,98 @@ function TargetRow({ target }: { target: ProbeTarget }) {
   );
 }
 
+function SchedulerTaskRow({ task }: { task: SchedulerTask }) {
+  const status = schedulerStatus(task);
+
+  return (
+    <article
+      className={`noc-scheduler-row ${task.stalled ? "is-stalled" : ""} ${!task.isEnabled ? "is-disabled" : ""}`}
+      data-testid={`scheduler-task-${task.code}`}
+    >
+      <div className="noc-scheduler-row-top">
+        <span className="noc-scheduler-icon"><TimerReset aria-hidden="true" /></span>
+        <div className="noc-scheduler-copy">
+          <div className="noc-scheduler-title">
+            <strong>{task.name}</strong>
+            <span className="noc-scheduler-code">{task.code}</span>
+          </div>
+          <small>{task.description || "Tidak ada deskripsi pekerjaan."}</small>
+        </div>
+        <NocStatus label={status.label} tone={status.tone} />
+      </div>
+      <dl className="noc-scheduler-facts">
+        <div className="noc-scheduler-fact">
+          <dt>Jadwal</dt>
+          <dd>{schedulerIntervalLabel(task.intervalSec)}</dd>
+        </div>
+        <div className="noc-scheduler-fact">
+          <dt>Putaran terakhir</dt>
+          <dd>{task.lastRunAt ? formatAge(task.lastRunAt) : "Belum pernah"}</dd>
+          <small>{task.lastRunAt ? formatDateTime(task.lastRunAt) : "Tidak ada timestamp"}</small>
+        </div>
+        <div className="noc-scheduler-fact">
+          <dt>Keterlambatan</dt>
+          <dd>{schedulerDelayLabel(task)}</dd>
+          <small>{task.stalled ? "melewati toleransi macet" : "berdasarkan interval server"}</small>
+        </div>
+        <div className="noc-scheduler-fact">
+          <dt>Putaran / gagal</dt>
+          <dd>{formatNumber(task.runCount)} / {formatNumber(task.failCount)}</dd>
+          <small>gagal kumulatif</small>
+        </div>
+        <div className="noc-scheduler-fact">
+          <dt>Durasi terakhir</dt>
+          <dd>{schedulerDurationLabel(task.lastDurationMs)}</dd>
+          <small>{task.isEnabled ? "dibaca dari server" : "pekerjaan nonaktif"}</small>
+        </div>
+      </dl>
+      {task.lastError && (
+        <p className="noc-scheduler-error">
+          <TriangleAlert aria-hidden="true" />
+          <span>{task.lastError}</span>
+        </p>
+      )}
+    </article>
+  );
+}
+
+function SchedulerPanel({
+  data,
+  error,
+  isLoading,
+}: {
+  data?: SchedulerResponse;
+  error?: unknown;
+  isLoading: boolean;
+}) {
+  const errorMessage = error instanceof ApiError
+    ? error.message
+    : "Status penjadwal tidak dapat dimuat.";
+
+  return (
+    <NocPanel title="Pekerjaan worker" description="Status terakhir, jadwal, dan keterlambatan dibaca dari server. Panel ini hanya melaporkan.">
+      {Boolean(error) && (
+        <NocState kind="error">
+          {data ? `${errorMessage} Data terakhir tetap ditampilkan.` : errorMessage}
+        </NocState>
+      )}
+      {isLoading && !data && !error && <NocState kind="loading">Memuat status worker…</NocState>}
+      {!isLoading && !data && !error && <NocState kind="empty">Status penjadwal belum tersedia.</NocState>}
+      {data && data.tasks.length === 0 && <NocState kind="empty">Belum ada pekerjaan terjadwal.</NocState>}
+      {data && data.tasks.length > 0 && (
+        <div className="noc-scheduler-list">
+          {data.tasks.map((task) => <SchedulerTaskRow key={task.code} task={task} />)}
+        </div>
+      )}
+    </NocPanel>
+  );
+}
+
 export default function ProbePage() {
   const { session } = useSession();
   const canManage = session?.user.role === "admin" || session?.user.role === "noc";
   const { data, error, isLoading, mutate } = useSWR<ProbeTargetsResponse>("/api/v1/probe-targets", getJson<ProbeTargetsResponse>, { refreshInterval: 30_000, revalidateOnFocus: false });
-  const { data: scheduler, error: schedulerError } = useSWR<SchedulerResponse>("/api/v1/scheduler", getJson<SchedulerResponse>, { refreshInterval: 30_000, revalidateOnFocus: false });
+  const { data: scheduler, error: schedulerError, isLoading: schedulerLoading, mutate: mutateScheduler } = useSWR<SchedulerResponse>("/api/v1/scheduler", getJson<SchedulerResponse>, { refreshInterval: 30_000, revalidateOnFocus: false });
   const [form, setForm] = useState<ProbeForm>(emptyForm);
   const [saving, setSaving] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
@@ -69,6 +196,10 @@ export default function ProbePage() {
   const upCount = targets.filter((target) => target.status === "UP").length;
   const downCount = targets.filter((target) => target.status === "DOWN").length;
   const unseenCount = targets.filter((target) => target.status === null).length;
+
+  function refreshData() {
+    void Promise.all([mutate(), mutateScheduler()]);
+  }
 
   async function createTarget(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -95,9 +226,8 @@ export default function ProbePage() {
 
   return (
     <main className="noc-page noc-feature-page">
-      <NocPageHeader title="Probe keterjangkauan" description="Pantau pengukuran TCP milik portal sendiri, terpisah dari incident LibreNMS." action={<Button type="button" variant="outline" size="sm" onClick={() => mutate()}><RefreshCw aria-label="Muat ulang sasaran probe" /> Muat ulang</Button>} />
+      <NocPageHeader title="Probe keterjangkauan" description="Pantau pengukuran TCP milik portal sendiri, terpisah dari incident LibreNMS." action={<Button type="button" variant="outline" size="sm" onClick={refreshData}><RefreshCw aria-label="Muat ulang sasaran probe dan worker" /> Muat ulang</Button>} />
       {scheduler?.workerLikelyDown && <div className="noc-worker-warning"><TriangleAlert aria-hidden="true" /><span><strong>Worker kemungkinan berhenti</strong><small>Data probe dapat membeku sampai worker kembali berjalan.</small></span></div>}
-      {schedulerError && <p className="noc-feature-muted">Status worker belum dapat dibaca.</p>}
       <div className="noc-feature-metrics is-four">
         <NocMetric label="Sasaran" value={formatNumber(targets.length)} note="Terdaftar di portal" />
         <NocMetric label="UP" value={formatNumber(upCount)} note="Respons terakhir berhasil" />
@@ -122,11 +252,7 @@ export default function ProbePage() {
             </form>
           ) : <NocState kind="empty">Pendaftaran probe memerlukan peran admin atau NOC.</NocState>}
         </NocPanel>
-        <NocPanel title="Pekerjaan worker" description="Tanda macet memakai toleransi tiga kali interval.">
-          {!scheduler && <NocState kind="loading">Memuat status worker…</NocState>}
-          {scheduler && scheduler.tasks.length === 0 && <NocState kind="empty">Belum ada pekerjaan terjadwal.</NocState>}
-          {scheduler && scheduler.tasks.length > 0 && <div className="noc-scheduler-list">{scheduler.tasks.map((task) => <div key={task.code} className={`noc-scheduler-row ${task.stalled ? "is-stalled" : ""}`}><span className="noc-scheduler-icon"><TimerReset aria-hidden="true" /></span><span><strong>{task.name}</strong><small>{task.description || task.code}</small></span><span>{task.stalled ? <NocStatus label="Macet" tone="danger" /> : task.lastStatus ? <NocStatus label={task.lastStatus} tone="positive" /> : <NocStatus label="Belum jalan" tone="neutral" />}</span></div>)}</div>}
-        </NocPanel>
+        <SchedulerPanel data={scheduler} error={schedulerError} isLoading={schedulerLoading} />
       </div>
       <NocPanel title="Sasaran terdaftar" description="Status null sengaja ditampilkan netral: belum pernah diperiksa bukan berarti DOWN.">
         {isLoading && <NocState kind="loading">Memuat sasaran probe…</NocState>}
