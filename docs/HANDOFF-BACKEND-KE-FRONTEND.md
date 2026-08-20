@@ -906,6 +906,11 @@ kalau sudah dikerjakan.
 
 ## Riwayat
 
+- **2026-08-20** — **577 ODP kini tertaut ke OLT-nya** (sebelumnya `oltId`
+  kosong semua, dan `odpCount` di §13.1 selalu 0). `/ftth` sekarang bisa
+  dikelompokkan per OLT kalau itu membantu — 6 OLT, terbesar 180 ODP.
+  Perhatikan **Kecicang punya DUA OLT**: jangan kelompokkan per situs dan
+  menganggapnya sama dengan per OLT.
 - **2026-08-20** — **Login satu pintu mailcow HIDUP di produksi.**
   `AUTH_PROVIDER=MAILSERVER`. 8 akun: 5 lewat mailcow, `admin@perumnet.id`
   akun darurat, 2 akun `@perumnet.co.id` lama kini tidak bisa masuk (domainnya
