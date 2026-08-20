@@ -211,18 +211,48 @@ masuk (bukan mailbox, dan `allow_local_login = false`). Tidak dihapus supaya
 jejaknya di `audit_logs` tidak putus. Menghapusnya kapan saja aman; ia tidak
 mengubah siapa yang bisa masuk.
 
-**`noc@perumnet.id` TIDAK dibuat** — alamat itu tidak ada di mailcow, baik
-sebagai mailbox maupun alias (dicek lewat API, 34 mailbox). Membuat akun
-portal untuknya hanya menghasilkan akun yang tidak akan pernah bisa masuk.
+**`noc@perumnet.id` mailbox-nya dibuat 20 Agustus** atas permintaan pemilik —
+sebelumnya alamat itu tidak ada di mailcow, baik sebagai mailbox maupun alias
+(dicek lewat API, saat itu 34 mailbox). Akun portalnya lalu didaftarkan dengan
+peran `noc`. Jadi total **7 akun** beralamat `@perumnet.id`.
 
-### Yang belum diuji
+### Login berhasil — dibuktikan, bukan diperkirakan
 
-Cabang **mailserver tak terjawab** (503) tidak diuji di produksi — mengujinya
-berarti mematikan `MAILSERVER_URL` sementara. Cabang itu punya uji unit
-(`tests/mail-auth.test.ts`, `tests/auth-portal.test.ts`), dan bukti di atas
-sudah menunjukkan jalur mailcow memang dipakai. Kalau suatu saat ingin
-dibuktikan langsung: kosongkan `MAILSERVER_URL`, restart, akun tim harus
+Karena sandi awal `noc@perumnet.id` memang baru dibuat, jalur lengkapnya bisa
+diuji tanpa memakai sandi siapa pun:
+
+```
+POST /api/auth/sign-in/portal  {"email":"noc@perumnet.id","password":<sandi email>}
+  → 200
+audit_logs: login.berhasil | {"mode":"MAILSERVER","jalur":"mailserver"}
+```
+
+`jalur: mailserver` itu yang menutup pertanyaannya — password diperiksa ke
+mailcow lewat IMAPS, bukan ke hash lokal (akun ini memang tidak punya hash).
+
+Sesi yang sama dipakai untuk membuktikan §13.1 di produksi: 6 OLT,
+`konsolSiap: true` semuanya, `siteName` terisi, `credentialRef` tidak ikut
+terkirim.
+
+### Yang masih belum diuji
+
+Cabang **mailserver tak terjawab** (503). Mengujinya berarti mematikan
+`MAILSERVER_URL` sementara. Cabang itu punya uji unit
+(`tests/mail-auth.test.ts`, `tests/auth-portal.test.ts`). Kalau suatu saat
+ingin dibuktikan langsung: kosongkan `MAILSERVER_URL`, restart, akun tim harus
 menjawab **503** dan akun darurat tetap **401**.
+
+### Kotak surat bersama melemahkan audit
+
+`noc@perumnet.id` dan `it@perumnet.id` adalah kotak surat **bersama**, bukan
+orang. Keduanya berperan `noc`/`admin`, jadi keduanya boleh membuka konsol
+perangkat (§13) — dan setiap perintah akan tercatat di `audit_logs` sebagai
+satu nama yang sama, siapa pun yang mengetiknya. Pada endpoint yang paling
+berisiko di aplikasi ini, itu berarti jejaknya tidak bisa menunjuk siapa pun.
+
+Belum diubah karena peran itu yang diminta pemilik. Kalau kelak jejak per orang
+lebih penting daripada kemudahan akun bersama, turunkan keduanya ke `engineer`
+dan biarkan orang memakai alamat pribadinya untuk konsol.
 
 ### Rollback
 
