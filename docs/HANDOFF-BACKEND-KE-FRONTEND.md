@@ -682,11 +682,11 @@ pekerjaan tampilan — datanya sudah tersedia di endpoint yang disebut, tidak
 ada yang perlu ditunggu dari backend. Tandai ✅ dan pindahkan ke §Selesai
 kalau sudah dikerjakan.
 
-### T-19. Peta membuka di Jakarta, padahal seluruh jaringan di Bali
+### ✅ T-19. Peta membuka di Jakarta, padahal seluruh jaringan di Bali — SELESAI 2026-08-20
 
 Ditemukan 20 Agustus dengan membuka portal di browser dalam keadaan login —
 tidak terlihat dari kode HTTP mana pun, dan tidak terlihat dari isi API:
-**API-nya benar.**
+**API-nya benar. T-19 kini selesai di sisi frontend.**
 
 `GET /api/devices/geo` memulangkan ketujuh perangkat dengan koordinat Bali
 (115.58–115.67, −8.39…−8.46). Tapi `/dashboard` dan `/map` membuka di
@@ -1003,6 +1003,10 @@ orang mengetik.
 
 ### Selesai
 
+- **T-19** — Auto-fit peta kini terpicu sekali saat perangkat pertama kali
+  tersedia, tetap mengikuti perubahan filter, dan tidak terbang ulang pada
+  refresh polling biasa. Placeholder kode/koordinat form ODP dan situs sudah
+  memakai konteks Bali (`BALI`, `-8.400000`, `115.600000`).
 - **T-18** — `/probe` membaca `GET /api/v1/scheduler` dan menampilkan
   status `stalled` terpisah dari status putaran terakhir, jadwal,
   keterlambatan, timestamp, durasi, serta hitungan gagal kumulatif. Error,

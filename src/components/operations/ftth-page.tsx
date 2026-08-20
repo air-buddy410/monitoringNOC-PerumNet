@@ -157,13 +157,13 @@ export default function FtthPage() {
           {canManage ? (
             <form className="noc-feature-form" onSubmit={createOdp}>
               <div className="noc-form-grid is-two">
-                <div className="noc-field"><Label htmlFor="odp-code">Kode ODP</Label><Input id="odp-code" required value={form.code} onChange={(event) => setForm({ ...form, code: event.target.value })} placeholder="ODP-JKT-001" /></div>
+                <div className="noc-field"><Label htmlFor="odp-code">Kode ODP</Label><Input id="odp-code" required value={form.code} onChange={(event) => setForm({ ...form, code: event.target.value })} placeholder="ODP-BALI-001" /></div>
                 <div className="noc-field"><Label htmlFor="odp-name">Nama ODP</Label><Input id="odp-name" required value={form.name} onChange={(event) => setForm({ ...form, name: event.target.value })} placeholder="ODP Melati 01" /></div>
                 <div className="noc-field"><Label htmlFor="odp-capacity">Kapasitas port</Label><Input id="odp-capacity" required type="number" min={1} max={256} value={form.capacity} onChange={(event) => setForm({ ...form, capacity: event.target.value })} /></div>
                 <div className="noc-field"><Label htmlFor="odp-site">Situs <span>(opsional)</span></Label><select id="odp-site" className="noc-field-select" value={form.siteId} onChange={(event) => setForm({ ...form, siteId: event.target.value })}><option value="">Tanpa situs</option>{sites.map((site) => <option key={site.id} value={site.id}>{site.code} · {site.name}</option>)}</select></div>
                 <div className="noc-field"><Label htmlFor="odp-olt">OLT ID <span>(opsional)</span></Label><Input id="odp-olt" value={form.oltId} onChange={(event) => setForm({ ...form, oltId: event.target.value })} placeholder="asset ID OLT" /></div>
-                <div className="noc-field"><Label htmlFor="odp-lat">Latitude <span>(opsional)</span></Label><Input id="odp-lat" inputMode="decimal" value={form.latitude} onChange={(event) => setForm({ ...form, latitude: event.target.value })} placeholder="-6.2" /></div>
-                <div className="noc-field"><Label htmlFor="odp-lng">Longitude <span>(opsional)</span></Label><Input id="odp-lng" inputMode="decimal" value={form.longitude} onChange={(event) => setForm({ ...form, longitude: event.target.value })} placeholder="106.8" /></div>
+                <div className="noc-field"><Label htmlFor="odp-lat">Latitude <span>(opsional)</span></Label><Input id="odp-lat" inputMode="decimal" value={form.latitude} onChange={(event) => setForm({ ...form, latitude: event.target.value })} placeholder="-8.400000" /></div>
+                <div className="noc-field"><Label htmlFor="odp-lng">Longitude <span>(opsional)</span></Label><Input id="odp-lng" inputMode="decimal" value={form.longitude} onChange={(event) => setForm({ ...form, longitude: event.target.value })} placeholder="115.600000" /></div>
               </div>
               {formError && <NocState kind="error">{formError}</NocState>}
               <Button type="submit" disabled={saving}><Plus aria-hidden="true" /> {saving ? "Menyimpan…" : "Simpan ODP"}</Button>
