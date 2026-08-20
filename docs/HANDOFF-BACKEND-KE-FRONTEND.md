@@ -685,7 +685,12 @@ kalau sudah dikerjakan.
 ### T-17. Layar login masih menjanjikan cara masuk yang sudah tidak berlaku
 
 Ditemukan Opus 20 Agustus saat memeriksa `/login` di browser, sesudah mode
-mailserver menyala. Dua hal kecil, satu di antaranya bikin orang buntu.
+mailserver menyala.
+
+> **Yang tersisa tinggal SATU: butir kedua.** Butir pertama sudah dibatalkan
+> (diselesaikan dari sisi server), jadi jangan sampai tugas ini dianggap
+> selesai hanya karena butir pertama dicoret. Selama layar login belum
+> menyebut "password email", T-17 masih terbuka.
 
 - ~~Label `Username atau Email` — hanya email yang berfungsi.~~
   **Dibatalkan 20 Agustus:** pemilik memilih menyelesaikannya dari sisi
