@@ -123,18 +123,25 @@ export async function verifikasiToken(
   return { ok: true, id: row.id, name: row.name, expiresAt: row.expiresAt };
 }
 
-/** Dipanggil tiap permintaan snapshot — itulah yang membuat pencabutan seketika. */
-export async function tokenMasihBerlaku(
+/**
+ * Dipanggil tiap permintaan snapshot — itulah yang membuat pencabutan seketika.
+ *
+ * Mengembalikan tanggal kedaluwarsa TOKEN, bukan sekadar ya/tidak, karena
+ * pemanggilnya memakainya untuk memperbarui cookie tanpa pernah melampaui
+ * masa berlaku tokennya sendiri. `null` berarti tidak dikenal, dicabut, atau
+ * sudah kedaluwarsa — ketiganya sama saja bagi layar.
+ */
+export async function berlakuSampai(
   tokenId: string,
   now = new Date(),
-): Promise<boolean> {
+): Promise<Date | null> {
   const [row] = await db
     .select({ revokedAt: tvTokens.revokedAt, expiresAt: tvTokens.expiresAt })
     .from(tvTokens)
     .where(eq(tvTokens.id, tokenId))
     .limit(1);
-  if (!row || row.revokedAt) return false;
-  return row.expiresAt.getTime() > now.getTime();
+  if (!row || row.revokedAt) return null;
+  return row.expiresAt.getTime() > now.getTime() ? row.expiresAt : null;
 }
 
 export async function cabutToken(

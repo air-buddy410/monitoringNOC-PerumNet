@@ -80,12 +80,26 @@ export async function POST(request: Request) {
 
   // Notifikasi outbound ke CRM (best-effort, fire-and-forget — kegagalan
   // tidak memengaruhi respons ingress; retry internal di crm-webhook).
+  //
+  // `.catch` WAJIB, dan bukan demi kerapian: janji yang ditolak tanpa
+  // penangkap adalah unhandled rejection, dan Node 22 mengakhiri prosesnya.
+  // `notifyCrm` menembak jaringan keluar — CRM mati, DNS meleset, atau TLS
+  // gagal adalah kejadian biasa, bukan luar biasa. Tanpa penangkap, satu
+  // alert dari LibreNMS pada saat CRM sedang tumbang cukup untuk menjatuhkan
+  // portal NOC — persis pada menit ketika ia paling dibutuhkan.
   if (incident.incidentId) {
-    void getIncidentById(incident.incidentId).then((row) => {
-      if (row) {
-        void notifyCrm(row, incident.state === "resolved" ? "recovered" : "open");
-      }
-    });
+    void getIncidentById(incident.incidentId)
+      .then((row) => {
+        if (row) {
+          return notifyCrm(
+            row,
+            incident.state === "resolved" ? "recovered" : "open",
+          );
+        }
+      })
+      .catch((e) => {
+        console.error("[librenms-alerts] notifikasi CRM gagal:", e);
+      });
   }
 
   const body: LibrenmsAlertIngestResponse = {

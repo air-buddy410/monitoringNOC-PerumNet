@@ -575,9 +575,12 @@ berapa pun jumlah penonton, beban ke perangkat produksi tetap nol.
 #### Lima hal yang WAJIB benar
 
 1. **Satuannya bps (bit per detik), selalu `number`.** Jangan bikin pembagi
-   sendiri di komponen — kalau butuh formatter bersama, minta saya menambah
-   `formatBitrate` di `src/lib/noc-format.ts`. Dua definisi "Mbps" yang
-   pembulatannya berbeda akan menghasilkan dua angka untuk hal yang sama.
+   sendiri di komponen. **`formatBitrate` sekarang SUDAH ADA** di
+   `src/lib/noc-format.ts` — pakai itu (`3.034.700.000` → `3,03 Gbps`).
+   Pembaginya 1000, bukan 1024, supaya angka portal sama persis dengan angka
+   yang sama di LibreNMS; selisih ~7% terlalu kecil untuk terlihat salah dan
+   terlalu besar untuk diabaikan. Dua definisi "Mbps" yang pembulatannya
+   berbeda akan menghasilkan dua angka untuk hal yang sama.
 2. **`state: "belum-ada-data"` BUKAN `rxBps: 0`.** Interface yang baru
    dipantau belum punya pembanding; lajunya belum ada, bukan nol. Bedakan di
    layar — nol yang dikarang terbaca sebagai "trafik berhenti".
@@ -668,6 +671,140 @@ sendiri dari alamat yang diketik orang.
 
 ---
 
+### 15. Mode TV — wallboard `/tv`
+
+Layar monitor yang digantung di ruang NOC. Tidak ada yang login di sana, tidak
+ada keyboard, dan tidak ada yang menungguinya. Seluruh rancangan di bawah lahir
+dari tiga kenyataan itu.
+
+Backend-nya sudah hidup di produksi sejak 20 Agustus (commit `dd7841b`).
+Tabelnya `tv_tokens`, dan sampai hari ini **belum ada satu token pun** — karena
+layarnya memang belum dibuat. Itu tugas T-21 dan T-22.
+
+#### Cara sebuah layar tersambung
+
+```
+1. Admin menerbitkan token  → POST /api/v1/tv/tokens      → dapat `url`
+2. URL dibuka di TV          → /tv#token=…                 (FRAGMEN, bukan query)
+3. Halaman menukar token     → POST /api/v1/tv/session     → cookie HttpOnly
+4. Halaman membersihkan URL  → history.replaceState(null, "", "/tv")
+5. Halaman polling           → GET /api/v1/tv/snapshot     → seluruh isi layar
+```
+
+**`/tv` publik di `src/proxy.ts` DENGAN SENGAJA** — bukan kelalaian. Wallboard
+tidak punya keyboard; pengalihan ke `/login` berarti layar mati permanen sampai
+ada orang datang membawanya. Penjagaannya token, bukan sesi.
+
+#### `GET /api/v1/tv/snapshot` — satu permintaan untuk SELURUH layar
+
+Satu-satunya endpoint yang menerima cookie TV. Halaman `/tv` **tidak boleh
+memanggil endpoint lain mana pun** — semuanya akan menjawab 401, termasuk
+`/api/v1/traffic/live` yang isinya mirip.
+
+```jsonc
+{
+  "generatedAt": "2026-08-21T01:20:00.000Z",   // satu umur data untuk semuanya
+  "traffic": { /* persis bentuk §14 GET /traffic/live — lima aturannya berlaku */ },
+  "devices": {
+    "total": 7, "online": 7, "warning": 0, "offline": 0,
+    "markers": [{ "id": "…", "label": "OLT Kecicang",
+                  "lat": -8.44, "lng": 115.58, "status": "online" }]
+  },
+  "outages": {
+    "clusters": [{ "level": "ODP",      // SITUS | OLT | ODP
+                   "id": "…", "name": "ODP-KCC-012",
+                   "padam": 6, "total": 8 }],
+    "padamTotal": 21, "padamTersebar": 15, "aktifTotal": 1715
+  },
+  "incidents": [{ "id": "…", "deviceName": "OLT Kecicang",
+                  "message": "PON 1/1 turun", "severity": "critical",
+                  "state": "active", "triggeredAt": "…" }],   // maks 10, yang belum resolved
+  "pppoe": { "current": 1603, "lastRunStatus": "SUCCESS",
+             "trend": [{ "t": "…", "count": 1603 }] }          // ±96 titik, 24 jam
+}
+```
+
+`401` = tautan belum ditukar, sudah dicabut, atau kedaluwarsa. Ketiganya
+sengaja tidak dibedakan.
+
+#### `POST /api/v1/tv/session` — menukar token jadi cookie
+
+Body `{ "token": "…" }`. Jawaban `200 { ok: true, name }`, dan cookie HttpOnly
+terpasang. `400` body bukan JSON / token kosong, `401` tidak berlaku,
+`429` lebih dari 10 percobaan per menit per IP.
+
+Token dikirim di **body**, bukan query, supaya ia tidak pernah masuk access
+log, log Next, maupun header `Referer` ke pihak ketiga.
+
+#### `GET`/`POST /api/v1/tv/tokens` dan `POST /api/v1/tv/tokens/:id/revoke` — admin
+
+`GET` → `{ tokens: [{ id, name, tokenPrefix, createdAt, expiresAt, lastUsedAt,
+useCount, revokedAt }] }`. **Tidak pernah memuat token maupun hash-nya** — yang
+ada hanya 8 karakter pertama, untuk mencocokkan mana yang mana.
+
+`POST` body `{ name, expiresInDays? }` (bawaan 90 hari, maksimum 365) →
+`201 { id, name, token, url, expiresAt, peringatan }`.
+
+> **`token` dan `url` hanya ada di jawaban ini, sekali, selamanya.** Yang
+> tersimpan cuma SHA-256-nya. Kalau layar menutup dialog tanpa orangnya sempat
+> menyalin, satu-satunya jalan adalah menerbitkan token baru.
+
+`POST …/revoke` → `{ ok: true }`, atau `404`. **Berlaku seketika**: layar mati
+pada polling berikutnya, bukan saat cookie habis.
+
+#### Delapan hal yang WAJIB benar
+
+1. **Token ada di FRAGMEN, dan fragmen harus tetap di sisi klien.** Jangan
+   pernah memindahkannya ke query string, ke `<img src>`, ke state yang
+   ter-serialize ke server, atau ke `localStorage`. Fragmen tidak pernah
+   dikirim ke server — itulah satu-satunya alasan token ini tidak berakhir di
+   access log Nginx dan di header `Referer` ke `basemaps.cartocdn.com` setiap
+   kali peta memuat tile.
+2. **Bersihkan URL segera setelah penukaran berhasil.**
+   `history.replaceState(null, "", "/tv")`. TV menyala di ruangan yang orang
+   luar bisa masuki; token yang terpampang di address bar bisa difoto.
+3. **Coba `snapshot` DULU, baru fragmen.** Saat halaman dimuat ulang (listrik
+   kedip, browser restart), fragmennya sudah lama dibuang tapi cookienya masih
+   sah — layar harus langsung hidup lagi tanpa siapa pun datang. Urutannya:
+   `GET snapshot` → kalau 200 jalan terus; kalau 401 baru lihat fragmen; kalau
+   fragmen juga tidak ada, tampilkan pesan "layar belum tersambung".
+4. **401 di tengah jalan JANGAN dialihkan ke `/login`.** Itu tautan yang
+   dicabut atau kedaluwarsa. Tampilkan pesan tenang di layar itu sendiri —
+   redirect ke halaman login pada TV tanpa keyboard hanya menghasilkan layar
+   mati yang tidak bisa dijelaskan siapa pun di ruangan.
+5. **`generatedAt` harus TERLIHAT, dan `traffic.stale` jangan halus.** Ini
+   aturan §14 nomor 4, dan di sini bobotnya lebih berat: wallboard adalah layar
+   yang tidak ditunggui. Layar beku terlihat persis seperti jaringan yang
+   tenang — kegagalan paling berbahaya di seluruh fitur ini, karena ia terlihat
+   meyakinkan.
+6. **Seluruh lima aturan §14 berlaku apa adanya untuk `traffic`.** `null` bukan
+   nol, `utilizationPercent` bisa `null`, titik hilang diputus bukan ditarik ke
+   dasar.
+7. **`outages.clusters` tidak memuat username pelanggan, dan itu disengaja.**
+   Sampai 21 Agustus 2026 ia memuatnya — daftar username PPPoE mengalir utuh ke
+   layar terbuka, dan ke siapa pun yang tautannya bocor. Sudah ditutup di
+   backend (`rapikanPadam`, `tests/tv-snapshot-sanitize.test.ts`). Jangan
+   memintanya kembali: angka "6 dari 8 padam di ODP-KCC-012" sudah cukup untuk
+   mengirim teknisi, dan nama pelanggan tidak menambah apa pun yang berguna di
+   dinding ruangan.
+8. **Rancang untuk mata dari 3 meter, bukan untuk mouse.** Tidak ada hover,
+   tidak ada tooltip sebagai satu-satunya jalan ke informasi, tidak ada modal,
+   tidak ada yang perlu diklik. Angka besar, kontras tinggi, jangan font tipis.
+   Halaman harus sanggup menyala berhari-hari tanpa disentuh — hati-hati
+   dengan `setInterval` yang menumpuk dan memori yang merayap naik.
+
+#### Yang sudah diurus backend, jangan diakali di layar
+
+- **Cookie diperbarui tiap permintaan snapshot yang sah**, jadi layar yang
+  dibiarkan menyala tidak akan mati sendiri pada jam ke-12. Perpanjangan tidak
+  pernah melampaui masa berlaku token, dan pencabutan tetap seketika
+  (`tests/tv-snapshot-cookie.test.ts`). Kamu tidak perlu menyimpan token untuk
+  menukar ulang — jangan.
+- **Muatan sudah dipangkas**: tidak ada IP, hostname, vendor, model, nomor
+  seri, maupun username. Kalau sebuah kolom terasa kurang, tulis di
+  `PERMINTAAN-FRONTEND-KE-BACKEND.md` — jangan cari jalan lain.
+- **`Referrer-Policy: no-referrer`** sudah dipasang di `next.config`.
+
 ## Jebakan nama & bentuk
 
 Yang paling sering salah tebak, dikumpulkan di satu tempat:
@@ -708,10 +845,17 @@ berubah, dan jangan tunjukkan angkanya sebagai fakta operasional.
 - **Laporan SLA & trafik di-seed otomatis** untuk periode yang belum ada
   datanya (`seedSlaIfMissing`, `seedTrafficIfMissing`). Angka periode lama
   bukan hasil pengukuran.
-- **Tiga endpoint belum memeriksa login**: `/api/dashboard/summary`,
-  `/api/reports/sla`, `/api/reports/traffic`. Ini akan ditutup dari sisi
-  backend — jangan bangun layar yang bergantung pada endpoint ini bisa
-  diakses tanpa sesi.
+- ~~**Tiga endpoint belum memeriksa login**~~ — **SUDAH DITUTUP.**
+  `/api/dashboard/summary`, `/api/reports/sla`, dan `/api/reports/traffic`
+  ketiganya kini memakai `withRole([])`. Catatan lama ini sempat bertahan
+  setelah lubangnya ditambal; layar boleh bergantung pada ketiganya seperti
+  endpoint lain.
+- **⚠️ `GET /api/reports/sla` sedang 500 di PRODUKSI** (24 kali di log PM2,
+  terakhir 20 Agustus 18:00). Bukan salah layar: `seedSlaIfMissing` menulis
+  baris laporan karangan dengan asset ID fixture yang tidak ada di tabel
+  `assets` produksi, dan foreign key menolaknya. `/api/reports/traffic` punya
+  cacat yang sama persis tapi belum pernah kena. **Sedang saya kerjakan** —
+  jangan menambal gejalanya di sisi layar.
 - **Rate limit webhook LibreNMS masih in-memory per proses** (10 permintaan
   per 10 detik per IP); di produksi multi-instance akan pindah ke Redis.
 
@@ -737,20 +881,50 @@ pekerjaan tampilan — datanya sudah tersedia di endpoint yang disebut, tidak
 ada yang perlu ditunggu dari backend. Tandai ✅ dan pindahkan ke §Selesai
 kalau sudah dikerjakan.
 
-### T-20. Kartu trafik di dashboard
+### T-21. Wallboard `/tv` — layar yang digantung di ruang NOC
 
-- **Layar:** ganti placeholder `src/components/dashboard/network-telemetry.tsx`
-  (baris 24-37 masih menulis "Data dari LibreNMS / belum tersedia").
-- **Butuh:** §14. `recharts` **sudah ada** di dependencies dan sudah dipakai
-  di `src/components/devices/*` — ikuti pola itu, jangan tambah library.
-- **Bentuknya:** angka besar uplink (masuk & keluar) + kurva. SWR 10 detik,
-  `refreshWhenHidden: true` seperti hook dashboard lain.
-- **Lima jebakan ada di §14 dan semuanya nyata** — terutama `null` bukan nol,
-  dan `stale` yang harus terlihat.
-- Rincian per situs sudah tersedia lewat `role: "site"`; menampilkannya
-  sebagai baris kecil di bawah angka besar sudah cukup untuk sekarang.
-- **Kenapa tidak bisa diakali dari backend:** angkanya sudah ada di endpoint;
-  yang belum ada cuma yang menggambarnya.
+- **Layar:** halaman **baru** `src/app/tv/page.tsx`. Sekarang belum ada sama
+  sekali, jadi `/tv` menjawab 404 padahal `src/proxy.ts` sudah membukanya untuk
+  publik dan seluruh backendnya sudah hidup di produksi.
+- **Butuh:** §15. Satu endpoint saja: `GET /api/v1/tv/snapshot`. Jangan panggil
+  yang lain — semuanya 401 di halaman ini.
+- **Bentuknya:** satu layar 16:9 penuh, tanpa nav, tanpa sidebar, tanpa scroll.
+  Isi yang tersedia: angka uplink masuk/keluar + kurva, hitungan perangkat
+  online/warning/offline, peta penanda, gerombolan padam, daftar insiden aktif,
+  dan sesi PPPoE + trennya. Susun sesukamu — yang penting terbaca dari 3 meter.
+- **Polling:** 10 detik, sama seperti hook dashboard lain. `refreshWhenHidden:
+  true` — TV tidak pernah "fokus".
+- **Angkanya pakai `formatBitrate`** dari `src/lib/noc-format.ts` (baru,
+  21 Agustus). Jangan tulis pemformat sendiri di halaman ini — dinding ruangan
+  bukan tempat yang baik untuk menemukan bahwa dua layar menyebut angka yang
+  sama dengan dua cara.
+- **Delapan jebakannya ada di §15 dan semuanya nyata.** Yang paling mudah
+  terlewat: nomor 3 (coba `snapshot` dulu, baru fragmen — supaya layar hidup
+  lagi sendiri setelah listrik kedip) dan nomor 4 (401 jangan dialihkan ke
+  `/login`).
+- **Peta:** `basemaps.cartocdn.com` ikut termuat di layar ini. Itu sebabnya
+  token ada di fragmen dan `Referrer-Policy: no-referrer` dipasang — jangan
+  ubah salah satunya.
+- **Kenapa tidak bisa diakali dari backend:** seluruh datanya sudah ada dalam
+  satu muatan. Yang belum ada hanya yang menggambarnya.
+
+### T-22. Layar kelola token TV (admin)
+
+- **Layar:** tambahan di area admin yang sudah ada (`/users` terasa paling
+  wajar; kalau menurutmu halaman sendiri lebih baik, silakan).
+- **Butuh:** §15 — `GET`/`POST /api/v1/tv/tokens`, `POST
+  /api/v1/tv/tokens/:id/revoke`. Semuanya `admin` saja.
+- **Bentuknya:** daftar token (nama, `tokenPrefix`, kapan dibuat, kedaluwarsa,
+  terakhir dipakai, berapa kali, dicabut atau belum) + tombol terbitkan +
+  tombol cabut dengan konfirmasi.
+- **Satu hal yang tidak boleh salah:** `token` dan `url` hanya muncul **sekali**
+  di jawaban `POST`, dan tidak bisa dibaca lagi dari mana pun. Tampilkan besar,
+  sediakan tombol salin, dan katakan terus terang bahwa menutup dialog berarti
+  harus menerbitkan token baru. Jangan simpan ke `localStorage` "supaya aman" —
+  itu justru memindahkannya ke tempat yang tidak pernah kedaluwarsa.
+- **Kenapa tidak bisa diakali dari backend:** token tidak akan pernah ada
+  sampai ada layar yang bisa menerbitkannya. Sekarang `tv_tokens` masih kosong,
+  jadi T-21 pun belum bisa diuji di luar dev tanpa ini.
 
 ### ✅ T-19. Peta membuka di Jakarta, padahal seluruh jaringan di Bali — SELESAI 2026-08-20
 
@@ -1073,6 +1247,10 @@ orang mengetik.
 
 ### Selesai
 
+- **T-20** — Kartu trafik dashboard kini membaca live/series traffic dengan
+  polling SWR 10 detik, menampilkan angka uplink masuk/keluar dalam bps,
+  kurva 24 jam yang memutus titik `null`, status stale/umur data, serta baris
+  per situs yang membedakan `belum-ada-data`, `hilang`, dan utilisasi `null`.
 - **T-19** — Auto-fit peta kini terpicu sekali saat perangkat pertama kali
   tersedia, tetap mengikuti perubahan filter, dan tidak terbang ulang pada
   refresh polling biasa. Placeholder kode/koordinat form ODP dan situs sudah
@@ -1136,6 +1314,33 @@ orang mengetik.
 
 ## Riwayat
 
+- **2026-08-21** — `formatBitrate` masuk `src/lib/noc-format.ts`, jadi
+  satu-satunya pemformat bitrate di repo ini. Dijanjikan di §14 nomor 1 sejak
+  20 Agustus tapi belum pernah ada, jadi T-20 terpaksa menampilkan bps mentah.
+  Pembaginya 1000 (desimal), bukan 1024 — ada tesnya, karena selisih 7% dari
+  LibreNMS adalah jenis salah yang paling lama tidak ketahuan.
+- **2026-08-21** — **Mode TV punya kontraknya** (§15) + tugas T-21 dan T-22.
+  Backendnya sudah hidup di produksi sejak 20 Agustus, tapi tidak ada layar,
+  tidak ada kontrak, dan `tv_tokens` masih kosong — fitur yang jadi tapi tidak
+  bisa dipakai siapa pun.
+- **2026-08-21** — **Username pelanggan bocor ke muatan layar TV.** `outages`
+  memakai `ReturnType<typeof ringkasPadam>` apa adanya, jadi
+  `Gerombol.usernames` — daftar username PPPoE — ikut ke layar yang berdiri di
+  ruangan terbuka, dan ke siapa pun yang tautannya bocor. Ditutup lewat
+  `rapikanPadam` di `src/server/tv-sanitize.ts`. Tes penjaganya sebelumnya
+  hanya menyisir contoh buatan tangan dan tidak pernah menyentuh muatan yang
+  sebenarnya — persis jenis penjaga yang tidak bisa dibedakan dari penjaga yang
+  rusak; sekarang ia menjalankan pemangkas yang asli terhadap masukan yang
+  kotor.
+- **2026-08-21** — Cookie TV kini diperbarui tiap snapshot yang sah. Sebelumnya
+  layar mati sendiri pada jam ke-12: tokennya sudah dihapus dari address bar
+  demi keamanan, dan wallboard tidak punya keyboard untuk memasukkannya lagi.
+  Pencabutan tetap seketika — keduanya diuji di berkas yang sama supaya yang
+  melonggarkan satu sisi melihat sisi lainnya.
+- **2026-08-21** — Dua `void promise` tanpa `.catch` ditambal
+  (`tv/snapshot`, webhook `librenms/alerts`). Di Node 22 unhandled rejection
+  mengakhiri proses: satu alert dari LibreNMS saat CRM sedang tumbang cukup
+  untuk menjatuhkan portal NOC, persis pada menit ketika ia paling dibutuhkan.
 - **2026-08-20** — **Trafik nyata masuk portal** (§14). Worker mengambil dari
   MikroTik tiap 30 detik; endpoint membaca dari database dan TIDAK pernah
   menghubungi router. Uplink terbaca ±3 Gbps masuk / 315 Mbps keluar, cocok
