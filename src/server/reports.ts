@@ -5,6 +5,22 @@
 // generator fixture (deterministik per periode+aset) — hanya bila mode
 // FIXTURE (LIBRENMS_URL/TOKEN tidak di-set). Produksi/terhubung: seed
 // tidak dijalankan; data harus diisi dari agregasi LibreNMS.
+//
+// **Sampai 21 Agustus 2026 paragraf di atas adalah niat, bukan kode.** Hanya
+// `ensureAssetsSeed` yang benar-benar berhenti di produksi; kedua seed rekap
+// di bawahnya tetap berjalan dan menulis angka karangan. Di produksi mereka
+// membentur foreign key `assets` — `GET /api/reports/sla` menjawab 500
+// sebanyak 24 kali sebelum ini ditutup, dan tab SLA mati bagi siapa pun yang
+// membukanya.
+//
+// Foreign key itulah yang menyelamatkan. Tanpanya, membuka halaman laporan
+// satu kali sudah cukup untuk menanam angka uptime karangan ke database
+// produksi secara permanen — dan karena seed berhenti begitu barisnya ada,
+// angka itu akan disajikan sebagai hasil pengukuran selamanya, tanpa ada yang
+// tahu ia tidak pernah diukur.
+//
+// Sekarang keduanya dijaga, dan laporan yang kosong mengaku kosong lewat
+// `source: "belum-ada-data"` — bukan menyamar jadi nol.
 
 import { randomUUID } from "node:crypto";
 import { asc, eq } from "drizzle-orm";
@@ -18,6 +34,21 @@ import {
 } from "@/lib/mock-reports";
 import { isLibrenmsConfigured } from "@/server/librenms";
 import type { Asset } from "@/types/asset";
+
+/**
+ * Dari mana angka laporan ini berasal. Wajib ikut di setiap jawaban, karena
+ * ketiga keadaan di bawah terlihat identik di layar kalau tidak disebutkan:
+ *
+ * - `terukur`        — ada isinya, dan sumbernya bukan fixture.
+ * - `fixture`        — mode pengembangan; angkanya dibangkitkan, bukan diukur.
+ * - `belum-ada-data` — periode itu memang belum punya rekap. BUKAN nol.
+ */
+export type AsalLaporan = "terukur" | "fixture" | "belum-ada-data";
+
+function asalData(jumlahBaris: number): AsalLaporan {
+  if (jumlahBaris === 0) return "belum-ada-data";
+  return isLibrenmsConfigured() ? "terukur" : "fixture";
+}
 
 export const PERIOD_PATTERN = /^\d{4}-(0[1-9]|1[0-2])$/;
 
@@ -61,6 +92,10 @@ function assetToRow(asset: Asset) {
 }
 
 async function seedSlaIfMissing(period: string) {
+  // Angka fixture TIDAK BOLEH menyentuh database yang terhubung. Lihat catatan
+  // di kepala berkas: gerbang ini pernah hanya ada di komentar.
+  if (isLibrenmsConfigured()) return;
+
   const [existing] = await db
     .select({ id: slaMonthly.id })
     .from(slaMonthly)
@@ -108,9 +143,12 @@ export async function getSlaReport(period: string) {
     group: legacyGroup(networkRole, vendor),
     meetsTarget: row.uptimePercent >= SLA_TARGET_PERCENT,
   }));
+  // `null`, BUKAN 0. Rata-rata dari nol perangkat bukan nol persen — dan
+  // "rata-rata uptime 0%" di layar NOC terbaca sebagai jaringan yang mati
+  // total, bukan sebagai laporan yang belum punya isi.
   const averageUptime =
     rows.length === 0
-      ? 0
+      ? null
       : Math.round(
           (rows.reduce((sum, row) => sum + row.uptimePercent, 0) /
             rows.length) *
@@ -120,6 +158,7 @@ export async function getSlaReport(period: string) {
   return {
     period,
     targetPercent: SLA_TARGET_PERCENT,
+    source: asalData(rows.length),
     rows: withTarget,
     summary: {
       devices: rows.length,
@@ -130,6 +169,10 @@ export async function getSlaReport(period: string) {
 }
 
 async function seedTrafficIfMissing(period: string) {
+  // Sama seperti seedSlaIfMissing — dan lebih penting di sini, karena
+  // getTrafficReportRange memanggil ini sampai 12 kali dalam satu permintaan.
+  if (isLibrenmsConfigured()) return;
+
   const [existing] = await db
     .select({ id: trafficMonthly.id })
     .from(trafficMonthly)
@@ -228,6 +271,7 @@ export async function getTrafficReportRange(from: string, to: string) {
     from,
     to,
     months: months.length,
+    source: asalData(rows.length),
     rows,
     summary: {
       devices: rows.length,
@@ -265,6 +309,7 @@ export async function getTrafficReport(period: string) {
 
   return {
     period,
+    source: asalData(rows.length),
     rows,
     summary: {
       devices: rows.length,
