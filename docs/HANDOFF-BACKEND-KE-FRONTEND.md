@@ -1045,6 +1045,27 @@ Body: `{ coreId, coreEnd: "A"|"B", otbPortId?, odpPortId?, reason }` — isi
 | `404` | core atau port tidak ada |
 | `409` | core rusak, kabel/OTB nonaktif, port sudah terpakai, ujung core sudah terminasi, atau core feeder ke port ODP |
 
+#### GET /api/v1/ftth/cores/:coreId/terminations — cukup login
+
+Riwayat terminasi satu core — **termasuk yang sudah dilepas**. `GET
+/cables/:id` hanya mengirim ujung yang aktif, jadi panel riwayat membaca dari
+sini.
+
+```jsonc
+{ "terminations": [{
+  "id": "…", "coreEnd": "A", "aktif": false,
+  "reason": "instalasi awal",
+  "deactivatedAt": "…", "deactivatedReason": "kabel diganti",
+  "createdAt": "…",
+  "sasaran": { "jenis": "otbPort", "label": "OTB-1 · Tray 1 port 17",
+               "otbCode": "OTB-1", "trayNumber": 1,
+               "portNumberInTray": 17, "globalPortNumber": 17 }
+}] }
+```
+
+Urut dari yang paling lama. `sasaran.label` sudah dirakit di server — jangan
+memanggil endpoint lain sekali per baris untuk mencari nama OTB-nya.
+
 #### POST /api/v1/ftth/terminations/:id/release — admin/noc
 
 Body `{ reason }`. Melepas terminasi dan mengembalikan portnya jadi `kosong`.
@@ -1335,6 +1356,92 @@ tidak ada.
   ditegakkan saat terminasi.
 - **Identitas pelanggan tidak ikut.** Hanya `externalServiceId`.
 
+### 20. Sesi PPPoE — tabel, saringan, urutan, dan halaman
+
+Layar `/pppoe` selama ini menerima **seluruh sesi sekaligus** (batas 2.000) dan
+menyaring sendiri di browser. Di produksi itu ~1.600 baris JSON tiap kali
+halaman dibuka, untuk menampilkan dua puluh.
+
+Bebannya satu soal. Yang lebih berbahaya: **penyaringan di browser hanya
+menyaring yang TERKIRIM.** Begitu jumlah sesi melewati batas, hasil pencarian
+jadi tidak lengkap tanpa ada yang tahu — dan "pelanggan itu tidak ada di
+daftar" terlihat persis sama dengan "pelanggan itu offline".
+
+Sekarang semuanya dikerjakan database.
+
+#### GET /api/v1/pppoe/sessions — cukup login
+
+| Parameter | Nilai | Bawaan |
+|---|---|---|
+| `q` | cari di `username`, `address`, **dan** `callerId` sekaligus | — |
+| `router` | saring satu router | semua |
+| `sort` | `username` · `address` · `uptime` · `seenAt` · `router` | `username` |
+| `dir` | `asc` · `desc` | `asc` |
+| `page` | halaman, 1-basis | 1 |
+| `pageSize` | **20 · 50 · 100** — hanya ketiganya | 20 |
+
+```jsonc
+{
+  "lastRun": { "status": "SUCCESS", "startedAt": "…", "finishedAt": "…",
+               "sessionCount": 1603, "error": null },
+  "sessions": [{ "username": "…", "address": "10.20.0.7", "callerId": "…",
+                 "uptimeSec": 84600, "routerName": "RB-Kecicang", "seenAt": "…" }],
+  "total": 1603,          // SETELAH saringan — bukan jumlah seluruh sesi
+  "page": 1,
+  "pageSize": 20,
+  "halamanTerakhir": 81,
+  "terpotong": false,
+  "routers": ["RB-Kecicang", "RB-Seraya"]   // pengisi dropdown saringan
+}
+```
+
+`400` untuk `sort`, `dir`, atau `pageSize` yang tidak dikenal — ditolak, bukan
+diabaikan diam-diam.
+
+> **Tanpa `page` maupun `pageSize`, jawabannya tetap seperti dulu**: seluruh
+> sesi sampai 2.000 baris. Itu disengaja supaya layar lama tidak kehilangan
+> 1.580 barisnya di antara deploy backend dan pembaruan frontend. **Begitu
+> T-28 mendarat, mode itu tidak dipakai lagi** — selalu kirim `page` dan
+> `pageSize`.
+
+#### Enam hal yang WAJIB benar
+
+1. **Selalu kirim `page` dan `pageSize`.** Tanpa keduanya layar menarik ~1.600
+   baris tiap muat, dan seluruh gunanya perubahan ini hilang.
+
+2. **`total` adalah jumlah SETELAH saringan, bukan jumlah seluruh sesi.**
+   Pakai itu untuk "menampilkan 1–20 dari 137", dan untuk menghitung tombol
+   halaman. Jangan pernah menghitung jumlah dari `sessions.length` — itu
+   panjang halaman, bukan jumlah hasil.
+
+3. **Jangan menyaring atau mengurut lagi di browser.** Bukan soal boros: hasil
+   halaman 1 yang diurut ulang di klien akan berbeda dari halaman 2, karena
+   yang diurut cuma dua puluh baris yang kebetulan ada di tangan.
+
+4. **Ubah saringan atau urutan → kembali ke halaman 1.** Tetap di halaman 7
+   setelah menyaring jadi 12 hasil menampilkan layar kosong, dan itu terbaca
+   sebagai "tidak ada pelanggan".
+
+5. **`terpotong: true` berarti mode lama memotong hasil diam-diam.** Itu hanya
+   muncul kalau `page`/`pageSize` tidak dikirim dan sesi melewati 2.000.
+   Kalau sampai terlihat, aturan 1 sedang dilanggar.
+
+6. **`lastRun` tetap wajib ditampilkan.** Daftar sesi yang tidak diperbarui
+   terlihat persis sama dengan jaringan yang stabil. Umur data itu bagian dari
+   datanya.
+
+#### Yang sudah diurus backend
+
+- Halaman di luar jangkauan **dijepit**, bukan mengembalikan kosong. Jumlah
+  sesi berubah tiap dua menit; halaman 9 yang sah saat diklik bisa sudah tidak
+  ada saat permintaannya tiba. Periksa `page` di jawaban — ia bisa berbeda
+  dari yang kamu kirim.
+- **Urutannya pasti.** Ada kunci kedua (`username`), jadi baris tidak
+  berpindah antar-muat dan tidak muncul di dua halaman sekaligus.
+- Pencarian **tidak peduli huruf besar-kecil**, dan memang substring:
+  `AA:BB:12` juga cocok dengan `AA:BB:120`. Itu disengaja — operator mengetik
+  potongan yang dia ingat.
+
 ## Jebakan nama & bentuk
 
 Yang paling sering salah tebak, dikumpulkan di satu tempat:
@@ -1412,6 +1519,48 @@ Papan permintaan Opus → Luna (`WORKFLOW-TIM.md` §5). Semua di sini murni
 pekerjaan tampilan — datanya sudah tersedia di endpoint yang disebut, tidak
 ada yang perlu ditunggu dari backend. Tandai ✅ dan pindahkan ke §Selesai
 kalau sudah dikerjakan.
+
+### T-28. Tabel sesi PPPoE — saringan, urutan, dan halaman
+
+- **Layar:** `/pppoe` — `src/components/operations/pppoe-page.tsx`.
+- **Butuh:** §20. Endpoint sudah hidup dan bertes.
+- **Bentuknya:** tabel dengan kolom Username, IP, Caller ID, Uptime, Router,
+  Terlihat. Kepala kolom bisa diklik untuk mengurut (naik/turun), kotak cari
+  di atas, dropdown router, dan pemilih **20 / 50 / 100** baris.
+- **Wajib:** kirim `page` dan `pageSize` di setiap permintaan. Tanpa itu layar
+  menarik ~1.600 baris tiap muat — dan itu justru masalah yang tugas ini
+  selesaikan.
+- **Jangan menyaring atau mengurut di browser.** Semuanya sudah dikerjakan
+  database; menyaring ulang di klien hanya menyaring dua puluh baris yang
+  kebetulan ada di tangan.
+- **Ubah saringan/urutan → kembali ke halaman 1.**
+- **Mobile:** kartu, bukan tabel enam kolom.
+- **Kenapa sekarang:** produksi punya 1.603 sesi. Setiap pembukaan halaman
+  mengirimkan semuanya, dan pencarian di browser sudah mulai berbohong halus.
+
+### T-29. Trafik di dasbor tampil dalam satuan yang bisa dibaca
+
+- **Layar:** `/dashboard` — `src/components/dashboard/network-telemetry.tsx`,
+  fungsi `formatTrafficRate` di baris 86–89.
+- **Masalahnya:** ia merender `bps` mentah, jadi uplink 3 Gbps tampil sebagai
+  `3.034.700.000 bps`. Tidak ada yang bisa membaca itu sekilas, dan itulah
+  satu-satunya cara angka trafik dipakai di dasbor.
+- **Perbaikannya sudah tersedia sejak §14:** `formatBitrate` di
+  `src/lib/noc-format.ts`. Ia menskala sendiri (bps → kbps → Mbps → Gbps),
+  memakai pemisah ribuan Indonesia, memberi `—` untuk `null`, dan **tidak**
+  mengubah `0` jadi `—`. Sudah bertes di `tests/noc-format-bitrate.test.ts`,
+  termasuk nilai uplink produksi 3.034.700.000 → `3,03 Gbps`.
+- **Ganti isi `formatTrafficRate` dengan `formatBitrate`** — satu baris.
+  Fungsi itu sudah ada sejak 20 Agustus dan sampai hari ini tidak dipakai
+  satu tempat pun; itu kelalaian kontrak dari pihak saya, bukan kesalahanmu.
+- **Kalau pemilik lebih suka satuan TETAP Mbps** (supaya angka bisa
+  dibandingkan sekilas antar-waktu tanpa berpindah satuan), bilang di
+  `PERMINTAAN-FRONTEND-KE-BACKEND.md` — saya tambahkan `formatMbps`. Jangan
+  membuat pembagi sendiri di komponen; satuan trafik harus punya satu sumber.
+- **Periksa juga tempat lain** yang menulis satuan tangan:
+  `traffic-report.tsx`, `port-bandwidth.tsx`, dan `history-chart.tsx`
+  sudah memakai "Mbps" sebagai teks tetap. Itu sah kalau nilainya memang sudah
+  dalam Mbps — pastikan saja, jangan diubah asal.
 
 ### ✅ T-27. Layar trace jalur core — frontend selesai 2026-08-21
 
@@ -1951,6 +2100,21 @@ orang mengetik.
 
 ## Riwayat
 
+- **2026-08-21** — **Sesi PPPoE disaring dan dihalamani DATABASE (§20).**
+  Endpointnya dulu mengirim seluruh sesi sekaligus — ~1.600 baris tiap kali
+  `/pppoe` dibuka. Bebannya satu soal; yang lebih berbahaya, penyaringan di
+  browser hanya menyaring yang TERKIRIM, jadi begitu sesi melewati batas
+  pencarian jadi tidak lengkap tanpa ada yang tahu — dan "tidak ada di daftar"
+  terlihat sama persis dengan "offline". Sekarang `q`, `router`, `sort`, dan
+  halaman 20/50/100 semuanya dikerjakan SQL, dan `total` adalah jumlah setelah
+  saringan. Mode tanpa halaman sengaja dipertahankan sampai T-28 mendarat.
+  Tugas T-28; satuan trafik dasbor jadi T-29.
+- **2026-08-21** — **Riwayat terminasi core punya endpoint (§17).** Diminta
+  Luna lewat `PERMINTAAN-FRONTEND-KE-BACKEND.md`, dan temuannya tepat:
+  `riwayatTerminasiCore` sudah ada sejak Fase 12 tapi tidak pernah punya
+  route, jadi panel riwayat di layar kabel tidak punya sumber data. Label port
+  ikut dirakit di server supaya riwayat panjang tidak berubah jadi puluhan
+  permintaan.
 - **2026-08-21** — **Fase 14: mesin trace (§19).** Jalur dari port OTB sampai
   ODP, lewat closure dan master splitter — TANPA tabel baru; seluruhnya
   diturunkan dari Fase 11–13. Menyimpan jalur sebagai tabel berarti angka

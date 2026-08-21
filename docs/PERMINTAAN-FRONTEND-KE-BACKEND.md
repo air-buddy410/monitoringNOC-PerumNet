@@ -51,7 +51,7 @@ field-nya di `docs/HANDOFF-BACKEND-KE-FRONTEND.md`, bukan di sini.
   sekarang menjawab **401**, bukan 500. Kontrak 401/503/429 di HANDOFF T-4
   berlaku apa adanya.
 
-### Riwayat terminasi core untuk layar kabel (T-25)
+### ✅ Riwayat terminasi core untuk layar kabel (T-25) — SELESAI 2026-08-21
 - **Layar:** `/ftth/cables/[id]` → panel "Riwayat terminasi"
 - **Butuh:** endpoint baca yang mengembalikan seluruh terminasi sebuah core,
   termasuk yang sudah dilepas: `id`, `coreEnd`, `otbPortId`, `odpPortId`,
@@ -62,3 +62,11 @@ field-nya di `docs/HANDOFF-BACKEND-KE-FRONTEND.md`, bukan di sini.
   hanya mengirim `ujungTerpakai` yang aktif dan tidak menyertakan ID maupun
   alasan terminasi lama. Frontend tidak boleh membaca database atau mengarang
   riwayat dari status aktif.
+
+- **✅ Selesai 2026-08-21.** `GET /api/v1/ftth/cores/:coreId/terminations`,
+  kontraknya di `HANDOFF-BACKEND-KE-FRONTEND.md` §17. Temuanmu tepat: fungsinya
+  memang sudah ada sejak Fase 12 dan tidak pernah punya route — kelalaian saya,
+  bukan kekuranganmu. Sekalian saya rakitkan `sasaran.label` di server (nama
+  OTB, nomor tray, nomor port) supaya panel riwayat tidak perlu memanggil
+  endpoint lain sekali per baris, dan `aktif` sebagai boolean supaya tidak
+  perlu menyimpulkan dari `deactivatedAt`.
