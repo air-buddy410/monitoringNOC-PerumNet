@@ -1553,10 +1553,14 @@ kalau sudah dikerjakan.
 - **Ganti isi `formatTrafficRate` dengan `formatBitrate`** — satu baris.
   Fungsi itu sudah ada sejak 20 Agustus dan sampai hari ini tidak dipakai
   satu tempat pun; itu kelalaian kontrak dari pihak saya, bukan kesalahanmu.
-- **Kalau pemilik lebih suka satuan TETAP Mbps** (supaya angka bisa
-  dibandingkan sekilas antar-waktu tanpa berpindah satuan), bilang di
-  `PERMINTAAN-FRONTEND-KE-BACKEND.md` — saya tambahkan `formatMbps`. Jangan
-  membuat pembagi sendiri di komponen; satuan trafik harus punya satu sumber.
+- **Satuannya sudah diputuskan pemilik 21 Agustus 2026: penskalaan otomatis,
+  dan Gbps boleh muncul.** Jadi uplink tampil `3,03 Gbps`, bukan
+  `3.034,7 Mbps`. Tidak perlu menanyakannya lagi, dan tidak perlu membuat
+  varian Mbps-tetap.
+- **Jangan membuat pembagi sendiri di komponen.** Satuan trafik punya satu
+  sumber, `formatBitrate`. Komponen yang menghitung `value / 1000000` sendiri
+  akan berbeda dari yang lain begitu ada yang memperbaiki pembulatan di satu
+  tempat saja.
 - **Periksa juga tempat lain** yang menulis satuan tangan:
   `traffic-report.tsx`, `port-bandwidth.tsx`, dan `history-chart.tsx`
   sudah memakai "Mbps" sebagai teks tetap. Itu sah kalau nilainya memang sudah
