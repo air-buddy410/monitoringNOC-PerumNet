@@ -826,10 +826,12 @@ Backend-nya sudah lengkap, tabelnya `otb`, `otb_trays`, `otb_ports` (migrasi
 `0008_otb_tray_port`). Sampai hari ini **belum ada satu OTB pun** — layarnya
 memang belum dibuat. Itu tugas T-24.
 
-Acuan visual: `docs/gambar/otb-detail-*.jpeg`. PRD asalnya di
-`docs/PRD-OTB-CORE-ROUTE-MASTER-SPLITTER.md` — **baca blok pembuka dokumen itu
-lebih dulu**, karena ia ditulis untuk app lain dan sebagian klaimnya tidak
-berlaku di sini.
+Acuan visual: `docs/gambar/otb-detail-*.jpeg`. Latar domainnya di
+`docs/PRD-OTB-CORE-ROUTE-MASTER-SPLITTER.md` — versi yang sudah disesuaikan ke
+portal ini (Drizzle, tabel yang benar-benar ada, empat peran yang benar-benar
+dipakai). Dokumen asal yang ditulis untuk Prisma disimpan di
+`docs/arsip/PRD-OTB-ASLI-PRISMA.md`; itu **arsip, bukan acuan** — jangan
+mengambil nama model atau daftar permission dari sana.
 
 #### Yang ADA dan yang BELUM di fase ini
 
