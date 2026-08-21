@@ -211,6 +211,35 @@ export interface FiberCableDetail extends Omit<FiberCableSummary, "coreTerpasang
   cores: FiberCore[];
 }
 
+export interface FiberTerminationTarget {
+  jenis: "otbPort" | "odpPort";
+  label: string;
+  otbCode?: string | null;
+  trayNumber?: number | null;
+  portNumberInTray?: number | null;
+  globalPortNumber?: number | null;
+  odpCode?: string | null;
+  odpRole?: string | null;
+  portNumber?: number | null;
+}
+
+export interface FiberTerminationHistory {
+  id: string;
+  coreEnd: "A" | "B";
+  otbPortId: string | null;
+  odpPortId: string | null;
+  reason: string;
+  deactivatedAt: string | null;
+  deactivatedReason: string | null;
+  createdAt: string;
+  aktif: boolean;
+  sasaran: FiberTerminationTarget;
+}
+
+export interface FiberTerminationHistoryResponse {
+  terminations: FiberTerminationHistory[];
+}
+
 export type ClosureType = "inline" | "dome" | "lain";
 export type ClosureStatus = "aktif" | "nonaktif";
 
@@ -339,9 +368,18 @@ export interface PppoeSession {
   seenAt: string;
 }
 
+export type PppoeSortColumn = "username" | "address" | "uptime" | "seenAt" | "router";
+export type PppoePageSize = 20 | 50 | 100;
+
 export interface PppoeSessionsResponse {
   lastRun: PppoeLastRun | null;
   sessions: PppoeSession[];
+  total: number;
+  page: number;
+  pageSize: PppoePageSize;
+  halamanTerakhir: number;
+  terpotong: boolean;
+  routers: string[];
 }
 
 export type ProbeStatus = "UP" | "DOWN" | null;

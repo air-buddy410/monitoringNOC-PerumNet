@@ -22,7 +22,7 @@ import {
   CHART_SLOT_1,
   CHART_SLOT_2,
 } from "@/lib/chart-colors";
-import { formatNumber } from "@/lib/noc-format";
+import { formatBitrate, formatNumber } from "@/lib/noc-format";
 
 type TrafficState = "ok" | "belum-ada-data" | "hilang";
 
@@ -81,11 +81,6 @@ function fetchTrafficLive(url: string) {
 
 function fetchTrafficSeries(url: string) {
   return getJson<TrafficSeriesResponse>(url);
-}
-
-function formatTrafficRate(value: number | null | undefined) {
-  if (value === null || value === undefined) return "—";
-  return `${formatNumber(value)} bps`;
 }
 
 function formatTrafficTime(value: string) {
@@ -153,7 +148,7 @@ function TrafficChart({ series }: { series: TrafficSeriesResponse }) {
             formatter={(value, name) => [
               value === null || value === undefined
                 ? "Belum ada data"
-                : formatTrafficRate(Number(value)),
+                : formatBitrate(Number(value)),
               String(name) === "rxBps" ? "Masuk" : "Keluar",
             ]}
           />
@@ -208,11 +203,11 @@ function TrafficSiteRows({ interfaces }: { interfaces: TrafficInterface[] }) {
             <div className="noc-traffic-site-values">
               <strong className={hasSample ? "" : "is-unavailable"}>
                 {hasSample
-                  ? `↓ ${formatTrafficRate(item.rxBps)}`
+                  ? `↓ ${formatBitrate(item.rxBps)}`
                   : state.label}
               </strong>
               <span className={hasSample ? "" : "is-unavailable"}>
-                {hasSample ? `↑ ${formatTrafficRate(item.txBps)}` : "Laju belum tersedia"}
+                {hasSample ? `↑ ${formatBitrate(item.txBps)}` : "Laju belum tersedia"}
               </span>
             </div>
           </div>
@@ -271,7 +266,7 @@ function TrafficPanel() {
           <strong>
             {traffic
               ? uplinkHasSample
-                ? formatTrafficRate(traffic.totals.uplinkRxBps)
+                ? formatBitrate(traffic.totals.uplinkRxBps)
                 : "Belum ada data"
               : "—"}
           </strong>
@@ -282,7 +277,7 @@ function TrafficPanel() {
           <strong>
             {traffic
               ? uplinkHasSample
-                ? formatTrafficRate(traffic.totals.uplinkTxBps)
+                ? formatBitrate(traffic.totals.uplinkTxBps)
                 : "Belum ada data"
               : "—"}
           </strong>

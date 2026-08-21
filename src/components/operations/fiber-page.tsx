@@ -2,13 +2,14 @@
 
 import Link from "next/link";
 import { ArrowLeft, ArrowRight, Cable, Check, RefreshCw } from "lucide-react";
-import { useState, type FormEvent } from "react";
+import { useMemo, useState, type FormEvent } from "react";
 import useSWR from "swr";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { NocPageHeader, NocPanel, NocState, NocStatus } from "@/components/noc-ui";
 import { useSession } from "@/hooks/use-session";
 import { ApiError, getJson, sendJson } from "@/lib/api/http";
+import { formatDateTime, formatPanjang } from "@/lib/noc-format";
 import type {
   FiberCableCategory,
   FiberCableDetail,
@@ -18,6 +19,8 @@ import type {
   FiberCorePurpose,
   FiberCoreStatus,
   FiberCablesResponse,
+  FiberTerminationHistory,
+  FiberTerminationHistoryResponse,
   FiberType,
 } from "@/types/operations";
 
@@ -66,16 +69,68 @@ function coreTone(status: FiberCoreStatus) {
   return "positive" as const;
 }
 
-function formatLength(lengthM: number | null) {
-  if (lengthM === null) return "Belum diukur";
-  if (lengthM >= 1000) return `${new Intl.NumberFormat("id-ID", { maximumFractionDigits: 2 }).format(lengthM / 1000)} km`;
-  return `${new Intl.NumberFormat("id-ID").format(lengthM)} m`;
-}
-
 function formatDate(value: string) {
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return "—";
   return new Intl.DateTimeFormat("id-ID", { day: "2-digit", month: "short", year: "numeric" }).format(date);
+}
+
+type FiberHistoryKey = readonly [string, ...string[]];
+
+async function fetchTerminationHistories([, ...coreIds]: FiberHistoryKey) {
+  return Promise.all(coreIds.map((coreId) => getJson<FiberTerminationHistoryResponse>(`/api/v1/ftth/cores/${encodeURIComponent(coreId)}/terminations`)));
+}
+
+interface FiberHistoryRow extends FiberTerminationHistory {
+  cableCode: string;
+  coreNumber: number;
+}
+
+function FiberTerminationHistoryList({ cable }: { cable: FiberCableDetail }) {
+  const coreIds = cable.cores.map((core) => core.id);
+  const historyKey = coreIds.length ? (["fiber-termination-history", ...coreIds] as const) : null;
+  const { data, error, isLoading } = useSWR<FiberTerminationHistoryResponse[]>(
+    historyKey,
+    fetchTerminationHistories,
+    { revalidateOnFocus: false },
+  );
+  const rows = useMemo<FiberHistoryRow[]>(
+    () => (data ?? []).flatMap((response, index) => {
+      const core = cable.cores[index];
+      if (!core) return [];
+      return response.terminations.map((termination) => ({
+        ...termination,
+        cableCode: cable.code,
+        coreNumber: core.coreNumber,
+      }));
+    }).sort((a, b) => Date.parse(a.createdAt) - Date.parse(b.createdAt)),
+    [cable.code, cable.cores, data],
+  );
+
+  if (isLoading) return <NocState kind="loading">Memuat riwayat terminasi seluruh core…</NocState>;
+  if (error) return <NocState kind="error">{error instanceof ApiError ? error.message : "Riwayat terminasi tidak dapat dimuat."}</NocState>;
+  if (rows.length === 0) return <NocState kind="empty">Belum ada riwayat terminasi pada kabel ini.</NocState>;
+
+  return (
+    <div className="noc-fiber-history-list">
+      {rows.map((row) => (
+        <article className={`noc-fiber-history-card ${row.aktif ? "is-active" : "is-released"}`} key={row.id}>
+          <div className="noc-fiber-history-heading">
+            <div>
+              <strong>{row.cableCode} · Core {row.coreNumber} · Ujung {row.coreEnd}</strong>
+              <span>Dibuat {formatDateTime(row.createdAt)}</span>
+            </div>
+            <NocStatus label={row.aktif ? "Aktif" : "Dilepas"} tone={row.aktif ? "positive" : "warning"} />
+          </div>
+          <div className="noc-fiber-history-facts">
+            <div><span>Sasaran</span><strong>{row.sasaran.label}</strong></div>
+            <div><span>Alasan</span><strong>{row.reason}</strong></div>
+          </div>
+          {!row.aktif && <p className="noc-fiber-history-release">Dilepas {row.deactivatedAt ? formatDateTime(row.deactivatedAt) : "tanpa waktu"} · {row.deactivatedReason ?? "Alasan pelepasan tidak diisi"}</p>}
+        </article>
+      ))}
+    </div>
+  );
 }
 
 function CableSummaryRow({ cable }: { cable: FiberCableSummary }) {
@@ -230,11 +285,11 @@ export function FiberCableDetailPage({ cableId }: { cableId: string }) {
   return (
     <main className="noc-page noc-feature-page">
       <div className="noc-fiber-heading"><Link className="noc-otb-back" href="/ftth/cables"><ArrowLeft aria-hidden="true" /> Kembali ke daftar kabel</Link><div className="noc-otb-heading-main"><div><div className="noc-otb-title-line"><span>Detail Kabel</span><NocStatus label={cableStatusLabels[cable.status]} tone={cableTone(cable.status)} /></div><h1>{cable.code}</h1><p>{cable.name ?? "Tanpa nama kabel"}</p></div><Button type="button" size="sm" variant="ghost" onClick={() => { void mutate(); }} aria-label="Muat ulang detail kabel"><RefreshCw aria-hidden="true" /></Button></div></div>
-      <div className="noc-fiber-facts"><div><span>Kategori</span><strong>{categoryLabels[cable.category]}</strong></div><div><span>Jenis serat</span><strong>{cable.fiberType}</strong></div><div><span>Panjang</span><strong>{formatLength(cable.lengthM)}</strong></div><div><span>Jumlah core</span><strong>{cable.cores.length}/{cable.coreCount}</strong></div></div>
+      <div className="noc-fiber-facts"><div><span>Kategori</span><strong>{categoryLabels[cable.category]}</strong></div><div><span>Jenis serat</span><strong>{cable.fiberType}</strong></div><div><span>Panjang</span><strong>{formatPanjang(cable.lengthM)}</strong></div><div><span>Jumlah core</span><strong>{cable.cores.length}/{cable.coreCount}</strong></div></div>
       <NocPanel title="Matriks core" description="Nomor, warna, peruntukan, dan status berasal dari inventori server."><CoreTable cores={cable.cores} /></NocPanel>
       <NocPanel title="Riwayat terminasi" description="Jejak terminasi yang dilepas harus tetap dapat dibaca saat investigasi."
-        action={<NocStatus label="Kontrak riwayat belum tersedia" tone="warning" />}>
-        <NocState kind="empty">Endpoint detail kabel saat ini hanya mengirim ujung core yang sedang terpakai. Riwayat terminasi membutuhkan endpoint backend tersendiri; tidak ada data riwayat yang dikarang di layar.</NocState>
+        action={<NocStatus label="Termasuk yang dilepas" tone="info" />}>
+        <FiberTerminationHistoryList cable={cable} />
       </NocPanel>
       <p className="noc-source-note"><Check aria-hidden="true" /> Dibuat pada {formatDate(cable.createdAt)}. Identitas pelanggan tidak ditampilkan.</p>
     </main>

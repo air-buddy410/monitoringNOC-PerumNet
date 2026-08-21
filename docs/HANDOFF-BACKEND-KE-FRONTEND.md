@@ -1529,7 +1529,7 @@ pekerjaan tampilan — datanya sudah tersedia di endpoint yang disebut, tidak
 ada yang perlu ditunggu dari backend. Tandai ✅ dan pindahkan ke §Selesai
 kalau sudah dikerjakan.
 
-### T-30. Tiga perbaikan kecil dari tinjauan kode FTTH
+### ✅ T-30. Tiga perbaikan kecil dari tinjauan kode FTTH — frontend selesai 2026-08-22
 
 Semuanya kecil, dan **tidak satu pun kesalahan besar** — layar FTTH-mu lolos
 seluruh aturan mahal di §16–§19. Ini sisa-sisanya.
@@ -1560,7 +1560,7 @@ Itu kelalaian saya: aturan "jangan bikin pembagi sendiri" saya tulis untuk
 satuan trafik, tapi helper untuk panjang tidak pernah saya sediakan. Sekarang
 ada.
 
-### T-28. Tabel sesi PPPoE — saringan, urutan, dan halaman
+### ✅ T-28. Tabel sesi PPPoE — saringan, urutan, dan halaman — frontend selesai 2026-08-22
 
 - **Layar:** `/pppoe` — `src/components/operations/pppoe-page.tsx`.
 - **Butuh:** §20. Endpoint sudah hidup dan bertes.
@@ -1578,7 +1578,7 @@ ada.
 - **Kenapa sekarang:** produksi punya 1.603 sesi. Setiap pembukaan halaman
   mengirimkan semuanya, dan pencarian di browser sudah mulai berbohong halus.
 
-### T-29. Trafik di dasbor tampil dalam satuan yang bisa dibaca
+### ✅ T-29. Trafik di dasbor tampil dalam satuan yang bisa dibaca — frontend selesai 2026-08-22
 
 - **Layar:** `/dashboard` — `src/components/dashboard/network-telemetry.tsx`,
   fungsi `formatTrafficRate` di baris 86–89.
@@ -1648,7 +1648,7 @@ ada.
   larangan membagi, okupansi ujung core, atomisitas batch — sudah ditegakkan
   di server, sebagian langsung oleh PostgreSQL.
 
-### T-25. Layar kabel, core, dan terminasi — frontend selesai 2026-08-21; riwayat terminasi menunggu endpoint backend
+### ✅ T-25. Layar kabel, core, dan terminasi — frontend selesai 2026-08-22
 
 - **Layar:** `/ftth/cables` (daftar) dan `/ftth/cables/[id]` (detail + tabel
   core). Plus aksi terminasi dari layar OTB yang sudah ada.
