@@ -20,6 +20,7 @@ import {
   odps,
   otb,
   otbPorts,
+  otbTrays,
 } from "@/db/schema";
 
 export type KategoriKabel =
@@ -150,10 +151,19 @@ export async function detailKabel(cableId: string) {
   return { ...kabel, cores };
 }
 
-/** Seluruh terminasi sebuah core, termasuk yang sudah dilepas. Histori tidak
- *  dihapus, jadi layar riwayat membaca dari sini. */
+/**
+ * Seluruh terminasi sebuah core, termasuk yang sudah dilepas.
+ *
+ * Histori tidak pernah dihapus, dan justru yang sudah dilepas itulah yang
+ * dicari orang saat gangguan — "jalur ini dulu menempel di mana".
+ *
+ * Label port ikut dirakit di sini, bukan diserahkan ke layar. Kalau frontend
+ * harus mencari sendiri nama OTB dan nomor tray untuk tiap baris riwayat, ia
+ * akan memanggil endpoint lain sekali per baris — dan riwayat panjang berubah
+ * jadi puluhan permintaan untuk satu panel.
+ */
 export async function riwayatTerminasiCore(coreId: string) {
-  return db
+  const rows = await db
     .select({
       id: fiberCoreTerminations.id,
       coreEnd: fiberCoreTerminations.coreEnd,
@@ -163,10 +173,51 @@ export async function riwayatTerminasiCore(coreId: string) {
       deactivatedAt: fiberCoreTerminations.deactivatedAt,
       deactivatedReason: fiberCoreTerminations.deactivatedReason,
       createdAt: fiberCoreTerminations.createdAt,
+      otbCode: otb.code,
+      trayNumber: otbTrays.trayNumber,
+      portNumberInTray: otbPorts.portNumberInTray,
+      globalPortNumber: otbPorts.globalPortNumber,
+      odpCode: odps.code,
+      odpRole: odps.role,
+      odpPortNumber: odpPorts.portNumber,
     })
     .from(fiberCoreTerminations)
+    .leftJoin(otbPorts, eq(otbPorts.id, fiberCoreTerminations.otbPortId))
+    .leftJoin(otbTrays, eq(otbTrays.id, otbPorts.trayId))
+    .leftJoin(otb, eq(otb.id, otbPorts.otbId))
+    .leftJoin(odpPorts, eq(odpPorts.id, fiberCoreTerminations.odpPortId))
+    .leftJoin(odps, eq(odps.id, odpPorts.odpId))
     .where(eq(fiberCoreTerminations.coreId, coreId))
     .orderBy(asc(fiberCoreTerminations.createdAt));
+
+  return rows.map((r) => ({
+    id: r.id,
+    coreEnd: r.coreEnd,
+    otbPortId: r.otbPortId,
+    odpPortId: r.odpPortId,
+    reason: r.reason,
+    deactivatedAt: r.deactivatedAt,
+    deactivatedReason: r.deactivatedReason,
+    createdAt: r.createdAt,
+    aktif: r.deactivatedAt === null,
+    /** Sasaran dalam bentuk yang bisa langsung ditampilkan. */
+    sasaran: r.otbPortId
+      ? {
+          jenis: "otbPort" as const,
+          label: `${r.otbCode ?? "?"} · Tray ${r.trayNumber ?? "?"} port ${r.portNumberInTray ?? "?"}`,
+          otbCode: r.otbCode,
+          trayNumber: r.trayNumber,
+          portNumberInTray: r.portNumberInTray,
+          globalPortNumber: r.globalPortNumber,
+        }
+      : {
+          jenis: "odpPort" as const,
+          label: `${r.odpCode ?? "?"} · port ${r.odpPortNumber ?? "?"}`,
+          odpCode: r.odpCode,
+          odpRole: r.odpRole,
+          portNumber: r.odpPortNumber,
+        },
+  }));
 }
 
 // ---------------------------------------------------------------------------

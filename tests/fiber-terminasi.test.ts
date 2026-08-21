@@ -32,6 +32,7 @@ vi.mock("@/server/rbac", () => ({
 import * as schema from "@/db/schema";
 import * as authSchema from "@/db/auth-schema";
 import { buatOtb, aturKapasitasTray } from "@/server/otb-store";
+import { GET as RIWAYAT } from "@/app/api/v1/ftth/cores/[coreId]/terminations/route";
 import {
   buatKabel,
   detailKabel,
@@ -408,6 +409,56 @@ describe("melepas terminasi", () => {
     const h = await aturKapasitasTray(otbId, 1, 3, "u1");
     expect(h.ok).toBe(false);
     if (!h.ok) expect(h.error).toMatch(/riwayat/);
+  });
+});
+
+describe("riwayat terminasi", () => {
+  it("mengembalikan yang aktif DAN yang sudah dilepas, dengan label siap tampil", async () => {
+    // Diminta Luna lewat PERMINTAAN-FRONTEND-KE-BACKEND.md: fungsinya sudah
+    // ada sejak Fase 12 tapi tidak pernah punya route, jadi panel riwayat di
+    // layar kabel tidak punya sumber data.
+    const { cores } = await kabel("KBL-1", "feeder");
+    const pasang = await terminasiCore(
+      { coreId: cores[0].id, coreEnd: "A", otbPortId: portOtb[0].id, reason: "instalasi awal" },
+      "u1",
+    );
+    if (!pasang.ok) throw new Error(pasang.error);
+    await lepasTerminasi(pasang.data.id, "kabel diganti", "u1");
+    await terminasiCore(
+      { coreId: cores[0].id, coreEnd: "A", otbPortId: portOtb[1].id, reason: "jalur pengganti" },
+      "u1",
+    );
+
+    const res = await RIWAYAT(new Request("http://localhost/x"), {
+      params: Promise.resolve({ coreId: cores[0].id }),
+    });
+    expect(res.status).toBe(200);
+    const { terminations } = await res.json();
+
+    // DUA baris: yang lama tetap ada. Kalau hanya satu, riwayatnya hilang —
+    // dan itu justru yang dicari saat gangguan.
+    expect(terminations).toHaveLength(2);
+    expect(terminations[0]).toMatchObject({
+      aktif: false,
+      reason: "instalasi awal",
+      deactivatedReason: "kabel diganti",
+    });
+    expect(terminations[1]).toMatchObject({ aktif: true, reason: "jalur pengganti" });
+
+    // Label dirakit di server; layar tidak perlu memanggil endpoint lain
+    // sekali per baris riwayat.
+    expect(terminations[0].sasaran.jenis).toBe("otbPort");
+    expect(terminations[0].sasaran.label).toMatch(/Tray 1 port 1/);
+    expect(terminations[1].sasaran.label).toMatch(/Tray 1 port 2/);
+  });
+
+  it("core tanpa riwayat mengembalikan daftar kosong, bukan galat", async () => {
+    const { cores } = await kabel("KBL-2", "feeder");
+    const res = await RIWAYAT(new Request("http://localhost/x"), {
+      params: Promise.resolve({ coreId: cores[3].id }),
+    });
+    expect(res.status).toBe(200);
+    expect((await res.json()).terminations).toEqual([]);
   });
 });
 
