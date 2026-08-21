@@ -31,6 +31,10 @@ const REQUIRED_TABLES = [
   "sla_reports",
   "sla_monthly",
   "traffic_monthly",
+  // OTB (Fase 11)
+  "otb",
+  "otb_trays",
+  "otb_ports",
   // auth
   "user",
   "session",
@@ -69,6 +73,22 @@ describe("baseline schema PostgreSQL", () => {
 
   it("kolom rename tuntas: tidak ada lagi kolom prtg_*", () => {
     expect(sql.toLowerCase()).not.toContain("prtg");
+  });
+
+  it("identitas port OTB dijaga index, bukan janji kode", () => {
+    // Ketiganya bisa lupa dibuat tanpa satu pun tes lain merah — dan
+    // kegagalannya baru terlihat saat ada dua "Core 17" di satu OTB produksi.
+    expect(sql).toContain("otb_ports_otb_global_idx"); // satu Core 17 per OTB
+    expect(sql).toContain("otb_ports_tray_number_idx"); // satu port per slot
+    expect(sql).toContain("otb_trays_otb_number_idx");
+  });
+
+  it("otb_id pada port tidak bisa melenceng dari traynya", () => {
+    // FK GABUNGAN. Kalau seseorang menggantinya dengan FK tray_id biasa
+    // "supaya sederhana", port bisa mengaku milik OTB lain daripada traynya
+    // dan keunikan nomor global se-OTB kehilangan artinya.
+    expect(sql).toContain("otb_trays_id_otb_unique");
+    expect(sql).toMatch(/FOREIGN KEY \("tray_id","otb_id"\)/);
   });
 
   it("relasi kunci: nodes→assets cascade, versions unik per (topology, version)", () => {
