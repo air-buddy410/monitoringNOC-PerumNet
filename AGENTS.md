@@ -190,7 +190,7 @@ This block is written and re-added by `next dev` — verify at `node_modules/nex
 
 # Aturan kerja tim (WAJIB dibaca lebih dulu)
 
-**Luna (OpenCode) = FRONTEND. Opus (Claude Code) = BACKEND, SERVER, DATABASE.**
+**Luna (Codex) = FRONTEND. Opus (Claude Code) = BACKEND, SERVER, DATABASE.**
 
 Aturan lengkap, batas wilayah, alur per fase, dan peta seluruh aplikasi
 PerumNet ada di **`docs/WORKFLOW-TIM.md`**. Baca itu sebelum mengubah apa pun.
