@@ -96,3 +96,34 @@ export function formatBitrate(value: number | null | undefined) {
   }).format(angka);
   return `${negatif ? "-" : ""}${teks} ${nama}`;
 }
+
+/**
+ * Panjang kabel dalam meter → teks yang bisa dibaca.
+ *
+ * Satu sumber untuk seluruh layar. Saat ditulis, konversi meter→kilometer
+ * sudah tersalin di dua komponen (`fiber-page.tsx` dan `trace-panel.tsx`) —
+ * dan dua salinan rumus yang sama selalu berakhir berbeda begitu ada yang
+ * memperbaiki pembulatan di satu tempat saja.
+ *
+ * `null` berarti **belum diukur**, dan itu bukan nol. Ia tidak pernah
+ * dijumlahkan sebagai nol di server, jadi ia tidak boleh tampil sebagai
+ * "0 m" di layar.
+ *
+ * `lengkap: false` menandai total yang masih kekurangan segmen — ditampilkan
+ * dengan awalan `≥`, supaya angkanya tidak terbaca sebagai jarak pasti.
+ */
+export function formatPanjang(
+  meter: number | null | undefined,
+  lengkap = true,
+) {
+  if (meter === null || meter === undefined) return "Belum diukur";
+  if (!Number.isFinite(meter)) return "—";
+  const negatif = meter < 0;
+  const v = Math.abs(meter);
+  const teks =
+    v >= 1_000
+      ? `${new Intl.NumberFormat("id-ID", { maximumFractionDigits: 2 }).format(v / 1_000)} km`
+      : `${new Intl.NumberFormat("id-ID").format(v)} m`;
+  const bertanda = `${negatif ? "-" : ""}${teks}`;
+  return lengkap ? bertanda : `≥ ${bertanda}`;
+}
