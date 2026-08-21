@@ -1109,6 +1109,132 @@ situs **dan** tanpa koordinat.
   ODP biasa saja; port MS boleh menerima core feeder, karena itu memang
   input feedernya.
 
+### 18. Closure dan silangan core — Fase 13
+
+Sambungan di lapangan tempat core dari dua kabel disambung. Di sinilah
+"Core 17 menjadi Core 23" akhirnya bisa dicatat sebagai kenyataan, bukan
+catatan pinggir di buku teknisi.
+
+Tabelnya `fiber_closures` dan `fiber_core_splices` (migrasi
+`0010_closure_silangan`). Belum ada satu closure pun — layarnya belum dibuat.
+Itu tugas T-26.
+
+Acuan visual: tabel **"Silangan Core (Closure/Joint)"** di
+`docs/gambar/otb-detail-core.jpeg`.
+
+#### GET /api/v1/ftth/closures — daftar
+
+```jsonc
+{ "closures": [{
+  "id": "…", "code": "CL-01", "name": "Closure Simpang Seraya",
+  "siteId": null, "siteName": null,
+  "latitude": -8.4521, "longitude": 115.6033,
+  "type": "inline",            // inline | dome | lain
+  "status": "aktif",
+  "silanganAktif": 22, "silanganTotal": 25   // total termasuk yang sudah dilepas
+}] }
+```
+
+#### POST /api/v1/ftth/closures — admin/noc
+
+Body `{ code, name?, siteId?, latitude?, longitude?, type?, notes? }`.
+`400` kalau tanpa situs **dan** tanpa koordinat. `409` kode sudah dipakai.
+
+#### GET /api/v1/ftth/closures/:closureId — matriks silangan
+
+Tambahkan `?riwayat=1` untuk ikut menampilkan silangan yang sudah dilepas.
+
+```jsonc
+{
+  "id": "…", "code": "CL-01", "type": "inline", "status": "aktif",
+  "splices": [{
+    "id": "…",
+    "inputCableCode": "KBL-A",  "inputCoreNumber": 17, "inputCoreColor": "merah",
+    "inputCoreEnd": "B",        "inputCablePurpose": "feeder",
+    "outputCableCode": "KBL-B", "outputCoreNumber": 23, "outputCoreColor": "kuning",
+    "outputCoreEnd": "A",       "outputCablePurpose": "feeder",
+    "silang": true,             // nomor berubah — dihitung server, jangan dibanding sendiri
+    "estimatedLossDb": 0.1,     // ESTIMASI, bukan hasil ukur. Boleh null.
+    "reason": "silang core saat perbaikan",
+    "deactivatedAt": null, "deactivatedReason": null,
+    "createdAt": "…"
+  }]
+}
+```
+
+#### POST …/closures/:closureId/splices/preview — admin/noc
+
+Body `{ rows: [...] }`. Memeriksa **tanpa menulis apa pun**.
+
+```jsonc
+{
+  "verdicts": [
+    { "urutan": 1, "ok": true, "silangNomor": { "dari": 17, "ke": 23 } },
+    { "urutan": 2, "ok": false, "error": "Ujung core masuk (core 1) sudah punya sambungan aktif. …" }
+  ],
+  "ringkas": { "total": 2, "gagal": 1, "lolos": 1 }
+}
+```
+
+#### POST …/closures/:closureId/splices — admin/noc
+
+Body `{ rows: [{ inputCoreId, inputCoreEnd, outputCoreId, outputCoreEnd, estimatedLossDb? }], reason }`.
+Maksimal 288 baris. Jawaban `201 { dipasang, ids, verdicts }`.
+
+**`409` berarti TIDAK ADA yang tersimpan** — pesannya menyebut baris pertama
+yang gagal beserta alasannya.
+
+#### POST /api/v1/ftth/splices/:spliceId/release — admin/noc
+
+Body `{ reason }`. `409` kalau sudah pernah dilepas. Barisnya **tidak dihapus**.
+
+#### Tujuh hal yang WAJIB benar
+
+1. **Nomor core BOLEH berubah di closure — itu fiturnya, bukan anomali.**
+   Tampilkan nomor masuk dan nomor keluar berdampingan, dan tandai yang
+   berbeda. Jangan pernah menampilkan satu nomor saja dan menganggap sisi lain
+   sama; itu justru kesalahan pencatatan manual yang modul ini ada untuk
+   menghentikannya. Server sudah mengirim `silang: true|false` — pakai itu,
+   jangan membandingkan sendiri.
+
+2. **`409` pada pemasangan massal berarti NOL baris tersimpan.** Jangan pernah
+   menampilkan "3 dari 5 berhasil". Matriks yang tersimpan separuh terlihat
+   sudah dikerjakan, dan itu lebih berbahaya daripada yang jelas-jelas kosong.
+   Setelah `409`, muat ulang dan tampilkan keadaan sebenarnya.
+
+3. **Jalankan pratinjau sebelum commit, dan percayai hasilnya.** Keduanya
+   memakai fungsi pemeriksa yang sama persis di server — ada tes yang menuntut
+   verdict-nya identik. Jangan menulis validasi tandingan di klien; ia akan
+   salah lebih dulu dan membuat operator berhenti mempercayai pratinjaunya.
+
+4. **Kalau pembagian ditolak, tampilkan pesannya apa adanya.** Pesan servernya
+   sudah menyebut jalan keluarnya ("pembagian hanya lewat master splitter").
+   Mengganti dengan "gagal menyimpan" membuang satu-satunya petunjuk yang
+   dipunyai operator.
+
+5. **`estimatedLossDb` adalah ESTIMASI.** Beri label yang menyebut itu di
+   layar — "estimasi rugi", bukan "rugi optik". Boleh `null`, artinya belum
+   dimodelkan; tampilkan `—`, jangan `0 dB`. Kalau kelak ada data OTDR, ia
+   ditampilkan terpisah dan tidak boleh dicampur.
+
+6. **`?riwayat=1` bukan pelengkap.** Silangan yang sudah dilepas justru yang
+   dicari orang saat gangguan — "jalur ini dulu lewat mana". Sediakan
+   togel riwayat di layar matriks, jangan hanya keadaan sekarang.
+
+7. **Di layar kecil, matriks jadi KARTU, bukan tabel yang meluber.** Tabel
+   masuk/keluar punya delapan kolom; di 375 px ia hanya bisa dibaca dengan
+   menggeser ke samping, dan itu dikerjakan sambil berdiri di tiang.
+
+#### Yang sudah diurus backend, jangan diakali di layar
+
+- **Larangan membagi ditegakkan index unik**, bukan kode — ada tes yang
+  menulis langsung ke tabel untuk membuktikannya
+  (`tests/closure-silangan.test.ts`).
+- **Ujung core yang sudah diterminasi ke port tidak bisa disambung**, dan
+  sebaliknya. Diperiksa lintas-tabel di server.
+- **Batch bersifat satu transaksi.** Tidak perlu mengirim baris satu per satu
+  untuk "aman" — justru sebaliknya, itu menghilangkan jaminannya.
+
 ## Jebakan nama & bentuk
 
 Yang paling sering salah tebak, dikumpulkan di satu tempat:
@@ -1186,6 +1312,27 @@ Papan permintaan Opus → Luna (`WORKFLOW-TIM.md` §5). Semua di sini murni
 pekerjaan tampilan — datanya sudah tersedia di endpoint yang disebut, tidak
 ada yang perlu ditunggu dari backend. Tandai ✅ dan pindahkan ke §Selesai
 kalau sudah dikerjakan.
+
+### T-26. Layar closure dan matriks silangan core
+
+- **Layar:** `/ftth/closures` (daftar) dan `/ftth/closures/[id]` (matriks).
+- **Butuh:** §18 — lima endpoint, semuanya sudah hidup dan bertes.
+- **Bentuknya:** ikuti tabel "Silangan Core (Closure/Joint)" di
+  `docs/gambar/otb-detail-core.jpeg` — kolom masuk (kabel/core/warna), keluar
+  (kabel/core/warna), penanda silang, estimasi rugi, alasan, tanggal.
+- **Alur pemasangan:** susun baris → **pratinjau** → tampilkan verdict per
+  baris → commit. Kalau commit `409`, tampilkan bahwa **tidak ada** yang
+  tersimpan.
+- **Riwayat wajib ada togelnya** (`?riwayat=1`). Yang sudah dilepas justru yang
+  dicari saat gangguan.
+- **Mobile: kartu, bukan tabel.** Delapan kolom tidak muat di 375 px, dan
+  layar ini dipakai sambil berdiri di tiang.
+- **Kenapa sekarang:** tabelnya sudah ada dan kosong. Fase 14 (trace) menyusuri
+  silangan ini; tanpa cara memasukkannya, mesin trace tidak punya apa pun
+  untuk ditelusuri.
+- **Kenapa tidak bisa diakali dari backend:** murni tampilan. Seluruh aturan —
+  larangan membagi, okupansi ujung core, atomisitas batch — sudah ditegakkan
+  di server, sebagian langsung oleh PostgreSQL.
 
 ### T-25. Layar kabel, core, dan terminasi
 
@@ -1683,6 +1830,16 @@ orang mengetik.
 
 ## Riwayat
 
+- **2026-08-21** — **Fase 13: closure dan silangan core (§18).** "Core 17
+  menjadi Core 23" akhirnya bisa dicatat sebagai kenyataan. Larangan membagi
+  di closure biasa ditegakkan index unik — satu ujung core masuk, satu
+  sambungan aktif; percobaan membagi ditolak PostgreSQL, bukan disembunyikan
+  dari layar. Pemasangan massal semua-atau-tidak: satu baris bentrok
+  membatalkan seluruh batch, karena matriks yang tersimpan separuh terlihat
+  sudah dikerjakan. Pratinjau dan commit memakai fungsi pemeriksa yang SAMA,
+  dan ada tes yang menuntut verdict-nya identik. Uji mutasi menemukan lubang
+  nyata di tes sendiri: penjagaan ujung core punya dua arah, dan hanya satu
+  yang diuji. Tugas T-26.
 - **2026-08-21** — **Fase 12: kabel, core, dan terminasi (§17).** Lapisan di
   antara OTB dan ODP. Yang berubah sifatnya di sini: okupansi tidak lagi
   dijanjikan kode, ia ditegakkan tiga *partial unique index* — satu ujung core
