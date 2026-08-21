@@ -14,6 +14,7 @@ import {
   Archive,
   Bell,
   BarChart3,
+  Box,
   Cable,
   ChevronDown,
   ChevronRight,
@@ -81,6 +82,7 @@ const navigation = [
   { href: "/sites", label: "Situs", icon: MapPinned },
   { href: "/ipam", label: "IPAM", icon: Database },
   { href: "/ftth", label: "FTTH", icon: Cable },
+  { href: "/ftth/otb", label: "OTB", icon: Box },
   { href: "/pppoe", label: "PPPoE", icon: Router },
   { href: "/probe", label: "Probe", icon: Gauge },
   { href: "/alarms", label: "Alarm", icon: TriangleAlert },
@@ -98,6 +100,7 @@ const pageNames: Record<string, string> = {
   "/sites": "Situs",
   "/ipam": "IPAM",
   "/ftth": "FTTH",
+  "/ftth/otb": "OTB",
   "/pppoe": "PPPoE",
   "/probe": "Probe",
   "/alarms": "Alarm",
@@ -107,6 +110,7 @@ const pageNames: Record<string, string> = {
 
 function currentPage(pathname: string) {
   if (pathname.startsWith("/devices/")) return "Perangkat";
+  if (pathname === "/ftth/otb" || pathname.startsWith("/ftth/otb/")) return "OTB";
   return pageNames[pathname] ?? "Dashboard";
 }
 
@@ -252,7 +256,8 @@ export default function NocShell({ children }: { children: ReactNode }) {
           {navigation.map(({ href, label, icon: Icon }) => {
             const isActive =
               pathname === href ||
-              (href === "/devices" && pathname.startsWith("/devices/"));
+              (href === "/devices" && pathname.startsWith("/devices/")) ||
+              (href === "/ftth/otb" && pathname.startsWith("/ftth/otb"));
             return (
               <Link
                 key={label}

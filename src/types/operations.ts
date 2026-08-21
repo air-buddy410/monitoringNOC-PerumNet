@@ -107,6 +107,66 @@ export interface OdpPortsResponse {
   ports: OdpPort[];
 }
 
+export type OtbStatus = "aktif" | "nonaktif";
+
+export interface OtbSummary {
+  id: string;
+  code: string;
+  name: string;
+  siteId: string | null;
+  siteName: string | null;
+  defaultConnectorType: "SC" | "LC";
+  defaultPolish: "UPC" | "APC";
+  latitude: number | null;
+  longitude: number | null;
+  status: OtbStatus;
+  trayCount: number;
+  portCount: number;
+  usedPorts: number;
+  brokenPorts: number;
+}
+
+export interface OtbResponse {
+  otb: OtbSummary[];
+}
+
+export type OtbTrayStatus = "terhubung" | "sebagian" | "kosong" | "nonaktif";
+
+export interface OtbTray {
+  id: string;
+  trayNumber: number;
+  connectorType: "SC" | "LC";
+  polish: "UPC" | "APC";
+  label: string | null;
+  portCount: number;
+  usedPorts: number;
+  brokenPorts: number;
+  status: OtbTrayStatus;
+}
+
+export interface OtbDetail extends Omit<OtbSummary, "trayCount" | "portCount" | "usedPorts" | "brokenPorts"> {
+  notes: string | null;
+  createdAt: string;
+  updatedAt: string;
+  trays: OtbTray[];
+}
+
+export type OtbPortStatus = "kosong" | "terpakai" | "dicadangkan" | "rusak" | "nonaktif";
+
+export interface OtbPort {
+  id: string;
+  portNumberInTray: number;
+  globalPortNumber: number;
+  status: OtbPortStatus;
+  externalServiceId: string | null;
+  notes: string | null;
+  updatedAt: string;
+}
+
+export interface OtbPortsResponse {
+  ports: OtbPort[];
+}
+
 export type PppoeRunStatus = "SUCCESS" | "FAILED" | "SKIPPED" | "RUNNING";
 
 export interface PppoeLastRun {
