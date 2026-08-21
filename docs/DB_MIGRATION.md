@@ -49,7 +49,9 @@ aset dipetakan ke device LibreNMS (Fase 3).
 # 0) (Opsional, produksi/dev multi-proses) siapkan PostgreSQL lalu set DATABASE_URL
 docker compose -f docker-compose.dev.yml up -d
 
-# 1) Terapkan schema baseline ke target
+# 1) Terapkan schema baseline ke target — DEV SAJA.
+#    Untuk database PRODUKSI di VPS jangan pakai perintah ini;
+#    ikuti docs/OPERATIONS.md §13 (psql + catat barisnya sendiri).
 npx drizzle-kit migrate
 
 # 2) Salin data dari SQLite lama (read-only, idempoten — aman diulang)
@@ -84,3 +86,8 @@ Skrip **tidak pernah menulis ke SQLite** (dibuka `readonly`) dan memakai
   Postgres docker.
 - `drizzle-kit generate` berikutnya harus selalu menghasilkan migration file
   baru di `drizzle/pg/` — jangan mengedit migration yang sudah diterapkan.
+- **Tabel pelacak bisa melenceng dari kenyataan, dan diamnya total.** Sampai
+  21 Agustus 2026 `drizzle.__drizzle_migrations` di produksi hanya memuat
+  0000–0004 padahal 0005–0007 sudah terpasang; `drizzle-kit migrate` dalam
+  keadaan itu akan gagal di tengah. Sudah diperbaiki. Cara memeriksa dan
+  prosedur produksi yang benar: `docs/OPERATIONS.md` §13.
