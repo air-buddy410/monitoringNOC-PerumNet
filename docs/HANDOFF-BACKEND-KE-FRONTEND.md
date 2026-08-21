@@ -1520,6 +1520,37 @@ pekerjaan tampilan — datanya sudah tersedia di endpoint yang disebut, tidak
 ada yang perlu ditunggu dari backend. Tandai ✅ dan pindahkan ke §Selesai
 kalau sudah dikerjakan.
 
+### T-30. Tiga perbaikan kecil dari tinjauan kode FTTH
+
+Semuanya kecil, dan **tidak satu pun kesalahan besar** — layar FTTH-mu lolos
+seluruh aturan mahal di §16–§19. Ini sisa-sisanya.
+
+**1. Cabang trace tidak dipilih ulang saat titik awal berganti.**
+`trace-panel.tsx:77` — `branchIndex` hanya diubah lewat klik tab, tidak pernah
+kembali ke 0 saat `source` berganti. Telusuri port dengan 5 cabang, pilih
+cabang 4, lalu telusuri port lain yang cuma punya 1 cabang: `useMemo` menjepit
+indeksnya sehingga isinya benar, tapi **tidak ada tab yang tersorot** — dan
+operator melihat jalur yang tidak dia pilih. Reset `branchIndex` ke 0 saat
+`source.id` berubah.
+
+**2. `segmenBerulang` belum ditampilkan** (§19 aturan 6).
+Ada di `src/types/operations.ts:311` tapi tidak dirender di mana pun. Kalau
+sebuah jalur keluar lewat satu core dan kembali lewat core lain pada kabel yang
+SAMA, panjangnya memang dihitung dua kali — itu benar, cahayanya memang
+menempuh dua kali. Tanpa penanda, angkanya terlihat seperti salah hitung dan
+orang akan "memperbaikinya". Tampilkan catatan kecil saat `segmenBerulang > 0`.
+
+**3. Pakai `formatPanjang`, jangan salin rumusnya.**
+Konversi meter→kilometer sekarang tersalin di `fiber-page.tsx:69` dan
+`trace-panel.tsx:18`. Saya sudah menambahkan `formatPanjang(meter, lengkap?)`
+di `src/lib/noc-format.ts` — ia menangani `null` sebagai "Belum diukur",
+membedakannya dari `0 m`, dan memberi awalan `≥` saat `lengkap: false`. Sudah
+bertes di `tests/noc-format-panjang.test.ts`.
+
+Itu kelalaian saya: aturan "jangan bikin pembagi sendiri" saya tulis untuk
+satuan trafik, tapi helper untuk panjang tidak pernah saya sediakan. Sekarang
+ada.
+
 ### T-28. Tabel sesi PPPoE — saringan, urutan, dan halaman
 
 - **Layar:** `/pppoe` — `src/components/operations/pppoe-page.tsx`.
@@ -1558,7 +1589,7 @@ kalau sudah dikerjakan.
   `3.034,7 Mbps`. Tidak perlu menanyakannya lagi, dan tidak perlu membuat
   varian Mbps-tetap.
 - **Jangan membuat pembagi sendiri di komponen.** Satuan trafik punya satu
-  sumber, `formatBitrate`. Komponen yang menghitung `value / 1000000` sendiri
+  sumber, `formatBitrate`; panjang kabel punya `formatPanjang`. Komponen yang menghitung `value / 1000000` sendiri
   akan berbeda dari yang lain begitu ada yang memperbaiki pembulatan di satu
   tempat saja.
 - **Periksa juga tempat lain** yang menulis satuan tangan:
@@ -2104,6 +2135,11 @@ orang mengetik.
 
 ## Riwayat
 
+- **2026-08-21** — **`formatPanjang` masuk `noc-format.ts`,** setelah tinjauan
+  kode menemukan konversi meter→kilometer tersalin di dua komponen. Aturan
+  "jangan bikin pembagi sendiri" sudah saya tulis untuk satuan trafik, tapi
+  helper untuk panjang tidak pernah saya sediakan — kelalaian yang sama
+  bentuknya dengan `formatBitrate` yang tidak pernah dipakai. Tugas T-30.
 - **2026-08-21** — **Sesi PPPoE disaring dan dihalamani DATABASE (§20).**
   Endpointnya dulu mengirim seluruh sesi sekaligus — ~1.600 baris tiap kali
   `/pppoe` dibuka. Bebannya satu soal; yang lebih berbahaya, penyaringan di
