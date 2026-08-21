@@ -19,6 +19,7 @@ import {
   bigint,
   boolean,
   doublePrecision,
+  foreignKey,
   index,
   integer,
   jsonb,
@@ -26,6 +27,7 @@ import {
   primaryKey,
   text,
   timestamp,
+  unique,
   uniqueIndex,
 } from "drizzle-orm/pg-core";
 import { user } from "@/db/auth-schema";
@@ -974,3 +976,206 @@ export const tvTokens = pgTable("tv_tokens", {
     onDelete: "set null",
   }),
 });
+
+// ---------------------------------------------------------------------------
+// OTB — Optical Termination Box: tray dan port fisik (Fase 11).
+// ---------------------------------------------------------------------------
+
+/**
+ * Kosakata status port OTB — satu daftar, dipakai skema DAN validasi.
+ *
+ * Empat nilai pertama sudah dipakai `odp_ports` sejak Fase 10 dan sudah tampil
+ * di layar `/ftth`. Membuat kosakata kedua khusus OTB berarti satu konsep punya
+ * dua daftar kata dan UI harus menghafal keduanya beserta pemetaan warnanya —
+ * itu selalu berakhir dengan satu layar yang lupa sebagian.
+ *
+ * Yang ditambah hanya `nonaktif`: port utuh yang sengaja dikeluarkan dari
+ * layanan. Tanpa itu lencana "Tidak Aktif" pada tray tidak bisa diturunkan.
+ *
+ * `faulty` dan `damaged` dari PRD sengaja DILEBUR jadi `rusak`. Bedanya tidak
+ * mengubah satu pun keputusan operasional — port rusak tidak boleh
+ * dialokasikan, titik — sementara dua kata untuk satu keadaan menjamin ada
+ * query yang kelak hanya ingat salah satunya. Derajat kerusakan ditulis di
+ * `notes`, tempat yang memang untuk kalimat.
+ *
+ * Diekspor supaya route memvalidasi terhadap daftar yang SAMA dengan kolomnya.
+ * Kolomnya `text`, jadi tanpa validasi PostgreSQL akan menerima `"terpaki"`
+ * dengan senang hati dan port itu hilang dari semua pencacah selamanya.
+ */
+export const STATUS_PORT_OTB = [
+  "kosong",
+  "terpakai",
+  "dicadangkan",
+  "rusak",
+  "nonaktif",
+] as const;
+
+/**
+ * OTB: kotak terminasi tempat kabel feeder diurai jadi core per port.
+ *
+ * Ini rak, bukan titik jaringan. Yang bisa ditelusuri adalah PORT-nya, dan
+ * port hidup di dalam tray — itulah sebabnya tabel ini nyaris tidak menyimpan
+ * angka apa pun sendiri.
+ *
+ * **Jumlah tray dan jumlah port TIDAK disimpan di sini.** Keduanya dihitung
+ * dari baris `otb_trays` dan `otb_ports`. Prinsipnya sama dengan
+ * `odps.capacity` vs `usedPorts`: jangan pernah ada dua angka yang bisa
+ * berbeda tentang hal yang sama. Yang tersimpan hanyalah `default*` di bawah —
+ * itu NIAT saat membuat tray baru, bukan hitungan, jadi ia memang tidak bisa
+ * diturunkan dari mana pun.
+ *
+ * `defaultConnectorType` menentukan kapasitas bawaan tray: SC = 12 port,
+ * LC = 24 port (PRD FR-OTB-002). Itu default aplikasi, BUKAN batas database —
+ * tray boleh dibuat dengan jumlah port lain, dan skema ini tidak menghalangi.
+ *
+ * Koordinat: OTB di dalam POP memakai koordinat situsnya, OTB tunggal di tiang
+ * memakai koordinatnya sendiri. Keduanya boleh terisi dan itu bukan
+ * pertentangan — koordinat di sini MENIMPA koordinat situs kalau ada. Yang
+ * dilarang adalah kosong dua-duanya; OTB tanpa keduanya tidak akan pernah bisa
+ * muncul di peta, dan itu diperiksa di `src/server/otb-store.ts`.
+ */
+export const otb = pgTable(
+  "otb",
+  {
+    id: text("id").primaryKey(),
+    code: text("code").notNull().unique(),
+    name: text("name").notNull(),
+    siteId: text("site_id").references(() => networkSites.id, {
+      onDelete: "set null",
+    }),
+    /** Konektor bawaan untuk tray baru. Konektor sesungguhnya ada di tray. */
+    defaultConnectorType: text("default_connector_type", { enum: ["SC", "LC"] })
+      .notNull()
+      .default("LC"),
+    /**
+     * Polish bawaan untuk tray baru. Sengaja KOLOM TERPISAH dari konektor
+     * walaupun layar menampilkannya sebagai "LC/APC": digabung jadi satu teks,
+     * pertanyaan "mana saja yang APC" hanya bisa dijawab dengan mengurai
+     * string, dan itu selalu berakhir salah.
+     */
+    defaultPolish: text("default_polish", { enum: ["UPC", "APC"] })
+      .notNull()
+      .default("APC"),
+    latitude: doublePrecision("latitude"),
+    longitude: doublePrecision("longitude"),
+    status: text("status", { enum: ["aktif", "nonaktif"] })
+      .notNull()
+      .default("aktif"),
+    notes: text("notes"),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => [index("otb_site_idx").on(table.siteId)],
+);
+
+/**
+ * Satu laci di dalam OTB.
+ *
+ * `tray_number` adalah KOLOM, bukan urutan baris. Tray yang dicabut dari rak
+ * itu kejadian nyata, dan nomor tray tetangganya tidak boleh ikut bergeser
+ * karenanya — nomor tray tercetak di badan rak dan dipakai teknisi di lapangan
+ * untuk menemukan port. Karena itu deretan tray boleh berlubang (1,2,3,5,…)
+ * dan itu sah.
+ *
+ * Konektor dan polish ada DI SINI, bukan di OTB, karena inilah kenyataan
+ * fisiknya: satu rak bisa memuat tray SC dan tray LC sekaligus. `otb.default*`
+ * hanya mengisi nilai awal saat tray dibuat.
+ *
+ * Jumlah port tray tidak disimpan — ia adalah jumlah baris `otb_ports`.
+ */
+export const otbTrays = pgTable(
+  "otb_trays",
+  {
+    id: text("id").primaryKey(),
+    otbId: text("otb_id")
+      .notNull()
+      .references(() => otb.id, { onDelete: "cascade" }),
+    trayNumber: integer("tray_number").notNull(),
+    connectorType: text("connector_type", { enum: ["SC", "LC"] }).notNull(),
+    polish: text("polish", { enum: ["UPC", "APC"] }).notNull(),
+    label: text("label"),
+    status: text("status", { enum: ["aktif", "nonaktif"] })
+      .notNull()
+      .default("aktif"),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => [
+    uniqueIndex("otb_trays_otb_number_idx").on(table.otbId, table.trayNumber),
+    // Terlihat mubazir — `id` sudah primary key — tapi dialah satu-satunya yang
+    // membuat FK GABUNGAN di `otb_ports` mungkin. Lihat komentar di sana.
+    unique("otb_trays_id_otb_unique").on(table.id, table.otbId),
+  ],
+);
+
+/**
+ * Port fisik di dalam sebuah tray — identitas permanen (PRD FR-OTB-003).
+ *
+ * Dua penomoran, dan keduanya wajib:
+ *
+ * - `port_number_in_tray` — yang tercetak di tray dan dipakai teknisi.
+ * - `global_port_number` — nomor berurut se-OTB, yang dipakai dokumen lama
+ *   dan label di lapangan. Layar menyebutnya "Core 17 (Port 17)".
+ *
+ * Nomor global DISIMPAN, tidak dihitung ulang dari kapasitas tray. Kalau ia
+ * diturunkan, menambah satu port di tray 1 akan menggeser nomor seluruh port
+ * di tray 2 ke atas — dan setiap label yang sudah tertempel di lapangan
+ * seketika menunjuk port yang salah. Nomor yang sudah terbit tidak boleh
+ * bergerak, jadi deretannya boleh berlubang setelah kapasitas pernah diubah.
+ *
+ * `otb_id` sengaja diduplikasi dari tray-nya. Bukan demi kecepatan: tanpa ia,
+ * keunikan nomor global se-OTB tidak bisa dinyatakan sebagai constraint sama
+ * sekali, dan harus dijaga oleh kode aplikasi yang bisa lupa.
+ *
+ * `status` memakai `STATUS_PORT_OTB` — kosakata yang sama dengan `odp_ports`
+ * ditambah `nonaktif`. Lihat alasannya di sana.
+ *
+ * `external_service_id` = identitas layanan di sistem LAIN (CRM/ALUS). Portal
+ * ini tidak menyimpan nama maupun alamat pelanggan — repo ini publik.
+ */
+export const otbPorts = pgTable(
+  "otb_ports",
+  {
+    id: text("id").primaryKey(),
+    trayId: text("tray_id").notNull(),
+    otbId: text("otb_id")
+      .notNull()
+      .references(() => otb.id, { onDelete: "cascade" }),
+    portNumberInTray: integer("port_number_in_tray").notNull(),
+    globalPortNumber: integer("global_port_number").notNull(),
+    status: text("status", { enum: STATUS_PORT_OTB }).notNull().default("kosong"),
+    externalServiceId: text("external_service_id"),
+    notes: text("notes"),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => [
+    uniqueIndex("otb_ports_tray_number_idx").on(
+      table.trayId,
+      table.portNumberInTray,
+    ),
+    uniqueIndex("otb_ports_otb_global_idx").on(
+      table.otbId,
+      table.globalPortNumber,
+    ),
+    index("otb_ports_otb_idx").on(table.otbId),
+    // FK GABUNGAN, bukan `tray_id` biasa: ia sekaligus memaksa `otb_id` port
+    // sama dengan `otb_id` tray-nya. Tanpa ini, duplikasi `otb_id` di atas
+    // hanyalah janji kode aplikasi — dan janji semacam itu ditepati sampai
+    // suatu hari tidak. Duplikasi yang dijaga database bukan denormalisasi.
+    foreignKey({
+      name: "otb_ports_tray_fk",
+      columns: [table.trayId, table.otbId],
+      foreignColumns: [otbTrays.id, otbTrays.otbId],
+    }).onDelete("cascade"),
+  ],
+);

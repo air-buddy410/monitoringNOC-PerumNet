@@ -816,6 +816,167 @@ pada polling berikutnya, bukan saat cookie habis.
   `PERMINTAAN-FRONTEND-KE-BACKEND.md` — jangan cari jalan lain.
 - **`Referrer-Policy: no-referrer`** sudah dipasang di `next.config`.
 
+### 16. OTB, tray, dan port — `/ftth/otb`
+
+Kotak terminasi tempat kabel feeder diurai jadi core per port. Petugas
+lapangan menyebut posisi sebagai "Tray 3 port 5", dan seluruh bentuk data di
+bawah mengikuti kalimat itu — bukan meringkasnya jadi satu angka kapasitas.
+
+Backend-nya sudah lengkap, tabelnya `otb`, `otb_trays`, `otb_ports` (migrasi
+`0008_otb_tray_port`). Sampai hari ini **belum ada satu OTB pun** — layarnya
+memang belum dibuat. Itu tugas T-24.
+
+Acuan visual: `docs/gambar/otb-detail-*.jpeg`. PRD asalnya di
+`docs/PRD-OTB-CORE-ROUTE-MASTER-SPLITTER.md` — **baca blok pembuka dokumen itu
+lebih dulu**, karena ia ditulis untuk app lain dan sebagian klaimnya tidak
+berlaku di sini.
+
+#### Yang ADA dan yang BELUM di fase ini
+
+Dari empat tab pada acuan visual, **hanya "Inventori Tray" yang punya data**.
+"Peta Jalur", "Detail Core", dan "Riwayat" menunggu fase berikutnya — core
+fiber, closure, dan trace engine belum ada di database mana pun.
+
+#### Cara sebuah layar tersusun
+
+```
+1. Dropdown "Pilih OTB"      → GET  /api/v1/ftth/otb
+2. Baris pemilih tray        → GET  /api/v1/ftth/otb/:otbId
+   (+ kepala: konektor, polish, status tiap tray)
+3. Tab "Inventori Tray"      → GET  /api/v1/ftth/otb/:otbId/trays/:n/ports
+4. Menandai satu port        → PATCH …/trays/:n/ports
+5. Menambah/mengurangi port  → PATCH …/trays/:n        (admin/noc)
+```
+
+#### GET /api/v1/ftth/otb — pengisi dropdown
+
+```jsonc
+{ "otb": [{
+  "id": "…", "code": "OTB-KCC-01", "name": "OTB POP Kecicang",
+  "siteId": "s1", "siteName": "Kecicang",   // null kalau OTB tiang
+  "defaultConnectorType": "LC",             // konektor SESUNGGUHNYA ada di tray
+  "defaultPolish": "APC",
+  "latitude": null, "longitude": null,      // terisi hanya bila siteId null
+  "status": "aktif",                        // "aktif" | "nonaktif"
+  "trayCount": 4, "portCount": 96,          // DITURUNKAN dari baris, bukan kolom
+  "usedPorts": 17, "brokenPorts": 3
+}] }
+```
+
+Urut `code` menaik, supaya pilihan tidak berpindah-pindah antar-muat.
+
+#### GET /api/v1/ftth/otb/:otbId — kepala + seluruh tray
+
+```jsonc
+{
+  "id": "…", "code": "OTB-KCC-01", "name": "OTB POP Kecicang",
+  "siteId": "s1", "siteName": "Kecicang",
+  "defaultConnectorType": "LC", "defaultPolish": "APC",
+  "latitude": null, "longitude": null,
+  "status": "aktif", "notes": null,
+  "createdAt": "…", "updatedAt": "…",
+  "trays": [{
+    "id": "…", "trayNumber": 1,
+    "connectorType": "LC", "polish": "APC",   // per TRAY — satu rak boleh campur
+    "label": null,
+    "portCount": 24, "usedPorts": 24, "brokenPorts": 0,
+    "status": "terhubung"      // "terhubung" | "sebagian" | "kosong" | "nonaktif"
+  }]
+}
+```
+
+`404` kalau OTB tidak ada.
+
+#### GET /api/v1/ftth/otb/:otbId/trays/:n/ports — tab Inventori Tray
+
+```jsonc
+{ "ports": [{
+  "id": "…",
+  "portNumberInTray": 17,     // yang tercetak di tray
+  "globalPortNumber": 17,     // yang ditulis dokumen & label — layar menyebutnya "Core 17"
+  "status": "terpakai",       // kosong | terpakai | dicadangkan | rusak | nonaktif
+  "externalServiceId": "SRV-00931",
+  "notes": null, "updatedAt": "…"
+}] }
+```
+
+Urut `portNumberInTray`. `400` kalau `:n` bukan bilangan bulat positif, `404`
+kalau tray itu tidak ada pada OTB tersebut.
+
+#### PATCH …/trays/:n/ports — menandai satu port (admin/noc/engineer)
+
+Body `{ "portNumberInTray": 17, "status": "terpakai", "externalServiceId": "SRV-1", "notes": null }`
+— hanya `portNumberInTray` yang wajib. Jawaban `200 { id, portNumberInTray, status }`.
+
+`400` body bukan JSON / `portNumberInTray` bukan bilangan bulat / `status` di
+luar kelima nilai. `404` OTB, tray, atau port tidak ada. `409` OTB-nya
+`nonaktif`.
+
+#### PATCH …/trays/:n — kapasitas tray (admin/noc)
+
+Body `{ "portCount": 28 }` — **bentuk akhir, bukan selisih**. Dua permintaan
+bersamaan yang masing-masing menyebut "+4" akan saling menimpa diam-diam; dua
+yang menyebut "jadi 28" tidak.
+
+Jawaban `200 { trayId, portCount }`. `409` kalau ada port yang akan hilang dan
+port itu tidak kosong, masih memegang `externalServiceId`, atau pernah punya
+riwayat perubahan — pesannya menyebut nomor portnya, tampilkan apa adanya.
+
+#### Tujuh hal yang WAJIB benar
+
+1. **"Core 17" di layar berarti `globalPortNumber`, BUKAN core fiber.**
+   Fase berikutnya membawa core fiber sungguhan: kabel 24-core yang core
+   ke-7-nya mendarat di port 17. Sejak itu "core 7" dan "core 17" menunjuk
+   benda berbeda pada sambungan yang sama. Sepakati sekarang: di layar OTB,
+   "Core N" = nomor port global. Kalau label ini berubah setelah operator
+   terbiasa, ongkosnya jauh lebih besar daripada mengubahnya hari ini.
+
+2. **Jangan pernah menghitung sendiri nomor global.** Rumus
+   `(tray-1) * portPerTray + slot` benar hanya sampai kapasitas diubah untuk
+   pertama kali. Setelah tray 1 dikecilkan dari 24 ke 12, tray 2 tetap mulai
+   dari 25 — lubang 13–24 memang dibiarkan, karena nomor yang sudah terbit
+   tidak boleh dipakai ulang. `globalPortNumber` selalu ikut di setiap
+   respons port; pakai itu.
+
+3. **Nomor tray boleh berlubang, dan itu sah.** Tray yang dicabut dari rak
+   adalah kejadian nyata, dan nomor tray tetangganya tidak ikut bergeser —
+   nomor itu tercetak di badan rak dan dipakai teknisi untuk menemukan port.
+   Render `trayNumber` apa adanya; jangan memakai indeks array.
+
+4. **Lencana tray datang dari server, jangan dihitung ulang di layar.**
+   Empat nilainya (`terhubung`/`sebagian`/`kosong`/`nonaktif`) punya urutan
+   pemeriksaan yang merupakan definisinya, dan sudah diuji di
+   `tests/otb-status-tray.test.ts`. Tray tanpa port sama sekali berlencana
+   `kosong`, bukan `terhubung` — 0 dari 0 bukan penuh.
+
+5. **Konektor dan polish adalah dua field terpisah.** Layar boleh menuliskan
+   "LC/APC", tapi jangan pernah mengirimkannya kembali sebagai satu string.
+   Nilainya per TRAY, bukan per OTB: satu rak boleh memuat tray SC dan tray
+   LC sekaligus. `defaultConnectorType` di kepala OTB hanya nilai awal saat
+   tray baru dibuat.
+
+6. **Master Splitter di acuan visual (MS-01) bukan entitas baru.** Ia `odps`
+   berperan `MS` yang sudah ada sejak Fase 10 — 63 baris di produksi, rasio
+   1:8 dan 1:16 tersimpan di `capacity`, koordinat lengkap. Endpointnya
+   `GET /api/v1/ftth/odps` (§12). Jangan menunggu endpoint master-splitter
+   baru; tidak akan ada.
+
+7. **Jangan menambahkan identitas pelanggan di layar OTB.** Aturannya sama
+   dengan `odp_ports`: yang boleh disimpan hanya `externalServiceId` — ID
+   layanan di CRM/ALUS. Repo ini publik.
+
+#### Yang sudah diurus backend, jangan diakali di layar
+
+- **Pembuatan OTB membangun seluruh tray dan portnya dalam satu transaksi.**
+  Kegagalan di tengah tidak meninggalkan OTB yatim
+  (`tests/otb-routes.test.ts`). Jangan membuat tray satu per satu dari layar.
+- **Setiap perubahan port menulis baris `audit_logs` sebelum/sesudah.** Itu
+  bukan hiasan: aturan penurunan kapasitas membacanya untuk tahu port mana
+  yang pernah disentuh. Jangan membuat jalur pintas yang melewatinya.
+- **Tidak ada `DELETE` OTB, dan itu disengaja.** FK-nya cascade, jadi satu
+  DELETE memusnahkan seluruh tray, port, dan kegunaan jejak auditnya. Cara
+  menonaktifkan OTB adalah `status: "nonaktif"`.
+
 ## Jebakan nama & bentuk
 
 Yang paling sering salah tebak, dikumpulkan di satu tempat:
@@ -893,6 +1054,28 @@ Papan permintaan Opus → Luna (`WORKFLOW-TIM.md` §5). Semua di sini murni
 pekerjaan tampilan — datanya sudah tersedia di endpoint yang disebut, tidak
 ada yang perlu ditunggu dari backend. Tandai ✅ dan pindahkan ke §Selesai
 kalau sudah dikerjakan.
+
+### T-24. Layar OTB — daftar, tray, dan inventori port
+
+- **Layar:** `/ftth/otb` (daftar) dan `/ftth/otb/[id]` (detail). Entri nav baru
+  di `src/components/layout/noc-shell.tsx`, di bawah "FTTH".
+- **Butuh:** §16 — empat endpoint, semuanya sudah hidup dan sudah bertes.
+- **Bentuknya:** ikuti `docs/gambar/otb-detail-*.jpeg`. Bagian yang bisa dibuat
+  sekarang: dropdown "Pilih OTB", baris pemilih tray berlencana status, panel
+  Tipe Konektor / Polish, dan tab **Inventori Tray** (tabel port dengan status,
+  external service ID, dan catatan — pola yang sama dengan `/ftth`).
+- **Tiga tab lain BIARKAN KOSONG dengan penjelasan.** "Peta Jalur", "Detail
+  Core", dan "Riwayat" belum punya data sama sekali — core fiber, closure, dan
+  trace engine baru datang di fase berikutnya. Tampilkan empty state yang
+  mengatakan itu; **jangan diisi angka contoh.** Itu persis kesalahan yang baru
+  kita tutup di laporan SLA pada 21 Agustus, dan di sana ia sempat menanam
+  angka karangan ke database produksi.
+- **Kenapa sekarang:** tabelnya sudah ada dan kosong. Tanpa layar ini tidak ada
+  satu pun cara memasukkan OTB, jadi seluruh Fase 12 (core dan terminasi) tidak
+  punya tempat untuk menambatkan diri.
+- **Kenapa tidak bisa diakali dari backend:** ini murni pekerjaan tampilan.
+  Seluruh aturan domain — penomoran global, lencana tray, penolakan penurunan
+  kapasitas — sudah ditegakkan di server dan tidak boleh diulang di layar.
 
 ### T-23. Laporan yang kosong harus terlihat kosong
 
@@ -1348,6 +1531,18 @@ orang mengetik.
 
 ## Riwayat
 
+- **2026-08-21** — **Fase 11: OTB, tray, dan port.** PRD OTB/core-route/master
+  splitter masuk lewat `.orca/drops/`, dan pemeriksaan menunjukkan ia ditulis
+  untuk app lain (Prisma) dengan klaim status yang tidak berdiri: `OTBTray`,
+  `MasterSplitter*`, dan `ODPFiberTermination` yang ia tandai "Selesai"
+  ternyata tidak ada di repo PerumNet mana pun. Jadi ini bukan melanjutkan
+  fase yang tertinggal — ini mulai dari nol. Yang dibangun baru lapisan paling
+  bawah: `otb`, `otb_trays`, `otb_ports` (§16, migrasi `0008_otb_tray_port`),
+  tugas T-24. **Master Splitter sengaja TIDAK dibuat tabel baru** — ia sudah
+  ada sebagai `odps.role='MS'` dengan 63 baris produksi, dan PRD itu sendiri
+  melarang membuat master paralel untuk ODP. Nomor port global disimpan, bukan
+  dihitung dari kapasitas, supaya label yang sudah tertempel di lapangan tidak
+  pernah menunjuk port yang salah.
 - **2026-08-21** — **Laporan berhenti mengarang, dan `GET /api/reports/sla`
   berhenti 500 di produksi.** Komentar di kepala `reports.ts` sudah lama
   menjanjikan "produksi/terhubung: seed tidak dijalankan", tapi hanya
