@@ -39,6 +39,9 @@ const REQUIRED_TABLES = [
   "fiber_cable_segments",
   "fiber_cores",
   "fiber_core_terminations",
+  // Closure & silangan (Fase 13)
+  "fiber_closures",
+  "fiber_core_splices",
   // auth
   "user",
   "session",
@@ -132,6 +135,32 @@ describe("baseline schema PostgreSQL", () => {
     expect(sql).toMatch(
       /"fiber_core_terminations_odp_port_id_odp_ports_id_fk"[\s\S]*?ON DELETE restrict/,
     );
+  });
+
+  it("larangan membagi ditegakkan index, bukan kode", () => {
+    // Satu ujung core masuk hanya boleh punya satu sambungan aktif. Kalau
+    // index ini hilang, satu feeder bisa "bercabang" di closure biasa tanpa
+    // splitter — dan setiap trace yang lewat situ jadi ambigu tanpa gejala.
+    const parsial = sql.match(/CREATE UNIQUE INDEX "fiber_splice_[a-z_]+_idx"[^;]*/g) ?? [];
+    expect(parsial).toHaveLength(2);
+    for (const baris of parsial) {
+      expect(baris).toMatch(/deactivated_at" is null/);
+    }
+    expect(sql).toContain("fiber_splice_input_idx");
+    expect(sql).toContain("fiber_splice_output_idx");
+    expect(sql).toContain("fiber_splice_bukan_diri_check");
+  });
+
+  it("closure dan core yang punya silangan tidak bisa dihapus", () => {
+    for (const fk of [
+      "fiber_core_splices_closure_id_fiber_closures_id_fk",
+      "fiber_core_splices_input_core_id_fiber_cores_id_fk",
+      "fiber_core_splices_output_core_id_fiber_cores_id_fk",
+    ]) {
+      expect(sql, `${fk} harus restrict`).toMatch(
+        new RegExp(`"${fk}"[\\s\\S]*?ON DELETE restrict`),
+      );
+    }
   });
 
   it("relasi kunci: nodes→assets cascade, versions unik per (topology, version)", () => {

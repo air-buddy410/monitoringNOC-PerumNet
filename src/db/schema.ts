@@ -1395,3 +1395,127 @@ export const fiberCoreTerminations = pgTable(
     ),
   ],
 );
+
+// ---------------------------------------------------------------------------
+// Closure dan silangan core (Fase 13).
+// ---------------------------------------------------------------------------
+
+/**
+ * Closure — sambungan di lapangan tempat core dari dua kabel disambung.
+ *
+ * Aturan lokasinya sama dengan `otb`: kalau tidak menempel pada situs, ia
+ * WAJIB punya koordinat sendiri. Closure yang tidak bisa ditemukan di peta
+ * tidak ada gunanya bagi orang yang sedang mencari titik putus jam tiga pagi.
+ *
+ * `type` sengaja dibedakan walau keduanya diperlakukan sama oleh aturan
+ * silangan: `inline` disambung di tengah bentangan, `dome` di ujung. Bedanya
+ * penting bagi teknisi yang membawa perkakas, bukan bagi trace.
+ *
+ * **Closure TIDAK boleh membagi satu core jadi beberapa** (PRD §3 aturan 2).
+ * Larangan itu tidak ditulis di sini sebagai kolom — ia ditegakkan index unik
+ * di `fiber_core_splices`. Kolom "boleh membagi" akan jadi saklar yang cepat
+ * atau lambat dinyalakan seseorang.
+ */
+export const fiberClosures = pgTable(
+  "fiber_closures",
+  {
+    id: text("id").primaryKey(),
+    code: text("code").notNull().unique(),
+    name: text("name"),
+    siteId: text("site_id").references(() => networkSites.id, {
+      onDelete: "set null",
+    }),
+    latitude: doublePrecision("latitude"),
+    longitude: doublePrecision("longitude"),
+    type: text("type", { enum: ["inline", "dome", "lain"] })
+      .notNull()
+      .default("inline"),
+    status: text("status", { enum: ["aktif", "nonaktif"] })
+      .notNull()
+      .default("aktif"),
+    notes: text("notes"),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => [index("fiber_closures_site_idx").on(table.siteId)],
+);
+
+/**
+ * Satu sambungan core di dalam closure: ujung core masuk → ujung core keluar.
+ *
+ * Inilah yang membuat "Core 17 menjadi Core 23" bisa dicatat sebagai
+ * kenyataan, bukan catatan pinggir. Nomor core BOLEH berubah saat melewati
+ * closure (PRD §3.1), dan trace wajib mengikuti nomor yang baru.
+ *
+ * **Larangan membagi ditegakkan di sini, bukan di closure-nya.**
+ * `fiber_splice_input_idx` memastikan satu ujung core masuk hanya punya SATU
+ * sambungan aktif. Percobaan membagi satu core jadi dua akan ditolak
+ * PostgreSQL, bukan hanya oleh kode — dan bukan hanya disembunyikan dari
+ * layar. Pembagian optik hanya boleh lewat master splitter yang eksplisit.
+ *
+ * Arah "masuk" dan "keluar" adalah arah TELUSUR (feeder menuju pelanggan),
+ * bukan sifat fisik: sambungan fusi itu simetris. Arah disimpan supaya trace
+ * punya urutan yang pasti.
+ *
+ * **Yang TIDAK dijamin database, dan harus dijaga `fiber-store.ts`:** sebuah
+ * ujung core dipakai sebagai `input` pada satu sambungan DAN sebagai `output`
+ * pada sambungan lain. Kedua index di bawah masing-masing hanya melihat satu
+ * kolom, dan keunikan lintas-kolom tidak bisa dinyatakan sebagai index biasa.
+ * Begitu pula "ujung ini sudah diterminasi di `fiber_core_terminations`" —
+ * itu tabel lain. Keduanya diperiksa di store dan punya tesnya sendiri; jangan
+ * menganggap index sudah menutup semuanya.
+ *
+ * `estimated_loss_db` bernama demikian dengan sengaja. Ia model, bukan hasil
+ * ukur. PRD §3 aturan 6: estimasi tidak boleh dilabeli pengukuran, dan nama
+ * kolom adalah label yang paling sering dibaca orang.
+ */
+export const fiberCoreSplices = pgTable(
+  "fiber_core_splices",
+  {
+    id: text("id").primaryKey(),
+    closureId: text("closure_id")
+      .notNull()
+      .references(() => fiberClosures.id, { onDelete: "restrict" }),
+    inputCoreId: text("input_core_id")
+      .notNull()
+      .references(() => fiberCores.id, { onDelete: "restrict" }),
+    inputCoreEnd: text("input_core_end", { enum: ["A", "B"] }).notNull(),
+    outputCoreId: text("output_core_id")
+      .notNull()
+      .references(() => fiberCores.id, { onDelete: "restrict" }),
+    outputCoreEnd: text("output_core_end", { enum: ["A", "B"] }).notNull(),
+    /** Estimasi rugi sambungan dalam dB — model, BUKAN hasil ukur. */
+    estimatedLossDb: doublePrecision("estimated_loss_db"),
+    reason: text("reason").notNull(),
+    deactivatedAt: timestamp("deactivated_at", { withTimezone: true }),
+    deactivatedReason: text("deactivated_reason"),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => [
+    // Larangan membagi: satu ujung masuk, satu sambungan aktif.
+    uniqueIndex("fiber_splice_input_idx")
+      .on(table.inputCoreId, table.inputCoreEnd)
+      .where(sql`${table.deactivatedAt} is null`),
+    // Satu ujung keluar hanya ditempati satu sambungan aktif.
+    uniqueIndex("fiber_splice_output_idx")
+      .on(table.outputCoreId, table.outputCoreEnd)
+      .where(sql`${table.deactivatedAt} is null`),
+    index("fiber_splice_closure_idx").on(table.closureId),
+    // Core tidak bisa disambung ke dirinya sendiri pada ujung yang sama.
+    // Ujung A ke ujung B core yang sama secara fisik adalah loop sepanjang
+    // satu kabel — mustahil, dan kalau lolos ia membuat trace berputar.
+    check(
+      "fiber_splice_bukan_diri_check",
+      sql`${table.inputCoreId} <> ${table.outputCoreId}`,
+    ),
+  ],
+);

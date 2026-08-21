@@ -5,7 +5,7 @@
 | Produk | Portal NOC PerumNet (`monitoring-noc`) |
 | Stack | Next.js + **Drizzle ORM** + better-auth + PostgreSQL |
 | Versi | 2.0 — disesuaikan ke portal NOC, 21 Agustus 2026 |
-| Status | **Fase 11 dan 12 selesai.** Fase 13–16 belum. |
+| Status | **Fase 11, 12, dan 13 selesai.** Fase 14–16 belum. |
 | Sifat perubahan | Aditif; tidak ada tabel existing yang diubah bentuknya |
 
 > **Asal dokumen.** Kebutuhan di sini datang dari sebuah PRD yang ditulis untuk
@@ -121,6 +121,7 @@ produksi pada 21 Agustus 2026.
 | `assets` | — | Perangkat terpantau (LibreNMS) |
 | `otb`, `otb_trays`, `otb_ports` | 0 | **Fase 11 — sudah dibuat** |
 | `fiber_cable_segments`, `fiber_cores`, `fiber_core_terminations` | 0 | **Fase 12 — sudah dibuat** |
+| `fiber_closures`, `fiber_core_splices` | 0 | **Fase 13 — sudah dibuat** |
 
 ### 4.2 Master Splitter TIDAK dibuat tabel baru
 
@@ -151,7 +152,7 @@ Alasan lengkapnya tertulis di komentar tabel `odps` pada `src/db/schema.ts`.
 
 ### 4.3 Belum ada, dan memang harus dibangun
 
-`fiber_closures`, silangan core antar-kabel, dan mesin trace. Fase 13–16.
+Mesin trace, garis jalur di peta, dan layar riwayat topologi. Fase 14–16.
 
 ### 4.4 Tidak ada di portal ini, dan tidak direncanakan
 
@@ -210,7 +211,10 @@ hari tidak. Yang bisa dinyatakan sebagai constraint, dinyatakan:
 | Satu port ODP hanya ditempati satu terminasi aktif | `fiber_term_odp_port_idx`, parsial | ✅ Fase 12 |
 | Terminasi wajib menempel tepat di satu port | CHECK `fiber_term_sasaran_check` | ✅ Fase 12 |
 | Port yang membawa core tidak bisa dihapus | FK `restrict` ke `otb_ports`/`odp_ports` | ✅ Fase 12 |
-| Satu output closure hanya ditempati satu silangan aktif | *partial unique index* | Fase 13 |
+| Satu ujung core masuk hanya punya satu sambungan aktif (larangan membagi) | `fiber_splice_input_idx`, parsial | ✅ Fase 13 |
+| Satu ujung core keluar hanya ditempati satu sambungan aktif | `fiber_splice_output_idx`, parsial | ✅ Fase 13 |
+| Core tidak bisa disambung ke dirinya sendiri | CHECK `fiber_splice_bukan_diri_check` | ✅ Fase 13 |
+| Closure/core yang punya silangan tidak bisa dihapus | FK `restrict` | ✅ Fase 13 |
 
 Pola *partial unique index* sudah punya preseden di repo ini:
 `incidents_active_alert_idx` di `src/db/schema.ts`. Itu mekanisme yang dokumen
@@ -248,17 +252,20 @@ Semua di bawah `/api/v1/ftth/`, mengikuti keluarga yang sudah ada
 | `GET /api/v1/ftth/cables/:cableId` | `[]` | Kabel + seluruh core |
 | `POST /api/v1/ftth/terminations` | `admin`, `noc` | Terminasi ujung core ke port |
 | `POST …/terminations/:id/release` | `admin`, `noc` | Lepas terminasi (non-destruktif) |
+| `GET/POST /api/v1/ftth/closures` | `[]` / `admin`,`noc` | Closure |
+| `GET /api/v1/ftth/closures/:id` | `[]` | Matriks silangan (`?riwayat=1`) |
+| `POST …/closures/:id/splices/preview` | `admin`, `noc` | Pratinjau, tanpa menulis |
+| `POST …/closures/:id/splices` | `admin`, `noc` | Pasang batch, atomik |
+| `POST /api/v1/ftth/splices/:id/release` | `admin`, `noc` | Lepas silangan |
 
 Kontrak lengkapnya — bentuk respons, kode galat, dan larangan untuk frontend —
-ada di `docs/HANDOFF-BACKEND-KE-FRONTEND.md` §16 (OTB) dan §17 (kabel/core). Dokumen itu yang mengikat;
+ada di `docs/HANDOFF-BACKEND-KE-FRONTEND.md` §16 (OTB), §17 (kabel/core), dan §18 (closure). Dokumen itu yang mengikat;
 tabel di atas hanya ringkasan.
 
 ### 6.2 Direncanakan
 
 | Endpoint | Fase | Untuk |
 |---|---|---|
-| `GET/POST /api/v1/ftth/closures` | 13 | Closure dan matriks silangan core |
-| `POST /api/v1/ftth/closures/:id/preview` | 13 | Pratinjau okupansi sebelum commit |
 | `GET /api/v1/ftth/trace` | 14 | Trace dua arah + diagnosis |
 | `GET /api/v1/ftth/geo` | 15 | GeoJSON jalur untuk peta |
 
@@ -308,7 +315,7 @@ tersendiri yang menyentuh better-auth dan seluruh endpoint yang ada.
 |---|---|---|
 | **11** | OTB, tray, port | ✅ **Selesai, terpasang di produksi 21 Agustus 2026** |
 | 12 | Kabel, core, terminasi core→port, okupansi | ✅ **Selesai 21 Agustus 2026** |
-| 13 | Closure dan silangan core; larangan pembagian | Belum |
+| 13 | Closure dan silangan core; larangan pembagian | ✅ **Selesai 21 Agustus 2026** |
 | 14 | Mesin trace feeder/distribution + diagnosis | Belum |
 | 15 | Garis jalur di peta + fanout MS→ODP | Belum |
 | 16 | Riwayat topologi di atas `audit_logs` | Belum |
@@ -402,14 +409,22 @@ didiamkan:
   saat menelusuri jalur, dan mesin trace-nya belum ada. Yang sudah disiapkan:
   `length_m` per segmen, dalam meter, dan boleh NULL kalau belum diukur.
 
-### Fase 13 — closure
+### Fase 13 — closure ✅
 
-- [ ] Core 17 → Core 17 bisa dibuat
-- [ ] Core 17 → Core 23 bisa dibuat, dan trace mengikuti Core 23
-- [ ] Output yang sudah ditempati ditolak
-- [ ] Pembagian satu-ke-banyak pada closure normal ditolak **di server**
-- [ ] Operasi massal gagal seluruhnya kalau satu baris bentrok
-- [ ] Penggantian mempertahankan record lama
+- [x] Core 17 → Core 17 bisa dibuat
+- [x] Core 17 → Core 23 bisa dibuat, dan perubahan nomornya tercatat
+- [x] Output yang sudah ditempati ditolak
+- [x] Pembagian satu-ke-banyak pada closure normal ditolak **di server**
+- [x] Operasi massal gagal seluruhnya kalau satu baris bentrok
+- [x] Penggantian mempertahankan record lama
+- [x] Ujung core yang sudah diterminasi ke port tidak bisa disambung
+- [x] Pratinjau dan commit memakai pemeriksa yang sama
+
+**Satu setengah kriteria belum tuntas, dan itu memang milik fase berikutnya:**
+*"trace mengikuti Core 23"* — silangannya sudah tercatat lengkap dengan nomor
+masuk dan keluar, tapi yang MENGIKUTI-nya adalah mesin trace, dan itu **Fase
+14**. Yang sudah bisa dijawab hari ini: "di closure ini, core mana jadi core
+mana".
 
 ### Fase 14 — trace
 
