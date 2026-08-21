@@ -1413,7 +1413,7 @@ pekerjaan tampilan — datanya sudah tersedia di endpoint yang disebut, tidak
 ada yang perlu ditunggu dari backend. Tandai ✅ dan pindahkan ke §Selesai
 kalau sudah dikerjakan.
 
-### T-27. Layar trace jalur core
+### ✅ T-27. Layar trace jalur core — frontend selesai 2026-08-21
 
 - **Layar:** tab **"Peta Jalur"** dan **"Detail Core"** di `/ftth/otb/[id]`
   yang selama ini sengaja dibiarkan kosong — sekarang datanya ada.
@@ -1434,7 +1434,7 @@ kalau sudah dikerjakan.
 - **Kenapa tidak bisa diakali dari backend:** murni tampilan. Trace, diagnosis,
   penjumlahan panjang, dan estimasi rugi semuanya dihitung di server.
 
-### T-26. Layar closure dan matriks silangan core
+### ✅ T-26. Layar closure dan matriks silangan core — frontend selesai 2026-08-21
 
 - **Layar:** `/ftth/closures` (daftar) dan `/ftth/closures/[id]` (matriks).
 - **Butuh:** §18 — lima endpoint, semuanya sudah hidup dan bertes.
@@ -1455,7 +1455,7 @@ kalau sudah dikerjakan.
   larangan membagi, okupansi ujung core, atomisitas batch — sudah ditegakkan
   di server, sebagian langsung oleh PostgreSQL.
 
-### T-25. Layar kabel, core, dan terminasi
+### T-25. Layar kabel, core, dan terminasi — frontend selesai 2026-08-21; riwayat terminasi menunggu endpoint backend
 
 - **Layar:** `/ftth/cables` (daftar) dan `/ftth/cables/[id]` (detail + tabel
   core). Plus aksi terminasi dari layar OTB yang sudah ada.

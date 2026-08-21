@@ -50,3 +50,15 @@ field-nya di `docs/HANDOFF-BACKEND-KE-FRONTEND.md`, bukan di sini.
   (`npx drizzle-kit migrate`); kolomnya ada, dan `POST /api/auth/sign-in/portal`
   sekarang menjawab **401**, bukan 500. Kontrak 401/503/429 di HANDOFF T-4
   berlaku apa adanya.
+
+### Riwayat terminasi core untuk layar kabel (T-25)
+- **Layar:** `/ftth/cables/[id]` → panel "Riwayat terminasi"
+- **Butuh:** endpoint baca yang mengembalikan seluruh terminasi sebuah core,
+  termasuk yang sudah dilepas: `id`, `coreEnd`, `otbPortId`, `odpPortId`,
+  `reason`, `deactivatedAt`, `deactivatedReason`, dan `createdAt`. Fungsi
+  `riwayatTerminasiCore(coreId)` sudah ada di `src/server/fiber-store.ts`,
+  tetapi belum ada route API yang mengeksposnya.
+- **Kenapa tidak bisa di sisi frontend:** `GET /api/v1/ftth/cables/:cableId`
+  hanya mengirim `ujungTerpakai` yang aktif dan tidak menyertakan ID maupun
+  alasan terminasi lama. Frontend tidak boleh membaca database atau mengarang
+  riwayat dari status aktif.

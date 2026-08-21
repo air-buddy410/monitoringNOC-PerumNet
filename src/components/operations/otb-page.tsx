@@ -2,12 +2,14 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { ArrowLeft, ArrowRight, Box, Check, RefreshCw } from "lucide-react";
+import { ArrowLeft, ArrowRight, Box, Check, Link2, RefreshCw, Route } from "lucide-react";
 import { useMemo, useState } from "react";
 import useSWR from "swr";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { NocPageHeader, NocPanel, NocState, NocStatus } from "@/components/noc-ui";
+import { OtbTerminationPanel } from "@/components/operations/fiber-termination";
+import { TracePanel } from "@/components/operations/trace-panel";
 import { useSession } from "@/hooks/use-session";
 import { ApiError, getJson, sendJson } from "@/lib/api/http";
 import type {
@@ -174,13 +176,19 @@ function OtbPortRow({
   trayNumber,
   port,
   canManage,
+  canTerminate,
   onSaved,
+  onTrace,
+  onTerminate,
 }: {
   otbId: string;
   trayNumber: number;
   port: OtbPort;
   canManage: boolean;
+  canTerminate: boolean;
   onSaved: () => Promise<void>;
+  onTrace: (port: OtbPort) => void;
+  onTerminate: (port: OtbPort) => void;
 }) {
   const [status, setStatus] = useState<OtbPortStatus>(port.status);
   const [externalServiceId, setExternalServiceId] = useState(port.externalServiceId ?? "");
@@ -221,6 +229,8 @@ function OtbPortRow({
         <div className="noc-otb-port-action">
           <NocStatus label={portStatusLabels[status]} tone={portTone(status)} />
           {canManage && <Button type="button" size="sm" variant="outline" onClick={save} disabled={saving}>{saving ? "…" : <Check aria-label="Simpan port" />}</Button>}
+          <Button type="button" size="sm" variant="ghost" onClick={() => onTrace(port)} aria-label={`Trace port ${port.portNumberInTray}`}><Route aria-hidden="true" /></Button>
+          {canTerminate && status === "kosong" && <Button type="button" size="sm" variant="ghost" onClick={() => onTerminate(port)} aria-label={`Terminasi port ${port.portNumberInTray}`}><Link2 aria-hidden="true" /></Button>}
         </div>
         <small className="noc-otb-updated">{formatUpdatedAt(port.updatedAt)}</small>
         {error && <small className="noc-inline-error">{error}</small>}
@@ -229,11 +239,9 @@ function OtbPortRow({
   );
 }
 
-function EmptyOtbTab({ tab }: { tab: Exclude<OtbTab, "inventori"> }) {
-  const messages: Record<Exclude<OtbTab, "inventori">, string> = {
-    jalur: "Data Peta Jalur belum tersedia untuk OTB ini. Relasi core fiber dan trace engine hadir di fase berikutnya.",
-    core: "Detail Core belum tersedia untuk OTB ini. Inventori port tetap dapat dikelola dari tab Inventori Tray.",
-    riwayat: "Riwayat perubahan belum tersedia pada layar ini. Audit log tetap dikelola oleh backend.",
+function EmptyOtbTab({ tab }: { tab: "riwayat" }) {
+  const messages: Record<"riwayat", string> = {
+    riwayat: "Riwayat perubahan port belum tersedia pada kontrak endpoint OTB. Audit log tetap dikelola oleh backend.",
   };
   return <NocState kind="empty">{messages[tab]}</NocState>;
 }
@@ -242,6 +250,7 @@ export function OtbDetailPage({ otbId }: { otbId: string }) {
   const router = useRouter();
   const { session } = useSession();
   const canManage = ["admin", "noc", "engineer"].includes(session?.user.role ?? "");
+  const canTerminate = session?.user.role === "admin" || session?.user.role === "noc";
   const encodedOtbId = encodeURIComponent(otbId);
   const { data: listData } = useSWR<OtbResponse>(
     "/api/v1/ftth/otb",
@@ -255,6 +264,8 @@ export function OtbDetailPage({ otbId }: { otbId: string }) {
   );
   const [selectedTrayNumber, setSelectedTrayNumber] = useState<number | null>(null);
   const [tab, setTab] = useState<OtbTab>("inventori");
+  const [traceSource, setTraceSource] = useState<{ kind: "otbPort"; id: string; label: string } | null>(null);
+  const [terminationPort, setTerminationPort] = useState<OtbPort | null>(null);
   const trays = useMemo(() => detail?.trays ?? [], [detail?.trays]);
   const selectedTray = useMemo(
     () => trays.find((tray) => tray.trayNumber === selectedTrayNumber) ?? trays[0],
@@ -274,6 +285,11 @@ export function OtbDetailPage({ otbId }: { otbId: string }) {
 
   async function refreshInventory() {
     await Promise.all([mutatePorts(), mutateDetail()]);
+  }
+
+  function tracePort(port: OtbPort) {
+    setTraceSource({ kind: "otbPort", id: port.id, label: `${detail?.code ?? "OTB"} · Tray ${selectedTray?.trayNumber ?? "—"} port ${port.portNumberInTray}` });
+    setTab("jalur");
   }
 
   if (isLoading) {
@@ -342,7 +358,7 @@ export function OtbDetailPage({ otbId }: { otbId: string }) {
       <div className="noc-otb-info-strip" aria-label="Ringkasan connector">
         <div className="noc-otb-info-item"><strong>SC</strong><span>{scPorts > 0 ? `${formatCount(scPorts)} port terdaftar` : "Belum ada tray SC"}</span></div>
         <div className="noc-otb-info-item"><strong>LC</strong><span>{lcPorts > 0 ? `${formatCount(lcPorts)} port terdaftar` : "Belum ada tray LC"}</span></div>
-        <div className="noc-otb-info-item is-note"><span>Inventori port dan status koneksi dikelola dari tab Inventori Tray.</span></div>
+        <div className="noc-otb-info-item is-note"><span>Trace jalur membaca data kabel, core, closure, dan terminasi yang tersimpan di server.</span></div>
       </div>
 
       <div className="noc-otb-tabs" role="tablist" aria-label="Detail OTB">
@@ -351,7 +367,11 @@ export function OtbDetailPage({ otbId }: { otbId: string }) {
         ))}
       </div>
 
-      {tab !== "inventori" && <NocPanel title={tabs.find((item) => item.id === tab)?.label}><EmptyOtbTab tab={tab} /></NocPanel>}
+      {tab === "jalur" && <NocPanel title="Peta Jalur" description="Pilih tombol Trace pada port OTB untuk menelusuri seluruh cabang jalurnya."><TracePanel source={traceSource} focus="jalur" /></NocPanel>}
+
+      {tab === "core" && <NocPanel title="Detail Core" description="Rincian core, silangan, panjang, dan output mengikuti respons mesin trace."><TracePanel source={traceSource} focus="core" /></NocPanel>}
+
+      {tab === "riwayat" && <NocPanel title="Riwayat (History)"><EmptyOtbTab tab="riwayat" /></NocPanel>}
 
       {tab === "inventori" && (
         <NocPanel
@@ -364,11 +384,12 @@ export function OtbDetailPage({ otbId }: { otbId: string }) {
           {selectedTray && portsLoading && <NocState kind="loading">Memuat inventori port…</NocState>}
           {selectedTray && portsError && <NocState kind="error">{portsError instanceof ApiError ? portsError.message : "Inventori port tidak dapat dimuat."}</NocState>}
           {selectedTray && portsData && portsData.ports.length === 0 && <NocState kind="empty">Tray ini belum memiliki port.</NocState>}
+          {terminationPort && canTerminate && <OtbTerminationPanel otbPortId={terminationPort.id} portLabel={`Tray ${selectedTray?.trayNumber ?? "—"} · Port ${terminationPort.portNumberInTray}`} onCancel={() => setTerminationPort(null)} onCompleted={async () => { await refreshInventory(); setTerminationPort(null); }} />}
           {selectedTray && portsData && portsData.ports.length > 0 && (
             <div className="noc-mini-table-wrap noc-otb-port-table-wrap">
               <table className="noc-mini-table noc-port-table noc-otb-port-table">
                 <thead><tr><th>Port</th><th>Nomor Core</th><th>Status</th><th>External service ID</th><th>Catatan</th><th>Aksi</th></tr></thead>
-                <tbody>{portsData.ports.map((port) => <OtbPortRow key={`${port.id}-${port.updatedAt}-${port.status}-${port.externalServiceId ?? ""}-${port.notes ?? ""}`} otbId={detail.id} trayNumber={selectedTray.trayNumber} port={port} canManage={canManage} onSaved={refreshInventory} />)}</tbody>
+                <tbody>{portsData.ports.map((port) => <OtbPortRow key={`${port.id}-${port.updatedAt}-${port.status}-${port.externalServiceId ?? ""}-${port.notes ?? ""}`} otbId={detail.id} trayNumber={selectedTray.trayNumber} port={port} canManage={canManage} canTerminate={canTerminate && detail.status === "aktif"} onSaved={refreshInventory} onTrace={tracePort} onTerminate={setTerminationPort} />)}</tbody>
               </table>
             </div>
           )}

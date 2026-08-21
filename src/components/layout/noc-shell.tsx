@@ -21,6 +21,7 @@ import {
   ClipboardList,
   Database,
   Gauge,
+  GitBranch,
   LayoutDashboard,
   Map,
   MapPinned,
@@ -83,6 +84,8 @@ const navigation = [
   { href: "/ipam", label: "IPAM", icon: Database },
   { href: "/ftth", label: "FTTH", icon: Cable },
   { href: "/ftth/otb", label: "OTB", icon: Box },
+  { href: "/ftth/cables", label: "Kabel FTTH", icon: Cable },
+  { href: "/ftth/closures", label: "Closure FTTH", icon: GitBranch },
   { href: "/pppoe", label: "PPPoE", icon: Router },
   { href: "/probe", label: "Probe", icon: Gauge },
   { href: "/alarms", label: "Alarm", icon: TriangleAlert },
@@ -101,6 +104,8 @@ const pageNames: Record<string, string> = {
   "/ipam": "IPAM",
   "/ftth": "FTTH",
   "/ftth/otb": "OTB",
+  "/ftth/cables": "Kabel FTTH",
+  "/ftth/closures": "Closure FTTH",
   "/pppoe": "PPPoE",
   "/probe": "Probe",
   "/alarms": "Alarm",
@@ -111,6 +116,8 @@ const pageNames: Record<string, string> = {
 function currentPage(pathname: string) {
   if (pathname.startsWith("/devices/")) return "Perangkat";
   if (pathname === "/ftth/otb" || pathname.startsWith("/ftth/otb/")) return "OTB";
+  if (pathname === "/ftth/cables" || pathname.startsWith("/ftth/cables/")) return "Kabel FTTH";
+  if (pathname === "/ftth/closures" || pathname.startsWith("/ftth/closures/")) return "Closure FTTH";
   return pageNames[pathname] ?? "Dashboard";
 }
 
@@ -257,7 +264,9 @@ export default function NocShell({ children }: { children: ReactNode }) {
             const isActive =
               pathname === href ||
               (href === "/devices" && pathname.startsWith("/devices/")) ||
-              (href === "/ftth/otb" && pathname.startsWith("/ftth/otb"));
+              (href === "/ftth/otb" && pathname.startsWith("/ftth/otb")) ||
+              (href === "/ftth/cables" && pathname.startsWith("/ftth/cables")) ||
+              (href === "/ftth/closures" && pathname.startsWith("/ftth/closures"));
             return (
               <Link
                 key={label}

@@ -167,6 +167,159 @@ export interface OtbPortsResponse {
   ports: OtbPort[];
 }
 
+export type FiberCableCategory = "backbone" | "feeder" | "distribution" | "dropcore" | "interconnect" | "lain";
+export type FiberType = "G.652D" | "G.657A1" | "G.657A2" | "lain";
+export type FiberCableStatus = "aktif" | "nonaktif";
+export type FiberCorePurpose = "feeder" | "distribution";
+export type FiberCoreStatus = "baik" | "rusak" | "nonaktif";
+
+export interface FiberCableSummary {
+  id: string;
+  code: string;
+  name: string | null;
+  category: FiberCableCategory;
+  fiberType: FiberType;
+  coreCount: number;
+  lengthM: number | null;
+  status: FiberCableStatus;
+  coreTerpasang: number;
+  coreFeeder: number;
+  coreDistribution: number;
+  coreRusak: number;
+}
+
+export interface FiberCablesResponse {
+  cables: FiberCableSummary[];
+}
+
+export interface FiberCore {
+  id: string;
+  coreNumber: number;
+  tubeNumber: number | null;
+  color: string | null;
+  purpose: FiberCorePurpose;
+  label: string | null;
+  status: FiberCoreStatus;
+  notes: string | null;
+  ujungTerpakai: Array<"A" | "B">;
+}
+
+export interface FiberCableDetail extends Omit<FiberCableSummary, "coreTerpasang" | "coreFeeder" | "coreDistribution" | "coreRusak"> {
+  notes: string | null;
+  createdAt: string;
+  updatedAt: string;
+  cores: FiberCore[];
+}
+
+export type ClosureType = "inline" | "dome" | "lain";
+export type ClosureStatus = "aktif" | "nonaktif";
+
+export interface ClosureSummary {
+  id: string;
+  code: string;
+  name: string | null;
+  siteId: string | null;
+  siteName: string | null;
+  latitude: number | null;
+  longitude: number | null;
+  type: ClosureType;
+  status: ClosureStatus;
+  silanganAktif: number;
+  silanganTotal: number;
+}
+
+export interface ClosuresResponse {
+  closures: ClosureSummary[];
+}
+
+export interface ClosureSplice {
+  id: string;
+  inputCoreId: string;
+  inputCoreEnd: "A" | "B";
+  inputCoreNumber: number;
+  inputCoreColor: string | null;
+  inputCablePurpose: FiberCorePurpose;
+  inputCableCode: string;
+  outputCoreId: string;
+  outputCoreEnd: "A" | "B";
+  outputCoreNumber: number;
+  outputCoreColor: string | null;
+  outputCablePurpose: FiberCorePurpose;
+  outputCableCode: string;
+  silang: boolean;
+  estimatedLossDb: number | null;
+  reason: string;
+  deactivatedAt: string | null;
+  deactivatedReason: string | null;
+  createdAt: string;
+}
+
+export interface ClosureDetail extends ClosureSummary {
+  notes: string | null;
+  createdAt: string;
+  splices: ClosureSplice[];
+}
+
+export interface ClosureDetailResponse extends ClosureDetail {
+  splices: ClosureSplice[];
+}
+
+export interface ClosureSpliceRow {
+  inputCoreId: string;
+  inputCoreEnd: "A" | "B";
+  outputCoreId: string;
+  outputCoreEnd: "A" | "B";
+  estimatedLossDb?: number | null;
+}
+
+export interface ClosurePreviewVerdict {
+  urutan: number;
+  ok: boolean;
+  error?: string;
+  silangNomor?: { dari: number; ke: number };
+}
+
+export interface ClosurePreviewResponse {
+  verdicts: ClosurePreviewVerdict[];
+  ringkas: { total: number; gagal: number; lolos: number };
+}
+
+export interface ClosureCommitResponse {
+  dipasang: number;
+  ids: string[];
+  verdicts: ClosurePreviewVerdict[];
+}
+
+export interface TraceStep {
+  urutan: number;
+  jenis: "PORT_OTB" | "PORT_ODP" | "CORE" | "SILANGAN" | "SPLITTER";
+  label: string;
+  detail: Record<string, unknown>;
+}
+
+export type TracePathStatus = "LENGKAP" | "UJUNG_JALUR" | "JALUR_PUTUS" | "BERPUTAR" | "AMBIGU" | "TERPOTONG";
+
+export interface TracePath {
+  langkah: TraceStep[];
+  status: TracePathStatus;
+  diagnosis?: string;
+  ringkas: {
+    hop: number;
+    panjangM: number | null;
+    panjangLengkap: boolean;
+    segmenUnik: number;
+    segmenBerulang: number;
+    estimasiLossDb: number;
+    sambunganPakaiModel: number;
+  };
+}
+
+export interface TraceResponse {
+  mulai: { jenis: string; id: string; label: string };
+  jalur: TracePath[];
+  ringkas: { total: number; lengkap: number; bermasalah: number; terpotong?: boolean };
+}
+
 export type PppoeRunStatus = "SUCCESS" | "FAILED" | "SKIPPED" | "RUNNING";
 
 export interface PppoeLastRun {
