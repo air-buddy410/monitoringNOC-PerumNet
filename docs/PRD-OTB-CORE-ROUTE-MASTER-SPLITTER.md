@@ -5,7 +5,7 @@
 | Produk | Portal NOC PerumNet (`monitoring-noc`) |
 | Stack | Next.js + **Drizzle ORM** + better-auth + PostgreSQL |
 | Versi | 2.0 — disesuaikan ke portal NOC, 21 Agustus 2026 |
-| Status | **Fase 11, 12, dan 13 selesai.** Fase 14–16 belum. |
+| Status | **Fase 11–14 selesai.** Fase 15–16 belum. |
 | Sifat perubahan | Aditif; tidak ada tabel existing yang diubah bentuknya |
 
 > **Asal dokumen.** Kebutuhan di sini datang dari sebuah PRD yang ditulis untuk
@@ -152,7 +152,8 @@ Alasan lengkapnya tertulis di komentar tabel `odps` pada `src/db/schema.ts`.
 
 ### 4.3 Belum ada, dan memang harus dibangun
 
-Mesin trace, garis jalur di peta, dan layar riwayat topologi. Fase 14–16.
+Garis jalur di peta dan layar riwayat topologi. Fase 15–16. Mesin trace tidak
+menambah tabel apa pun — ia menurunkan jalur dari yang sudah dicatat.
 
 ### 4.4 Tidak ada di portal ini, dan tidak direncanakan
 
@@ -257,16 +258,16 @@ Semua di bawah `/api/v1/ftth/`, mengikuti keluarga yang sudah ada
 | `POST …/closures/:id/splices/preview` | `admin`, `noc` | Pratinjau, tanpa menulis |
 | `POST …/closures/:id/splices` | `admin`, `noc` | Pasang batch, atomik |
 | `POST /api/v1/ftth/splices/:id/release` | `admin`, `noc` | Lepas silangan |
+| `GET /api/v1/ftth/trace` | `[]` | Telusur jalur dua arah + diagnosis |
 
 Kontrak lengkapnya — bentuk respons, kode galat, dan larangan untuk frontend —
-ada di `docs/HANDOFF-BACKEND-KE-FRONTEND.md` §16 (OTB), §17 (kabel/core), dan §18 (closure). Dokumen itu yang mengikat;
+ada di `docs/HANDOFF-BACKEND-KE-FRONTEND.md` §16 (OTB), §17 (kabel/core), §18 (closure), dan §19 (trace). Dokumen itu yang mengikat;
 tabel di atas hanya ringkasan.
 
 ### 6.2 Direncanakan
 
 | Endpoint | Fase | Untuk |
 |---|---|---|
-| `GET /api/v1/ftth/trace` | 14 | Trace dua arah + diagnosis |
 | `GET /api/v1/ftth/geo` | 15 | GeoJSON jalur untuk peta |
 
 **Tidak ada `DELETE` untuk OTB, dan itu disengaja.** FK-nya cascade, jadi satu
@@ -316,7 +317,7 @@ tersendiri yang menyentuh better-auth dan seluruh endpoint yang ada.
 | **11** | OTB, tray, port | ✅ **Selesai, terpasang di produksi 21 Agustus 2026** |
 | 12 | Kabel, core, terminasi core→port, okupansi | ✅ **Selesai 21 Agustus 2026** |
 | 13 | Closure dan silangan core; larangan pembagian | ✅ **Selesai 21 Agustus 2026** |
-| 14 | Mesin trace feeder/distribution + diagnosis | Belum |
+| 14 | Mesin trace feeder/distribution + diagnosis | ✅ **Selesai 21 Agustus 2026** |
 | 15 | Garis jalur di peta + fanout MS→ODP | Belum |
 | 16 | Riwayat topologi di atas `audit_logs` | Belum |
 
@@ -426,13 +427,36 @@ masuk dan keluar, tapi yang MENGIKUTI-nya adalah mesin trace, dan itu **Fase
 14**. Yang sudah bisa dijawab hari ini: "di closure ini, core mana jadi core
 mana".
 
-### Fase 14 — trace
+### Fase 14 — trace ✅
 
-- [ ] Trace port OTB sampai ODP lengkap
-- [ ] Trace balik dari ODP mencapai OTB
-- [ ] Jalur berputar terdeteksi dan tidak menggantung
-- [ ] Edge yang hilang menghasilkan diagnosis, bukan jalur yang mengarang
-- [ ] Estimasi rugi optik berlabel estimasi
+- [x] Trace port OTB sampai ODP lengkap, lewat closure dan master splitter
+- [x] Trace balik dari ODP mencapai OTB, dan tidak menyeberang ke ODP tetangga
+- [x] Jalur berputar terdeteksi dan tidak menggantung
+- [x] Edge yang hilang menghasilkan diagnosis, bukan jalur yang mengarang
+- [x] Estimasi rugi optik berlabel estimasi, dan mengaku berapa yang dari model
+- [x] Cabang yang putus tidak menghapus cabang yang lengkap
+- [x] Satu master splitter hanya boleh punya satu input feeder
+
+**Dua kriteria yang dipindah dari Fase 12 — kabarnya:**
+
+- *"Core distribution ditolak sebagai input feeder master splitter"* —
+  **terjawab, dengan bentuk yang berbeda dari kalimatnya.** Tidak ada penanda
+  "port input" di `odp_ports`, jadi tidak mungkin menolak berdasarkan port.
+  Yang ditegakkan sekarang: **satu master splitter hanya boleh punya satu
+  terminasi core feeder aktif**, dan mesin trace memakai peruntukan core untuk
+  membedakan input dari keluaran. Hasil praktisnya sama — jalur naik dari ODP
+  selalu keluar lewat input feeder — tanpa mengubah tabel dengan 8.632 baris
+  produksi.
+
+- *"Panjang hanya menjumlahkan segmen unik"* — **sengaja TIDAK diikuti, dan
+  ini penyimpangan sadar dari PRD asal.** Jalur yang keluar lewat core 17 dan
+  kembali lewat core 18 pada kabel yang SAMA benar-benar menempuh dua kali
+  panjang kabel itu; menghitungnya sekali melaporkan jarak yang terlalu
+  pendek, dan angka itu dipakai menakar jarak-ke-gangguan di OTDR. Yang
+  sebenarnya dikhawatirkan PRD adalah penggelembungan akibat data BERPUTAR —
+  dan itu ditangkap terpisah sebagai status `BERPUTAR`, jadi jalur berputar
+  tidak pernah sampai ke ringkasan. `segmenBerulang` tetap dilaporkan supaya
+  lintasan bolak-balik terlihat, bukan tersembunyi di dalam satu angka.
 
 ### Fase 15 — peta
 

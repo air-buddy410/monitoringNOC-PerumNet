@@ -1235,6 +1235,106 @@ Body `{ reason }`. `409` kalau sudah pernah dilepas. Barisnya **tidak dihapus**.
 - **Batch bersifat satu transaksi.** Tidak perlu mengirim baris satu per satu
   untuk "aman" — justru sebaliknya, itu menghilangkan jaminannya.
 
+### 19. Trace jalur core — Fase 14
+
+Menelusuri jalur dari port OTB sampai ONT pelanggan, lewat kabel, closure, dan
+master splitter. **Tidak ada tabel baru** — seluruh jalur diturunkan dari yang
+sudah dicatat Fase 11–13.
+
+Ini yang menghidupkan panel **"Jalur Singkat Core"**, **"Rincian Panjang
+Jalur"**, dan **"Informasi Output (Akhir Jalur)"** pada acuan visual.
+
+#### GET /api/v1/ftth/trace — cukup login
+
+```
+?dari=otbPort&id=<portId>
+?dari=odpPort&id=<portId>
+?dari=core&id=<coreId>&ujung=A|B
+```
+
+```jsonc
+{
+  "mulai": { "jenis": "otbPort", "id": "…", "label": "OTB-1 Tray 1 port 1 (global 1)" },
+  "jalur": [{
+    "status": "LENGKAP",   // LENGKAP|UJUNG_JALUR|JALUR_PUTUS|BERPUTAR|AMBIGU|TERPOTONG
+    "diagnosis": null,     // kalimat siap tampil; null hanya saat LENGKAP
+    "langkah": [
+      { "urutan": 1, "jenis": "PORT_OTB",  "label": "OTB-1 · Tray 1 port 1", "detail": { … } },
+      { "urutan": 2, "jenis": "CORE",      "label": "KBL-A · core 17 (merah)",
+        "detail": { "segmentCode": "KBL-A", "coreNumber": 17, "color": "merah",
+                    "purpose": "feeder", "dariUjung": "A", "keUjung": "B",
+                    "panjangM": 850 } },
+      { "urutan": 3, "jenis": "SILANGAN",  "label": "CL-01 · core 17 → core 23",
+        "detail": { "closureCode": "CL-01", "dariCoreNumber": 17, "keCoreNumber": 23,
+                    "silang": true, "estimasiRugiDb": 0.1, "rugiDariModel": true } },
+      { "urutan": 5, "jenis": "SPLITTER",  "label": "MS-1 · master splitter 1:8 · port 1" },
+      { "urutan": 7, "jenis": "PORT_ODP",  "label": "ODP-1 · port 1" }
+    ],
+    "ringkas": {
+      "hop": 7,
+      "panjangM": 2300,          // METER; null kalau belum ada segmen terukur
+      "panjangLengkap": true,    // false = ada segmen yang panjangnya belum diukur
+      "segmenUnik": 3,
+      "segmenBerulang": 0,       // > 0 = ada kabel yang dilewati bolak-balik
+      "estimasiLossDb": 1.3,     // ESTIMASI, bukan hasil ukur
+      "sambunganPakaiModel": 5
+    }
+  }],
+  "ringkas": { "total": 2, "lengkap": 2, "bermasalah": 0 }
+}
+```
+
+`400` `dari` tidak dikenal, atau `dari=core` tanpa `ujung`. `404` titik awal
+tidak ada.
+
+#### Delapan hal yang WAJIB benar
+
+1. **`jalur` adalah DAFTAR, bukan satu.** Melewati master splitter membuat satu
+   jalur bercabang jadi beberapa — 1:8 menghasilkan sampai delapan. Jangan
+   pernah menampilkan `jalur[0]` saja dan menganggap itu "jalurnya".
+
+2. **Cabang yang putus tidak menghapus cabang yang lengkap.** Kalau lima ODP
+   tersambung dan satu core rusak, hasilnya lima jalur: empat `LENGKAP`, satu
+   `JALUR_PUTUS`. Tampilkan semuanya — dua-duanya kenyataan, dan yang rusak
+   itulah yang dicari.
+
+3. **`diagnosis` sudah berupa kalimat siap tampil.** Ia menyebut DI MANA
+   jalurnya berhenti dan kenapa. Jangan menggantinya dengan "trace gagal" —
+   itu membuang satu-satunya petunjuk yang dipunyai teknisi.
+
+4. **`estimasiLossDb` adalah ESTIMASI.** Beri label yang menyebut itu.
+   `sambunganPakaiModel` memberi tahu berapa komponen yang memakai angka model
+   alih-alih angka tersimpan; kalau tinggi, angkanya makin kasar. Kalau kelak
+   ada data OTDR, ia ditampilkan TERPISAH dan tidak boleh dicampur.
+
+5. **`panjangLengkap: false` berarti totalnya belum utuh** — ada segmen yang
+   panjangnya belum diukur, dan ia TIDAK dijumlahkan sebagai nol. Tampilkan
+   "≥ 2.300 m" atau beri penanda, jangan angka polos yang terlihat pasti.
+
+6. **`segmenBerulang > 0` bukan bug.** Itu kabel yang dilewati bolak-balik —
+   keluar lewat satu core, kembali lewat core lain pada kabel yang sama.
+   Jaraknya memang dihitung dua kali, karena cahayanya memang menempuh dua
+   kali. Jalur yang benar-benar berputar muncul sebagai status `BERPUTAR`.
+
+7. **`SPLITTER` bukan `PORT_ODP`.** Beri ikon dan perlakuan berbeda —
+   percabangan di master splitter itu SAH, sedangkan percabangan di luar itu
+   dilaporkan sebagai `AMBIGU`. Menyamakan keduanya menghapus perbedaan yang
+   jadi inti seluruh modul ini.
+
+8. **`AMBIGU` berarti DATANYA yang salah, bukan trace-nya.** Ia muncul kalau
+   satu ujung core punya terminasi dan silangan sekaligus, atau satu splitter
+   punya dua input feeder. Arahkan operator ke perbaikan data, jangan menyuruh
+   coba lagi.
+
+#### Yang sudah diurus backend, jangan diakali di layar
+
+- **Jalur berputar terdeteksi**, tidak menggantung. Ada batas hop keras juga.
+- **Arah penelusuran di splitter disimpulkan dari peruntukan core** — feeder =
+  input, distribution = keluaran. Telusur balik dari sebuah ODP tidak akan
+  menyeberang ke ODP tetangga. Aturan "satu splitter, satu input feeder"
+  ditegakkan saat terminasi.
+- **Identitas pelanggan tidak ikut.** Hanya `externalServiceId`.
+
 ## Jebakan nama & bentuk
 
 Yang paling sering salah tebak, dikumpulkan di satu tempat:
@@ -1312,6 +1412,27 @@ Papan permintaan Opus → Luna (`WORKFLOW-TIM.md` §5). Semua di sini murni
 pekerjaan tampilan — datanya sudah tersedia di endpoint yang disebut, tidak
 ada yang perlu ditunggu dari backend. Tandai ✅ dan pindahkan ke §Selesai
 kalau sudah dikerjakan.
+
+### T-27. Layar trace jalur core
+
+- **Layar:** tab **"Peta Jalur"** dan **"Detail Core"** di `/ftth/otb/[id]`
+  yang selama ini sengaja dibiarkan kosong — sekarang datanya ada.
+- **Butuh:** §19 — satu endpoint, `GET /api/v1/ftth/trace`.
+- **Bentuknya:** ikuti `docs/gambar/otb-detail-core.jpeg`:
+  - **"Jalur Singkat Core"** — stepper vertikal dari `langkah[]`, dengan jarak
+    per hop.
+  - **"Rincian Panjang Jalur"** — tabel per segmen + TOTAL dari `ringkas`.
+  - **"Informasi Output (Akhir Jalur)"** — langkah terakhir.
+  - **"Silangan Core"** — langkah ber-`jenis: "SILANGAN"`.
+- **Percabangan splitter:** kalau `jalur.length > 1`, tampilkan pemilih cabang
+  atau daftar — jangan menampilkan yang pertama saja.
+- **Status non-LENGKAP harus terlihat**, dengan `diagnosis` ditampilkan apa
+  adanya.
+- **Kenapa sekarang:** ini yang membuat seluruh Fase 11–13 berguna bagi
+  teknisi. Tanpa layar ini, datanya ada tapi tidak ada yang bisa membacanya
+  saat gangguan jam tiga pagi.
+- **Kenapa tidak bisa diakali dari backend:** murni tampilan. Trace, diagnosis,
+  penjumlahan panjang, dan estimasi rugi semuanya dihitung di server.
 
 ### T-26. Layar closure dan matriks silangan core
 
@@ -1830,6 +1951,18 @@ orang mengetik.
 
 ## Riwayat
 
+- **2026-08-21** — **Fase 14: mesin trace (§19).** Jalur dari port OTB sampai
+  ODP, lewat closure dan master splitter — TANPA tabel baru; seluruhnya
+  diturunkan dari Fase 11–13. Menyimpan jalur sebagai tabel berarti angka
+  kedua tentang hal yang sama, dan ia basi pada perubahan topologi pertama.
+  Prinsipnya: tidak mengarang. Jalur putus berkata putus di titik mana, bukan
+  melompat ke tebakan terdekat — jalur karangan lebih berbahaya daripada tidak
+  ada jalur, karena ia dipercaya dan dipakai mengirim teknisi. Arah di
+  splitter disimpulkan dari peruntukan core, jadi telusur balik dari ODP tidak
+  menyeberang ke ODP tetangga; aturan "satu splitter, satu input feeder"
+  ditegakkan saat terminasi. Panjang dijumlahkan per lintasan, bukan per
+  segmen unik — kabel yang dilewati bolak-balik memang ditempuh dua kali.
+  Tugas T-27.
 - **2026-08-21** — **Fase 13: closure dan silangan core (§18).** "Core 17
   menjadi Core 23" akhirnya bisa dicatat sebagai kenyataan. Larangan membagi
   di closure biasa ditegakkan index unik — satu ujung core masuk, satu
