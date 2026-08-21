@@ -979,6 +979,136 @@ riwayat perubahan — pesannya menyebut nomor portnya, tampilkan apa adanya.
   DELETE memusnahkan seluruh tray, port, dan kegunaan jejak auditnya. Cara
   menonaktifkan OTB adalah `status: "nonaktif"`.
 
+### 17. Kabel, core, dan terminasi — Fase 12
+
+Lapisan di antara OTB dan ODP: bentangan kabel, serat di dalamnya, dan ujung
+serat yang menempel di sebuah port. Inilah yang membuat pertanyaan "port OTB
+mana yang menyuapi ODP ini" akhirnya punya jawaban di database.
+
+Tabelnya `fiber_cable_segments`, `fiber_cores`, `fiber_core_terminations`
+(migrasi `0009_kabel_core_terminasi`). Belum ada satu kabel pun — layarnya
+belum dibuat. Itu tugas T-25.
+
+Latar domainnya di `docs/PRD-OTB-CORE-ROUTE-MASTER-SPLITTER.md` §3.
+
+#### GET /api/v1/ftth/cables — daftar kabel
+
+```jsonc
+{ "cables": [{
+  "id": "…", "code": "KBL-FDR-01", "name": "Feeder POP → RK Seraya",
+  "category": "feeder",        // backbone|feeder|distribution|dropcore|interconnect|lain
+  "fiberType": "G.652D",
+  "coreCount": 24,
+  "lengthM": 3250,             // METER, dan boleh null — lihat aturan 1
+  "status": "aktif",
+  "coreTerpasang": 24,         // jumlah baris core; turunan
+  "coreFeeder": 24, "coreDistribution": 0, "coreRusak": 0
+}] }
+```
+
+#### POST /api/v1/ftth/cables — admin/noc
+
+Body: `{ code, category, coreCount, name?, fiberType?, lengthM?, purpose?, notes? }`.
+Core dibuat sekaligus sebanyak `coreCount`, dalam satu transaksi, lengkap
+dengan warnanya. `purpose` mengisi seluruh core; kalau tidak disebut ia
+mengikuti `category`. Jawaban `201 { id, code, coreCount }`.
+
+`400` body/kategori/serat/`coreCount` tidak sah (1–288). `409` kode sudah dipakai.
+
+#### GET /api/v1/ftth/cables/:cableId — kabel + seluruh core-nya
+
+```jsonc
+{
+  "id": "…", "code": "KBL-FDR-01", "category": "feeder", "lengthM": 3250,
+  "cores": [{
+    "id": "…", "coreNumber": 1, "tubeNumber": null,
+    "color": "biru",            // dari server — jangan dihitung sendiri
+    "purpose": "feeder",        // feeder | distribution
+    "label": null, "status": "baik", "notes": null,
+    "ujungTerpakai": ["A"]      // ujung yang punya terminasi AKTIF: [] | ["A"] | ["A","B"]
+  }]
+}
+```
+
+`404` kalau kabel tidak ada.
+
+#### POST /api/v1/ftth/terminations — admin/noc
+
+Menempelkan satu ujung core ke satu port.
+
+Body: `{ coreId, coreEnd: "A"|"B", otbPortId?, odpPortId?, reason }` — isi
+**tepat satu** dari `otbPortId` atau `odpPortId`. Jawaban `201 { id, coreId, coreEnd }`.
+
+| Kode | Kapan |
+|---|---|
+| `400` | `reason` kosong, `coreEnd` bukan A/B, dua sasaran, atau tanpa sasaran |
+| `404` | core atau port tidak ada |
+| `409` | core rusak, kabel/OTB nonaktif, port sudah terpakai, ujung core sudah terminasi, atau core feeder ke port ODP |
+
+#### POST /api/v1/ftth/terminations/:id/release — admin/noc
+
+Body `{ reason }`. Melepas terminasi dan mengembalikan portnya jadi `kosong`.
+`409` kalau sudah pernah dilepas.
+
+Sengaja POST ke sub-jalur, **bukan `DELETE`**: barisnya tidak dihapus.
+
+#### PATCH /api/v1/ftth/otb/:otbId — admin/noc
+
+Lubang yang tertinggal sejak Fase 11, sekarang tertutup. Body:
+`{ name?, siteId?, latitude?, longitude?, status?, notes?, defaultConnectorType?, defaultPolish? }`.
+
+`400` kalau `trayCount`/`portsPerTray`/`portCount` ikut dikirim — kapasitas
+punya jalurnya sendiri di `PATCH …/trays/:n`. `400` juga kalau OTB jadi tanpa
+situs **dan** tanpa koordinat.
+
+#### Tujuh hal yang WAJIB benar
+
+1. **`lengthM` boleh `null`, dan `null` bukan nol.** `null` berarti belum
+   diukur. Tampilkan `—`, jangan `0 m`. Ini pelajaran yang sama persis dengan
+   `averageUptime` di laporan SLA: angka nol yang sebenarnya "tidak tahu"
+   dibaca sebagai fakta operasional, dan keputusan diambil di atasnya.
+
+2. **Satuannya METER, bukan kilometer.** Layar boleh menampilkan "3,25 km";
+   yang dikirim dan diterima tetap `3250`. Kilometer pecahan mengundang
+   pembulatan yang menumpuk sepanjang jalur berpuluh segmen.
+
+3. **`reason` wajib di setiap mutasi, dan bukan formalitas.** Jangan mengisinya
+   otomatis dengan teks generik seperti "update". Enam bulan lagi, saat ada
+   yang menelusuri kenapa sebuah jalur pernah dipindah, kalimat itulah satu-
+   satunya yang bisa menjawab.
+
+4. **Melepas terminasi tidak menghapusnya.** Riwayat "core ini pernah menempel
+   di sini, dilepas tanggal sekian, alasannya ini" tetap ada dan justru itu
+   separuh nilai modul ini saat gangguan. Layar riwayat core harus
+   menampilkannya, bukan cuma yang aktif.
+
+5. **`409` "baru saja dipakai permintaan lain" berarti BALAPAN.** Muat ulang
+   dan tampilkan keadaan terbaru — jangan mencoba ulang otomatis. Dua operator
+   yang menekan simpan bersamaan memang harus melihat bahwa yang satu kalah.
+
+6. **Warna core datang dari server.** Jangan menghitungnya dari nomor core.
+   Standarnya berulang tiap 12 dan sebagian vendor memakai urutan sendiri;
+   yang tercetak di kabel selalu lebih benar, dan itu bisa ditimpa di database.
+
+7. **Core feeder tidak boleh berakhir di port ODP.** Jangan cukup menyembunyi-
+   kan pilihannya di layar — kirim saja, biarkan server menolak, lalu tampilkan
+   pesannya apa adanya. Menyembunyikan opsi membuat operator mengira datanya
+   yang salah, bukan aturannya.
+
+#### Yang sudah diurus backend, jangan diakali di layar
+
+- **Okupansi dijamin database**, bukan kode: tiga *partial unique index* di
+  `fiber_core_terminations` memastikan satu ujung core dan satu port hanya
+  punya satu terminasi aktif. Ada tes yang menulis langsung ke tabel untuk
+  membuktikannya (`tests/fiber-terminasi.test.ts`). Jangan menambahkan
+  pemeriksaan tandingan di klien — ia akan salah lebih dulu.
+- **Port yang membawa core tidak bisa dihapus.** FK-nya `restrict`, jadi
+  aturan penurunan kapasitas tray Fase 11 tetap berlaku tanpa perubahan.
+- **Master splitter di acuan visual tetap `odps` berperan `MS`** — endpointnya
+  `/api/v1/ftth/odps` (§12). Aturan "hanya core distribution" berlaku untuk
+  ODP biasa saja; port MS boleh menerima core feeder, karena itu memang
+  input feedernya.
+
 ## Jebakan nama & bentuk
 
 Yang paling sering salah tebak, dikumpulkan di satu tempat:
@@ -1056,6 +1186,26 @@ Papan permintaan Opus → Luna (`WORKFLOW-TIM.md` §5). Semua di sini murni
 pekerjaan tampilan — datanya sudah tersedia di endpoint yang disebut, tidak
 ada yang perlu ditunggu dari backend. Tandai ✅ dan pindahkan ke §Selesai
 kalau sudah dikerjakan.
+
+### T-25. Layar kabel, core, dan terminasi
+
+- **Layar:** `/ftth/cables` (daftar) dan `/ftth/cables/[id]` (detail + tabel
+  core). Plus aksi terminasi dari layar OTB yang sudah ada.
+- **Butuh:** §17 — lima endpoint, semuanya sudah hidup dan bertes.
+- **Bentuknya:** daftar kabel dengan kategori, panjang, dan hitungan core;
+  detail menampilkan tabel core (nomor, warna, peruntukan, status, ujung mana
+  yang terpakai). Pola tabel yang sama dengan `/ftth`.
+- **Aksi terminasi:** dari tab "Inventori Tray" di layar OTB, sebuah port
+  kosong bisa ditautkan ke satu ujung core. Wajib mengisi alasan.
+- **Riwayat wajib terlihat.** Terminasi yang sudah dilepas tetap ada di
+  database dan harus bisa dilihat — itu justru yang dicari orang saat
+  gangguan. Jangan hanya menampilkan yang aktif.
+- **Kenapa sekarang:** tabelnya sudah ada dan kosong. Tanpa layar ini tidak
+  ada cara memasukkan kabel, jadi Fase 13 (closure dan silangan core) tidak
+  punya apa pun untuk disilangkan.
+- **Kenapa tidak bisa diakali dari backend:** murni tampilan. Seluruh aturan —
+  okupansi, peruntukan core, alasan wajib — sudah ditegakkan di server, dan
+  sebagian ditegakkan langsung oleh PostgreSQL.
 
 ### T-24. Layar OTB — daftar, tray, dan inventori port
 
@@ -1533,6 +1683,16 @@ orang mengetik.
 
 ## Riwayat
 
+- **2026-08-21** — **Fase 12: kabel, core, dan terminasi (§17).** Lapisan di
+  antara OTB dan ODP. Yang berubah sifatnya di sini: okupansi tidak lagi
+  dijanjikan kode, ia ditegakkan tiga *partial unique index* — satu ujung core
+  dan satu port hanya punya satu terminasi aktif, dan dua operator yang
+  menekan simpan bersamaan tidak bisa lagi menghasilkan okupansi ganda. Ada
+  tes yang menulis LANGSUNG ke tabel untuk membuktikannya; kalau index-nya
+  dihapus, tes itu merah. Melepas terminasi tidak menghapus barisnya —
+  index-nya parsial, jadi riwayat tetap utuh tanpa menghalangi port dipakai
+  lagi. FK ke port memakai `restrict`, yang membuat aturan kapasitas Fase 11
+  tetap benar tanpa satu baris pun diubah di sana. Tugas T-25.
 - **2026-08-21** — **Fase 11: OTB, tray, dan port.** PRD OTB/core-route/master
   splitter masuk lewat `.orca/drops/`, dan pemeriksaan menunjukkan ia ditulis
   untuk app lain (Prisma) dengan klaim status yang tidak berdiri: `OTBTray`,
