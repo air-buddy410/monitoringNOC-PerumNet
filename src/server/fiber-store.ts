@@ -375,6 +375,7 @@ export async function terminasiCore(
         id: odpPorts.id,
         status: odpPorts.status,
         portNumber: odpPorts.portNumber,
+        odpId: odps.id,
         odpCode: odps.code,
         odpRole: odps.role,
       })
@@ -398,6 +399,37 @@ export async function terminasiCore(
         status: 409,
         error: `Core ${core.coreNumber} berperuntukan ${core.purpose}; port ODP hanya menerima core distribution.`,
       };
+    }
+
+    // Satu master splitter, satu input feeder.
+    //
+    // Ini bukan kerapian: mesin trace membedakan input dari output SEMATA
+    // dari peruntukan core yang menempel (`trace-store.ts`). Splitter dengan
+    // dua core feeder membuat pembedaan itu ambigu, dan telusur balik dari
+    // ODP akan menyeberang ke jalur yang tidak pernah dilewati cahaya.
+    // Ditegakkan di sini karena `odp_ports` tidak punya penanda arah —
+    // menambahkannya berarti mengubah tabel dengan 8.632 baris produksi.
+    if (port.odpRole === "MS" && core.purpose === "feeder") {
+      const [feederLain] = await db
+        .select({ id: fiberCoreTerminations.id })
+        .from(fiberCoreTerminations)
+        .innerJoin(fiberCores, eq(fiberCores.id, fiberCoreTerminations.coreId))
+        .innerJoin(odpPorts, eq(odpPorts.id, fiberCoreTerminations.odpPortId))
+        .where(
+          and(
+            eq(odpPorts.odpId, port.odpId),
+            eq(fiberCores.purpose, "feeder"),
+            isNull(fiberCoreTerminations.deactivatedAt),
+          ),
+        )
+        .limit(1);
+      if (feederLain) {
+        return {
+          ok: false,
+          status: 409,
+          error: `${port.odpCode} sudah punya input feeder aktif. Master splitter hanya boleh punya satu input — lepas yang lama dulu.`,
+        };
+      }
     }
     portId = port.id;
     jenisPort = "odp_port";
