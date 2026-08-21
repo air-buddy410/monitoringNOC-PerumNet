@@ -18,6 +18,7 @@ import type { AnyPgColumn } from "drizzle-orm/pg-core";
 import {
   bigint,
   boolean,
+  check,
   doublePrecision,
   foreignKey,
   index,
@@ -1177,5 +1178,220 @@ export const otbPorts = pgTable(
       columns: [table.trayId, table.otbId],
       foreignColumns: [otbTrays.id, otbTrays.otbId],
     }).onDelete("cascade"),
+  ],
+);
+
+// ---------------------------------------------------------------------------
+// Kabel, core, dan terminasi core (Fase 12).
+// ---------------------------------------------------------------------------
+
+/**
+ * Urutan warna core standar TIA-598-C.
+ *
+ * Dipakai untuk MENGISI `fiber_cores.color` saat kabel dibuat, bukan untuk
+ * menggantikannya. Sebagian vendor memakai urutan sendiri, dan yang tercetak
+ * di kabel selalu lebih benar daripada standar — karena itu warnanya disimpan
+ * sebagai kolom yang bisa ditimpa, bukan dihitung ulang tiap kali dibaca.
+ *
+ * Core ke-13 dan seterusnya mengulang urutan yang sama; di lapangan
+ * pembedanya adalah tabung (`tube_number`), bukan warnanya.
+ */
+export const WARNA_CORE = [
+  "biru",
+  "jingga",
+  "hijau",
+  "coklat",
+  "abu-abu",
+  "putih",
+  "merah",
+  "hitam",
+  "kuning",
+  "ungu",
+  "merah muda",
+  "tosca",
+] as const;
+
+/**
+ * Satu bentangan kabel fisik.
+ *
+ * **Tidak punya kolom ujung A dan ujung B.** Kabel ini tersambung ke apa
+ * ditentukan oleh terminasi core-nya, dan menyimpannya lagi di sini berarti
+ * dua jawaban untuk satu pertanyaan — yang cepat atau lambat akan berbeda.
+ * Konsekuensinya diterima dengan sadar: kabel yang belum satu pun core-nya
+ * diterminasi memang belum punya ujung yang diketahui, dan Fase 15 harus
+ * menampilkannya sebagai peringatan, bukan menggambar garis tebakan.
+ *
+ * `length_m` dalam METER dan boleh NULL. Meter, bukan kilometer pecahan,
+ * karena angkanya datang dari catatan lapangan dan OTDR dalam meter — dan
+ * kilometer pecahan mengundang pembulatan yang menumpuk sepanjang jalur.
+ * NULL berarti **belum diukur**, dan itu bukan hal yang sama dengan 0.
+ * Jangan pernah menggantinya dengan 0 supaya penjumlahan "rapi".
+ *
+ * `fiber_type` ada di sini, bukan di core: satu bentangan kabel berisi satu
+ * jenis serat. Layar boleh menampilkannya di panel core; sumbernya tetap
+ * kabelnya.
+ */
+export const fiberCableSegments = pgTable(
+  "fiber_cable_segments",
+  {
+    id: text("id").primaryKey(),
+    code: text("code").notNull().unique(),
+    name: text("name"),
+    /**
+     * Fungsi fisik kabel, sengaja terpisah dari `fiber_cores.purpose`.
+     * Sebuah kabel feeder boleh membawa core yang dipakai untuk distribusi
+     * pada sebagian seratnya; menyatukan keduanya menghapus perbedaan itu.
+     */
+    category: text("category", {
+      enum: [
+        "backbone",
+        "feeder",
+        "distribution",
+        "dropcore",
+        "interconnect",
+        "lain",
+      ],
+    }).notNull(),
+    fiberType: text("fiber_type", {
+      enum: ["G.652D", "G.657A1", "G.657A2", "lain"],
+    })
+      .notNull()
+      .default("G.652D"),
+    coreCount: integer("core_count").notNull(),
+    /** Meter. NULL = belum diukur — bukan nol. */
+    lengthM: integer("length_m"),
+    status: text("status", { enum: ["aktif", "nonaktif"] })
+      .notNull()
+      .default("aktif"),
+    notes: text("notes"),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => [index("fiber_cable_segments_category_idx").on(table.category)],
+);
+
+/**
+ * Satu serat di dalam satu bentangan kabel.
+ *
+ * `purpose` menegakkan pemisahan feeder dan distribution yang jadi inti
+ * seluruh modul ini (PRD §3). Ia diperiksa saat terminasi, bukan hanya
+ * ditampilkan: core feeder tidak boleh berakhir di port ODP.
+ *
+ * Sebuah core punya DUA ujung, `A` dan `B`, dan tiap ujung diterminasi
+ * sendiri-sendiri — lihat `fiber_core_terminations`. Mana yang A dan mana
+ * yang B tidak punya makna geografis; ia hanya cara menyebut dua ujung yang
+ * berbeda secara konsisten.
+ */
+export const fiberCores = pgTable(
+  "fiber_cores",
+  {
+    id: text("id").primaryKey(),
+    segmentId: text("segment_id")
+      .notNull()
+      .references(() => fiberCableSegments.id, { onDelete: "cascade" }),
+    coreNumber: integer("core_number").notNull(),
+    /** Tabung/loose tube tempat core ini berada. NULL untuk kabel tanpa tabung. */
+    tubeNumber: integer("tube_number"),
+    /** Diisi dari WARNA_CORE saat kabel dibuat; boleh ditimpa. */
+    color: text("color"),
+    purpose: text("purpose", { enum: ["feeder", "distribution"] }).notNull(),
+    /** Label/KSN yang tertulis di lapangan, kalau ada. */
+    label: text("label"),
+    status: text("status", { enum: ["baik", "rusak", "nonaktif"] })
+      .notNull()
+      .default("baik"),
+    notes: text("notes"),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => [
+    uniqueIndex("fiber_cores_segment_number_idx").on(
+      table.segmentId,
+      table.coreNumber,
+    ),
+    index("fiber_cores_purpose_idx").on(table.purpose),
+  ],
+);
+
+/**
+ * Ujung sebuah core yang berakhir di sebuah port.
+ *
+ * **Tabel ini adalah okupansi.** Tiga aturan yang selama ini hanya bisa
+ * dijanjikan kode aplikasi sekarang ditegakkan PostgreSQL, lewat *partial
+ * unique index* yang hanya berlaku pada baris aktif (`deactivated_at IS
+ * NULL`) — pola yang sudah dipakai `incidents_active_alert_idx`:
+ *
+ *   1. Satu ujung core hanya punya satu terminasi aktif.
+ *   2. Satu port OTB hanya ditempati satu terminasi aktif.
+ *   3. Satu port ODP hanya ditempati satu terminasi aktif.
+ *
+ * Ini yang membuat dua operator yang menekan simpan bersamaan tidak bisa
+ * menghasilkan okupansi ganda. Pemeriksaan di kode tetap ada supaya pesannya
+ * bisa dibaca manusia, tapi yang MENJAMIN adalah index ini.
+ *
+ * **Penggantian tidak menimpa.** Terminasi lama diberi `deactivated_at` dan
+ * alasannya, lalu terminasi baru dibuat sebagai baris tersendiri (PRD §3
+ * aturan 7). Karena index-nya parsial, baris lama otomatis keluar dari
+ * perhitungan okupansi tanpa perlu dihapus.
+ *
+ * Sasarannya polimorfik — port OTB atau port ODP — dan itu dijaga CHECK,
+ * bukan kesepakatan. Dua-duanya NULL berarti terminasi yang tidak menempel di
+ * mana pun: ia tidak akan pernah ditemukan trace, tidak menimbulkan galat,
+ * dan tidak akan ada yang tahu sampai seseorang menelusuri jalur yang putus.
+ *
+ * FK ke port memakai `restrict`, BUKAN `cascade`, dan itu disengaja: ia yang
+ * membuat aturan penurunan kapasitas tray di Fase 11 tetap benar tanpa satu
+ * baris pun diubah — port yang punya core terpasang tidak bisa dihapus.
+ */
+export const fiberCoreTerminations = pgTable(
+  "fiber_core_terminations",
+  {
+    id: text("id").primaryKey(),
+    coreId: text("core_id")
+      .notNull()
+      .references(() => fiberCores.id, { onDelete: "restrict" }),
+    coreEnd: text("core_end", { enum: ["A", "B"] }).notNull(),
+    otbPortId: text("otb_port_id").references(() => otbPorts.id, {
+      onDelete: "restrict",
+    }),
+    odpPortId: text("odp_port_id").references(() => odpPorts.id, {
+      onDelete: "restrict",
+    }),
+    /** Alasan perubahan — wajib. PRD §6.3: mutasi topologi tanpa alasan
+     *  membuat audit bisa menjawab "apa" tapi tidak pernah "kenapa". */
+    reason: text("reason").notNull(),
+    deactivatedAt: timestamp("deactivated_at", { withTimezone: true }),
+    deactivatedReason: text("deactivated_reason"),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+    updatedAt: timestamp("updated_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => [
+    uniqueIndex("fiber_term_core_end_idx")
+      .on(table.coreId, table.coreEnd)
+      .where(sql`${table.deactivatedAt} is null`),
+    uniqueIndex("fiber_term_otb_port_idx")
+      .on(table.otbPortId)
+      .where(sql`${table.deactivatedAt} is null`),
+    uniqueIndex("fiber_term_odp_port_idx")
+      .on(table.odpPortId)
+      .where(sql`${table.deactivatedAt} is null`),
+    index("fiber_term_core_idx").on(table.coreId),
+    check(
+      "fiber_term_sasaran_check",
+      sql`(${table.otbPortId} is not null and ${table.odpPortId} is null)
+       or (${table.otbPortId} is null and ${table.odpPortId} is not null)`,
+    ),
   ],
 );

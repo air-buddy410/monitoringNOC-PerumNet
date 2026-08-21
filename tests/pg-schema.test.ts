@@ -35,6 +35,10 @@ const REQUIRED_TABLES = [
   "otb",
   "otb_trays",
   "otb_ports",
+  // Kabel & core (Fase 12)
+  "fiber_cable_segments",
+  "fiber_cores",
+  "fiber_core_terminations",
   // auth
   "user",
   "session",
@@ -89,6 +93,45 @@ describe("baseline schema PostgreSQL", () => {
     // dan keunikan nomor global se-OTB kehilangan artinya.
     expect(sql).toContain("otb_trays_id_otb_unique");
     expect(sql).toMatch(/FOREIGN KEY \("tray_id","otb_id"\)/);
+  });
+
+  it("okupansi core ditegakkan partial unique index, bukan kode", () => {
+    // Ketiganya HARUS parsial (`where deactivated_at is null`). Tanpa klausa
+    // itu, terminasi lama yang sudah dilepas ikut menghalangi port dipakai
+    // lagi — dan penggantian kabel jadi mustahil tanpa menghapus riwayat.
+    for (const idx of [
+      "fiber_term_core_end_idx",
+      "fiber_term_otb_port_idx",
+      "fiber_term_odp_port_idx",
+    ]) {
+      expect(sql, `${idx} hilang`).toContain(idx);
+    }
+    const parsial = sql.match(/CREATE UNIQUE INDEX "fiber_term_[a-z_]+_idx"[^;]*/g) ?? [];
+    expect(parsial).toHaveLength(3);
+    for (const baris of parsial) {
+      expect(baris, `${baris.slice(0, 60)} tidak parsial`).toMatch(
+        /deactivated_at" is null/,
+      );
+    }
+  });
+
+  it("terminasi wajib menempel tepat di satu port", () => {
+    // Tanpa CHECK ini, terminasi yang tidak menempel di mana pun bisa masuk:
+    // tidak pernah ditemukan trace, tidak menimbulkan galat, dan baru
+    // ketahuan saat ada yang menelusuri jalur yang putus.
+    expect(sql).toContain("fiber_term_sasaran_check");
+  });
+
+  it("port yang membawa core tidak bisa dihapus — FK restrict, bukan cascade", () => {
+    // Ini yang membuat aturan penurunan kapasitas Fase 11 tetap benar tanpa
+    // satu baris pun diubah di sana. Diganti cascade, port berisi core akan
+    // ikut terhapus diam-diam.
+    expect(sql).toMatch(
+      /"fiber_core_terminations_otb_port_id_otb_ports_id_fk"[\s\S]*?ON DELETE restrict/,
+    );
+    expect(sql).toMatch(
+      /"fiber_core_terminations_odp_port_id_odp_ports_id_fk"[\s\S]*?ON DELETE restrict/,
+    );
   });
 
   it("relasi kunci: nodes→assets cascade, versions unik per (topology, version)", () => {

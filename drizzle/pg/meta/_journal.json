@@ -64,6 +64,13 @@
       "when": 1787314821160,
       "tag": "0008_otb_tray_port",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1787320183884,
+      "tag": "0009_kabel_core_terminasi",
+      "breakpoints": true
     }
   ]
 }

@@ -5,7 +5,7 @@
 | Produk | Portal NOC PerumNet (`monitoring-noc`) |
 | Stack | Next.js + **Drizzle ORM** + better-auth + PostgreSQL |
 | Versi | 2.0 — disesuaikan ke portal NOC, 21 Agustus 2026 |
-| Status | **Fase 11 selesai dan terpasang di produksi.** Fase 12–16 belum. |
+| Status | **Fase 11 dan 12 selesai.** Fase 13–16 belum. |
 | Sifat perubahan | Aditif; tidak ada tabel existing yang diubah bentuknya |
 
 > **Asal dokumen.** Kebutuhan di sini datang dari sebuah PRD yang ditulis untuk
@@ -120,6 +120,7 @@ produksi pada 21 Agustus 2026.
 | `audit_logs` | generik | Riwayat seluruh mutasi topologi |
 | `assets` | — | Perangkat terpantau (LibreNMS) |
 | `otb`, `otb_trays`, `otb_ports` | 0 | **Fase 11 — sudah dibuat** |
+| `fiber_cable_segments`, `fiber_cores`, `fiber_core_terminations` | 0 | **Fase 12 — sudah dibuat** |
 
 ### 4.2 Master Splitter TIDAK dibuat tabel baru
 
@@ -150,8 +151,7 @@ Alasan lengkapnya tertulis di komentar tabel `odps` pada `src/db/schema.ts`.
 
 ### 4.3 Belum ada, dan memang harus dibangun
 
-`fiber_cable_segments`, `fiber_cores`, `fiber_closures`, silangan core,
-terminasi core, dan mesin trace. Semuanya Fase 12–16.
+`fiber_closures`, silangan core antar-kabel, dan mesin trace. Fase 13–16.
 
 ### 4.4 Tidak ada di portal ini, dan tidak direncanakan
 
@@ -205,7 +205,11 @@ hari tidak. Yang bisa dinyatakan sebagai constraint, dinyatakan:
 | Satu "Core 17" per OTB | `uniqueIndex(otb_id, global_port_number)` | ✅ Fase 11 |
 | Port tidak bisa mengaku milik OTB lain | FK gabungan `(tray_id, otb_id)` → `otb_trays(id, otb_id)` | ✅ Fase 11 |
 | Nomor tray unik per OTB | `uniqueIndex(otb_id, tray_number)` | ✅ Fase 11 |
-| Satu core hanya punya satu terminasi aktif | *partial unique index* `where deactivated_at is null` | Fase 12 |
+| Satu ujung core hanya punya satu terminasi aktif | `fiber_term_core_end_idx`, parsial | ✅ Fase 12 |
+| Satu port OTB hanya ditempati satu terminasi aktif | `fiber_term_otb_port_idx`, parsial | ✅ Fase 12 |
+| Satu port ODP hanya ditempati satu terminasi aktif | `fiber_term_odp_port_idx`, parsial | ✅ Fase 12 |
+| Terminasi wajib menempel tepat di satu port | CHECK `fiber_term_sasaran_check` | ✅ Fase 12 |
+| Port yang membawa core tidak bisa dihapus | FK `restrict` ke `otb_ports`/`odp_ports` | ✅ Fase 12 |
 | Satu output closure hanya ditempati satu silangan aktif | *partial unique index* | Fase 13 |
 
 Pola *partial unique index* sudah punya preseden di repo ini:
@@ -239,18 +243,20 @@ Semua di bawah `/api/v1/ftth/`, mengikuti keluarga yang sudah ada
 | `GET …/trays/:n/ports` | `[]` | Isi satu tray |
 | `PATCH …/trays/:n/ports` | `admin`, `noc`, `engineer` | Ubah satu port |
 | `PATCH …/trays/:n` | `admin`, `noc` | Ubah kapasitas tray |
+| `PATCH /api/v1/ftth/otb/:otbId` | `admin`, `noc` | Ubah atribut OTB (Fase 12) |
+| `GET/POST /api/v1/ftth/cables` | `[]` / `admin`,`noc` | Kabel + core-nya |
+| `GET /api/v1/ftth/cables/:cableId` | `[]` | Kabel + seluruh core |
+| `POST /api/v1/ftth/terminations` | `admin`, `noc` | Terminasi ujung core ke port |
+| `POST …/terminations/:id/release` | `admin`, `noc` | Lepas terminasi (non-destruktif) |
 
 Kontrak lengkapnya — bentuk respons, kode galat, dan larangan untuk frontend —
-ada di `docs/HANDOFF-BACKEND-KE-FRONTEND.md` §16. Dokumen itu yang mengikat;
+ada di `docs/HANDOFF-BACKEND-KE-FRONTEND.md` §16 (OTB) dan §17 (kabel/core). Dokumen itu yang mengikat;
 tabel di atas hanya ringkasan.
 
 ### 6.2 Direncanakan
 
 | Endpoint | Fase | Untuk |
 |---|---|---|
-| `PATCH /api/v1/ftth/otb/:otbId` | 12 | Ubah nama, situs, status OTB |
-| `GET/POST /api/v1/ftth/cables` | 12 | Segmen kabel dan core-nya |
-| `POST /api/v1/ftth/terminations` | 12 | Tautkan core ke port OTB / port ODP |
 | `GET/POST /api/v1/ftth/closures` | 13 | Closure dan matriks silangan core |
 | `POST /api/v1/ftth/closures/:id/preview` | 13 | Pratinjau okupansi sebelum commit |
 | `GET /api/v1/ftth/trace` | 14 | Trace dua arah + diagnosis |
@@ -301,7 +307,7 @@ tersendiri yang menyentuh better-auth dan seluruh endpoint yang ada.
 | Fase | Isi | Status |
 |---|---|---|
 | **11** | OTB, tray, port | ✅ **Selesai, terpasang di produksi 21 Agustus 2026** |
-| 12 | Kabel, core, terminasi core→port, okupansi | Belum |
+| 12 | Kabel, core, terminasi core→port, okupansi | ✅ **Selesai 21 Agustus 2026** |
 | 13 | Closure dan silangan core; larangan pembagian | Belum |
 | 14 | Mesin trace feeder/distribution + diagnosis | Belum |
 | 15 | Garis jalur di peta + fanout MS→ODP | Belum |
@@ -374,14 +380,27 @@ perbaikan** (`docs/WORKFLOW-TIM.md` §4). Daftar ini kriteria, bukan janji.
 - [x] Pembuatan gagal di tengah tidak meninggalkan OTB yatim
 - [x] Dua OTB boleh sama-sama punya "Core 17"
 
-### Fase 12 — kabel dan core
+### Fase 12 — kabel dan core ✅
 
-- [ ] Core punya jenis: feeder atau distribution
-- [ ] Core distribution ditolak sebagai input feeder master splitter
-- [ ] Core non-distribution ditolak sebagai terminasi ODP
-- [ ] Satu core tidak bisa punya dua terminasi aktif — ditolak **database**
-- [ ] Dua permintaan bersamaan tidak menghasilkan okupansi ganda
-- [ ] Panjang hanya menjumlahkan segmen unik
+- [x] Core punya jenis: feeder atau distribution
+- [x] Core non-distribution ditolak sebagai terminasi ODP
+- [x] Satu ujung core tidak bisa punya dua terminasi aktif — ditolak **database**
+- [x] Satu port tidak bisa ditempati dua terminasi aktif — ditolak **database**
+- [x] Dua permintaan bersamaan tidak menghasilkan okupansi ganda
+- [x] Melepas terminasi tidak menghapus riwayatnya
+- [x] Port yang membawa core tidak bisa dihapus
+
+**Dua kriteria dipindah, bukan diselesaikan** — dan itu perlu ditulis, bukan
+didiamkan:
+
+- *"Core distribution ditolak sebagai input feeder master splitter"* → **Fase
+  14.** Menegakkannya butuh tahu port MS mana yang input dan mana yang output.
+  `odp_ports` sebuah MS tidak membedakan keduanya, dan menambah pembeda itu
+  berarti mengubah tabel yang sudah dipakai 8.632 baris produksi. Yang berlaku
+  sekarang: port MS menerima core apa pun, port ODP biasa hanya distribution.
+- *"Panjang hanya menjumlahkan segmen unik"* → **Fase 14.** Penjumlahan terjadi
+  saat menelusuri jalur, dan mesin trace-nya belum ada. Yang sudah disiapkan:
+  `length_m` per segmen, dalam meter, dan boleh NULL kalau belum diukur.
 
 ### Fase 13 — closure
 
