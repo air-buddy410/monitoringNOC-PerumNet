@@ -757,3 +757,115 @@ terbagi 20 / 180. Sesudah impor: 577 tertaut, 0 yatim.
 | ZTE-C300-102-Pesagi | Pesagi | 114 |
 | ZTE-C600-100-Kecicang | Kecicang | 180 |
 | ZTE-C600-104-Abang | Abang | 131 |
+
+## 13. Menerapkan migrasi ke database produksi
+
+**`npx drizzle-kit migrate` TIDAK dipakai untuk produksi.** `DB_MIGRATION.md`
+menulis perintah itu, dan itu benar untuk dev — tapi bukan untuk VPS. Dua
+alasan: belum pernah dipastikan `DATABASE_URL` tersedia untuk proses
+drizzle-kit di sana, dan `src/instrumentation.ts` sengaja tidak menjalankan
+migrasi otomatis saat aplikasi naik.
+
+### Prosedur yang terbukti (21 Agustus 2026, migrasi `0008_otb_tray_port`)
+
+**0. Periksa dulu, jangan langsung terapkan.**
+
+```bash
+ssh perumnet 'docker exec perumnet-noc-postgres \
+  psql -U perumnet_noc -d perumnet_noc -c \
+  "select count(*) from drizzle.__drizzle_migrations;"'
+ls drizzle/pg/0*.sql | wc -l
+```
+
+Kedua angka harus sama. Kalau tidak, **berhenti** dan baca §13.1 sebelum
+menyentuh apa pun.
+
+**1. Kirim berkas SQL-nya.**
+
+```bash
+scp drizzle/pg/00NN_nama.sql perumnet:/tmp/
+ssh perumnet 'docker cp /tmp/00NN_nama.sql perumnet-noc-postgres:/tmp/'
+```
+
+**2. Terapkan dalam satu transaksi.**
+
+```bash
+ssh perumnet 'docker exec perumnet-noc-postgres psql -U perumnet_noc \
+  -d perumnet_noc -v ON_ERROR_STOP=1 --single-transaction -f /tmp/00NN_nama.sql'
+```
+
+`ON_ERROR_STOP=1` dan `--single-transaction` dua-duanya wajib. Tanpa keduanya
+psql akan melanjutkan setelah galat dan meninggalkan skema setengah jadi —
+keadaan yang jauh lebih mahal diperbaiki daripada migrasi yang gagal utuh.
+
+**3. Catat sendiri barisnya.** Drizzle tidak akan tahu migrasi itu sudah
+diterapkan kalau tidak dicatat.
+
+```sql
+INSERT INTO drizzle.__drizzle_migrations (hash, created_at)
+VALUES ('<sha256 berkas sql>', <nilai "when" dari _journal.json>);
+```
+
+- `hash` = `shasum -a 256 drizzle/pg/00NN_nama.sql`
+- `created_at` = milidetik, ambil dari `when` entri itu di
+  `drizzle/pg/meta/_journal.json`
+
+**Timestamp-nya yang menentukan, bukan hash-nya.** Drizzle memilih migrasi
+mana yang perlu dijalankan berdasarkan `created_at` TERBESAR yang tercatat.
+Angka yang salah di sini tidak akan menghasilkan galat apa pun — ia hanya
+membuat migrasi berikutnya dilewati diam-diam, dan itu baru ketahuan berbulan
+kemudian saat sebuah kolom "hilang" tanpa penjelasan.
+
+**4. Baru deploy kodenya.** `git pull --ff-only`, `npm run build`,
+`pm2 restart perumnet-noc --update-env`. Urutannya penting: skema lebih dulu,
+kode belakangan. Kode baru yang menemui tabel lama akan 500; tabel baru yang
+belum dipakai kode lama tidak melakukan apa-apa.
+
+### 13.1. Drift yang pernah terjadi — dan cara memperbaikinya
+
+Sampai 21 Agustus 2026 `drizzle.__drizzle_migrations` hanya memuat **5 baris**
+(0000–0004), padahal **0005, 0006, dan 0007 sudah lama terpasang** —
+`odp_customers`, `traffic_interfaces`, `traffic_samples`, dan `tv_tokens`
+semuanya ada dan berisi data produksi.
+
+Akibatnya, siapa pun yang mengikuti `DB_MIGRATION.md` apa adanya dan
+menjalankan `drizzle-kit migrate` akan membuat drizzle mencoba menerapkan
+0005 ke atas, gagal di `CREATE TABLE "odp_customers"` karena tabelnya sudah
+ada, dan berhenti di tengah. Bukan kerusakan data, tapi kegagalan yang
+membingungkan pada saat paling buruk — di tengah deploy.
+
+Perbaikannya bukan menerapkan ulang, melainkan **mencatat kenyataan yang
+memang sudah benar**: cocokkan `shasum -a 256` tiap berkas dengan `hash` yang
+tercatat, temukan yang hilang, lalu `INSERT` dengan `when` dari jurnalnya.
+Sudah dilakukan; tabel pelacak sekarang berisi 9 baris dan jujur.
+
+**Pelajarannya bukan "hati-hati".** Pelajarannya: langkah 0 di atas ada
+justru karena kegagalan ini tidak menimbulkan gejala apa pun sampai migrasi
+berikutnya. Jalankan langkah 0 setiap kali.
+
+### 13.2. Keadaan app PerumNet yang lain (diperiksa 21 Agustus 2026)
+
+Diperiksa karena drift di atas — supaya jelas ini kasus tunggal atau pola.
+**Catatan: app lain hanya DIPERIKSA, tidak diubah.**
+
+| App | Database | Tabel | Pelacak migrasi | Keadaan |
+|---|---|---|---|---|
+| monitoring-noc | `perumnet_noc` | 40 | Drizzle | Sempat melenceng 3 migrasi — **sudah diperbaiki**, 9/9 |
+| warehouse | `perumnet_warehouse` | 232 | Prisma | **Sehat**: 36 tercatat = 36 berkas, nol belum-selesai, nol rollback |
+| warehouse (pratinjau) | `…_pratinjau` | 232 | Prisma | Sehat, 36/36 |
+| crm | `perumnet_crm` | 141 | **tidak ada** | Memakai `prisma db push` — memang tanpa riwayat |
+| enterprise | `perumnet_enterprise` | 83 | **tidak ada** | Tanpa berkas migrasi sama sekali — juga push |
+
+Bedakan dua hal ini, karena mudah tertukar:
+
+- **Drift** (kasus NOC): berkas migrasi ada, pelacak ada, tapi keduanya tidak
+  cocok. Ini bug, dan bisa diperbaiki.
+- **Tanpa riwayat** (CRM dan enterprise): memang tidak pernah ada migrasi
+  bernomor. `db push` membandingkan skema lalu menerapkan selisihnya. Itu
+  bukan drift — itu model deployment yang berbeda, dan konsekuensinya nyata:
+  tidak ada catatan apa yang diterapkan kapan, tidak ada jalur rollback per
+  langkah, dan `push` bisa **menghapus kolom** tanpa bertanya kalau skemanya
+  berubah. Keputusan pemilik masing-masing app; dicatat di sini supaya tidak
+  dikira temuan yang perlu ditindak.
+
+Jadi drift itu kasus tunggal, bukan pola.
