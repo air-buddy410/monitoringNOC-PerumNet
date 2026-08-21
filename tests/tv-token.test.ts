@@ -22,7 +22,7 @@ import {
   cabutToken,
   catatPemakaian,
   daftarToken,
-  tokenMasihBerlaku,
+  berlakuSampai,
   verifikasiToken,
 } from "@/server/tv-token";
 
@@ -154,15 +154,15 @@ describe("pencabutan berlaku SEKETIKA", () => {
     // tetap memeriksa barisnya. Kalau tidak, mencabut token berarti menunggu
     // 12 jam sampai layarnya mati.
     const t = await buatToken({ name: "TV", createdBy: null, now: T0 });
-    expect(await tokenMasihBerlaku(t.id, T0)).toBe(true);
+    expect(await berlakuSampai(t.id, T0)).toBeInstanceOf(Date);
     await cabutToken(t.id, null, T0);
-    expect(await tokenMasihBerlaku(t.id, T0)).toBe(false);
+    expect(await berlakuSampai(t.id, T0)).toBeNull();
   });
 
   it("token yang lewat masa berlakunya berhenti tanpa perlu dicabut", async () => {
     const t = await buatToken({ name: "TV", createdBy: null, expiresInDays: 1, now: T0 });
     const nanti = new Date(T0.getTime() + 2 * 86_400_000);
-    expect(await tokenMasihBerlaku(t.id, nanti)).toBe(false);
+    expect(await berlakuSampai(t.id, nanti)).toBeNull();
   });
 });
 

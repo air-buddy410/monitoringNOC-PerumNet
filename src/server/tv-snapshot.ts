@@ -9,8 +9,15 @@
 //      enam tempat untuk lupa.
 //
 // **Yang sengaja TIDAK ada di sini: alamat IP, hostname, vendor, model,
-// nomor seri.** Token TV bisa bocor — pemiliknya sudah menerima risiko itu.
-// Yang bocor tidak boleh berupa inventaris jaringan.
+// nomor seri — dan USERNAME PELANGGAN.** Token TV bisa bocor — pemiliknya
+// sudah menerima risiko itu. Yang bocor tidak boleh berupa inventaris
+// jaringan, dan tidak boleh berupa daftar pelanggan.
+//
+// Username itu sempat lolos: `outages` dulu memakai `ReturnType<typeof
+// ringkasPadam>` apa adanya, dan `Gerombol.usernames` ikut terbawa ke layar
+// yang dipasang di ruangan terbuka. Karena itu bentuk `outages` di sini
+// DITULIS SENDIRI, bukan diwarisi — supaya kolom baru di hulu tidak pernah
+// lagi sampai ke TV hanya karena tidak ada yang menghalanginya.
 
 import { desc, gte } from "drizzle-orm";
 import { db } from "@/db";
@@ -18,6 +25,7 @@ import { pppoePollRuns } from "@/db/schema";
 import { getAssetsWithStatus } from "@/server/device-store";
 import { listIncidents } from "@/server/incident-store";
 import { ringkasPadam } from "@/server/outage";
+import { rapikanPadam, type RingkasanPadamTv } from "@/server/tv-sanitize";
 import { bacaTrafikLive, type TrafikLive } from "@/server/traffic-read";
 
 export interface PenandaTv {
@@ -38,7 +46,7 @@ export interface TvSnapshot {
     offline: number;
     markers: PenandaTv[];
   };
-  outages: Awaited<ReturnType<typeof ringkasPadam>>;
+  outages: RingkasanPadamTv;
   incidents: {
     id: string;
     deviceName: string;
@@ -117,7 +125,7 @@ export async function bacaTvSnapshot(now = new Date()): Promise<TvSnapshot> {
       offline: hitung.offline ?? 0,
       markers,
     },
-    outages: padam,
+    outages: rapikanPadam(padam),
     // `deviceName` dan `message` memang tampil di layar — itu memang guna
     // insidennya. Yang tidak ikut tetap tidak ikut: alamat IP, hostname,
     // vendor, model.
