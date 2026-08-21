@@ -30,7 +30,9 @@ interface SlaResponse {
   period: string;
   targetPercent: number;
   rows: SlaRow[];
-  summary: { devices: number; averageUptime: number; belowTarget: number };
+  /** `belum-ada-data` bukan nol — lihat §7 HANDOFF dan tugas T-23. */
+  source?: "terukur" | "fixture" | "belum-ada-data";
+  summary: { devices: number; averageUptime: number | null; belowTarget: number };
 }
 
 export default function SlaReport({ period }: { period: string }) {
@@ -65,7 +67,9 @@ export default function SlaReport({ period }: { period: string }) {
             <>
               Rata-rata uptime{" "}
               <span className="font-medium tabular-nums text-foreground">
-                {data.summary.averageUptime}%
+                {data.summary.averageUptime === null
+                  ? "—"
+                  : `${data.summary.averageUptime}%`}
               </span>{" "}
               · {data.summary.belowTarget} perangkat di bawah target
             </>

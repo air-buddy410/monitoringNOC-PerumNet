@@ -324,8 +324,8 @@ links: {
 - **Cara pakai:**
   | Endpoint | Peran | Respons |
   |---|---|---|
-  | `GET /api/reports/sla?period=YYYY-MM` | **tanpa pemeriksaan login** | `{ period, targetPercent, rows, summary }` |
-  | `GET /api/reports/traffic?period=YYYY-MM` | **tanpa pemeriksaan login** | `{ period, rows, summary }` |
+  | `GET /api/reports/sla?period=YYYY-MM` | cukup login | `{ period, targetPercent, source, rows, summary }` |
+  | `GET /api/reports/traffic?period=YYYY-MM` | cukup login | `{ period, source, rows, summary }` |
   | `GET /api/reports/traffic?from=YYYY-MM&to=YYYY-MM` | idem | agregasi rentang |
   | `GET /api/reports/export/excel?type=&period=` | **admin/manajemen** | berkas `.xlsx` |
   | `GET /api/reports/export/pdf?type=&period=` | **admin/manajemen** | berkas `.pdf` |
@@ -333,10 +333,21 @@ links: {
   - SLA `rows[]`: `deviceId`, `deviceName`, `group`, `area`, `uptimePercent`,
     `downtimeMinutes`, `incidents`, `meetsTarget`. Urut **uptime terendah
     dulu**. `targetPercent` = **99.5**; `summary` = `{ devices, averageUptime,
-    belowTarget }`.
+    belowTarget }`. **`averageUptime` bisa `null`** — lihat `source` di bawah.
   - Trafik `rows[]`: `deviceId`, `deviceName`, `group`, `area`, **`downloadGb`,
     `uploadGb`** (huruf b kecil), `avgMbps`, `peakMbps`. Urut download
     terbesar dulu. `summary` = `{ devices, totalDownloadGb, totalUploadGb }`.
+- **`source` — dari mana angkanya datang** (baru, 21 Agustus; ada di ketiga
+  jawaban laporan, termasuk agregasi rentang):
+  | Nilai | Artinya |
+  |---|---|
+  | `terukur` | ada isinya dan bukan fixture |
+  | `fixture` | mode pengembangan — angkanya **dibangkitkan, bukan diukur** |
+  | `belum-ada-data` | periode itu belum punya rekap. **BUKAN nol.** |
+
+  Di produksi hari ini jawabannya selalu `belum-ada-data`: agregasi dari
+  LibreNMS belum ditulis, dan sejak 21 Agustus backend tidak lagi mengarang
+  isinya. Tugas **T-23** menampilkan keadaan ini dengan jujur.
 - **Batas perilaku:**
   - `period` wajib `YYYY-MM` → salah format **400** `period wajib berformat
     YYYY-MM, mis. 2026-07.`
@@ -842,20 +853,22 @@ berubah, dan jangan tunjukkan angkanya sebagai fakta operasional.
 - **`/api/devices/:id/metrics-history` seluruhnya dibangkitkan** oleh
   `generateHistorySeries()` — belum ada tabel `metric_history`. Bentuk
   respons akan tetap; angkanya akan berubah total saat sumber asli masuk.
-- **Laporan SLA & trafik di-seed otomatis** untuk periode yang belum ada
-  datanya (`seedSlaIfMissing`, `seedTrafficIfMissing`). Angka periode lama
-  bukan hasil pengukuran.
+- ~~**Laporan SLA & trafik di-seed otomatis**~~ — **SUDAH DITUTUP 21 Agustus.**
+  Kedua seed kini berhenti begitu LibreNMS terkonfigurasi, jadi produksi tidak
+  pernah lagi menerima angka karangan. Yang tersisa: rekapnya memang **belum
+  pernah diisi** dari data nyata, dan endpoint mengakuinya lewat
+  `source: "belum-ada-data"`. Di mode pengembangan seed tetap jalan supaya
+  layar punya isi, dan mengaku `source: "fixture"`.
 - ~~**Tiga endpoint belum memeriksa login**~~ — **SUDAH DITUTUP.**
   `/api/dashboard/summary`, `/api/reports/sla`, dan `/api/reports/traffic`
   ketiganya kini memakai `withRole([])`. Catatan lama ini sempat bertahan
   setelah lubangnya ditambal; layar boleh bergantung pada ketiganya seperti
   endpoint lain.
-- **⚠️ `GET /api/reports/sla` sedang 500 di PRODUKSI** (24 kali di log PM2,
-  terakhir 20 Agustus 18:00). Bukan salah layar: `seedSlaIfMissing` menulis
-  baris laporan karangan dengan asset ID fixture yang tidak ada di tabel
-  `assets` produksi, dan foreign key menolaknya. `/api/reports/traffic` punya
-  cacat yang sama persis tapi belum pernah kena. **Sedang saya kerjakan** —
-  jangan menambal gejalanya di sisi layar.
+- ~~**⚠️ `GET /api/reports/sla` sedang 500 di PRODUKSI**~~ — **SUDAH
+  DIPERBAIKI 21 Agustus.** Penyebabnya seed di atas: baris laporan karangan
+  ber-asset ID fixture membentur foreign key `assets` produksi, 24 kali di log
+  PM2. `/api/reports/traffic` punya cacat yang sama persis dan belum sempat
+  kena. Keduanya kini menjawab 200 dengan `source: "belum-ada-data"`.
 - **Rate limit webhook LibreNMS masih in-memory per proses** (10 permintaan
   per 10 detik per IP); di produksi multi-instance akan pindah ke Redis.
 
@@ -880,6 +893,27 @@ Papan permintaan Opus → Luna (`WORKFLOW-TIM.md` §5). Semua di sini murni
 pekerjaan tampilan — datanya sudah tersedia di endpoint yang disebut, tidak
 ada yang perlu ditunggu dari backend. Tandai ✅ dan pindahkan ke §Selesai
 kalau sudah dikerjakan.
+
+### T-23. Laporan yang kosong harus terlihat kosong
+
+- **Layar:** `/reports` — `src/components/reports/sla-report.tsx` dan
+  `traffic-report.tsx`.
+- **Butuh:** §7, field `source` yang baru.
+- **Kenapa sekarang:** sampai 21 Agustus backend mengarang isi laporan untuk
+  periode yang kosong. Itu sudah dihentikan, jadi di produksi kedua laporan
+  sekarang **benar-benar kosong** — dan kosong yang tidak dijelaskan terlihat
+  seperti jaringan tanpa masalah, atau lebih buruk, seperti jaringan yang mati.
+- **Yang perlu dibedakan:** `belum-ada-data` (tidak ada rekapnya — katakan
+  begitu, jangan tampilkan tabel kosong tanpa keterangan), `fixture` (mode
+  pengembangan; beri penanda supaya angka bangkitan tidak pernah disangka
+  hasil pengukuran), `terukur` (biasa saja).
+- **`summary.averageUptime` sekarang bisa `null`.** Saya sudah menambal satu
+  baris supaya ia tidak tampil sebagai `%` kosong — itu tambalan sementara di
+  wilayahmu, silakan ganti dengan keadaan kosong yang benar. Jangan
+  mengembalikannya jadi `0`: "rata-rata uptime 0%" di layar NOC terbaca
+  sebagai jaringan yang mati total.
+- **Kenapa tidak bisa diakali dari backend:** angka jujurnya sudah ada; yang
+  belum ada adalah cara mengatakannya kepada orang yang melihat layar.
 
 ### T-21. Wallboard `/tv` — layar yang digantung di ruang NOC
 
@@ -1314,6 +1348,15 @@ orang mengetik.
 
 ## Riwayat
 
+- **2026-08-21** — **Laporan berhenti mengarang, dan `GET /api/reports/sla`
+  berhenti 500 di produksi.** Komentar di kepala `reports.ts` sudah lama
+  menjanjikan "produksi/terhubung: seed tidak dijalankan", tapi hanya
+  `ensureAssetsSeed` yang benar-benar berhenti — kedua seed rekap tetap
+  menulis angka fixture dan membentur foreign key `assets`. Foreign key itulah
+  yang menyelamatkan: tanpanya, satu kali membuka halaman laporan sudah cukup
+  untuk menanam angka uptime karangan ke database produksi secara permanen,
+  dan menyajikannya sebagai hasil pengukuran selamanya. Sekarang dijaga, dan
+  laporan kosong mengaku kosong lewat `source`. Tugas T-23.
 - **2026-08-21** — `formatBitrate` masuk `src/lib/noc-format.ts`, jadi
   satu-satunya pemformat bitrate di repo ini. Dijanjikan di §14 nomor 1 sejak
   20 Agustus tapi belum pernah ada, jadi T-20 terpaksa menampilkan bps mentah.
