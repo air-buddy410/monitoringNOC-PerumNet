@@ -265,6 +265,9 @@ export interface BuatKabelInput {
   category: KategoriKabel;
   fiberType?: JenisSerat;
   coreCount: number;
+  /** Ujung kabel sebagai situs (POP/RK). Boleh dikosongkan. */
+  siteAId?: string | null;
+  siteBId?: string | null;
   lengthM?: number | null;
   purpose?: PeruntukanCore;
   /**
@@ -309,6 +312,18 @@ export async function buatKabel(
   ) {
     return { ok: false, status: 400, error: `coreCount harus 1–${MAKS_CORE}.` };
   }
+  const siteAId = input.siteAId?.trim() || null;
+  const siteBId = input.siteBId?.trim() || null;
+  if (siteAId !== null && siteAId === siteBId) {
+    // Kabel yang kedua ujungnya situs yang sama bukan bentangan antar-situs;
+    // membiarkannya membuat "dari mana ke mana" jadi kalimat kosong.
+    return {
+      ok: false,
+      status: 400,
+      error: "siteAId dan siteBId tidak boleh situs yang sama.",
+    };
+  }
+
   const tubeSize = input.tubeSize ?? null;
   if (
     tubeSize !== null &&
@@ -355,6 +370,8 @@ export async function buatKabel(
       category: input.category,
       fiberType: input.fiberType ?? "G.652D",
       coreCount: input.coreCount,
+      siteAId,
+      siteBId,
       lengthM: input.lengthM ?? null,
       notes: input.notes ?? null,
     });

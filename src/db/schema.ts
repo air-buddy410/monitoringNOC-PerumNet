@@ -1274,6 +1274,31 @@ export const fiberCableSegments = pgTable(
       .notNull()
       .default("G.652D"),
     coreCount: integer("core_count").notNull(),
+    /**
+     * Dua ujung kabel sebagai SITUS — POP, RK, atau lokasi bernama lain.
+     *
+     * Ada karena letak kabel selama ini hanya bisa DITURUNKAN dari tempat
+     * core-nya menempel (`fiber-geo.ts`), dan kabel backbone yang belum
+     * dipatch sama sekali karena itu tidak punya ujung apa pun. Kabel
+     * `BB-KECICANG-PESAGI-144` masuk produksi 22 Agustus 2026 dengan 144
+     * serat dan nol terminasi: modelnya tidak bisa menyebutkan bahwa ia
+     * membentang antara dua POP, padahal sheet lapangannya menulis
+     * "Segment: Kecicang- Pesagi" di barisnya yang pertama.
+     *
+     * Ini FAKTA YANG DICATAT, bukan turunan — dan sengaja tidak dipakai untuk
+     * menggambar garis di peta. Jalur nyata mengikuti jalan sepanjang
+     * kilometer; garis lurus antara dua POP akan terbaca sebagai rute dan
+     * mengirim teknisi ke tempat yang salah. Aturan yang sama sudah dipegang
+     * `fiber-geo.ts`: yang tidak diketahui mengaku tidak diketahui.
+     *
+     * Boleh NULL: dropcore dan patch memang tidak membentang antar situs.
+     */
+    siteAId: text("site_a_id").references(() => networkSites.id, {
+      onDelete: "set null",
+    }),
+    siteBId: text("site_b_id").references(() => networkSites.id, {
+      onDelete: "set null",
+    }),
     /** Meter. NULL = belum diukur — bukan nol. */
     lengthM: integer("length_m"),
     status: text("status", { enum: ["aktif", "nonaktif"] })
@@ -1287,7 +1312,11 @@ export const fiberCableSegments = pgTable(
       .notNull()
       .defaultNow(),
   },
-  (table) => [index("fiber_cable_segments_category_idx").on(table.category)],
+  (table) => [
+    index("fiber_cable_segments_category_idx").on(table.category),
+    index("fiber_cable_segments_site_a_idx").on(table.siteAId),
+    index("fiber_cable_segments_site_b_idx").on(table.siteBId),
+  ],
 );
 
 /**

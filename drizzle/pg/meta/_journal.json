@@ -99,6 +99,13 @@
       "when": 1787380811019,
       "tag": "0013_cuplikan_metrik",
       "breakpoints": true
+    },
+    {
+      "idx": 14,
+      "version": "7",
+      "when": 1787404362118,
+      "tag": "0014_ujung_kabel_situs",
+      "breakpoints": true
     }
   ]
 }

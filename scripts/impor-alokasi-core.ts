@@ -39,6 +39,12 @@ const BERKAS = argv[argv.indexOf("--berkas") + 1];
 
 /** Kode kabel. Tidak berawalan `CONTOH-` — ini catatan lapangan sungguhan. */
 const KODE = process.env.KODE_KABEL ?? "BB-KECICANG-PESAGI-144";
+/**
+ * Dua POP yang dihubungkan kabel ini, sesuai baris pertama sheet:
+ * "Segment: Kecicang- Pesagi". Dicocokkan lewat `network_sites.code`.
+ */
+const SITUS_A = process.env.SITUS_A ?? "KCC";
+const SITUS_B = process.env.SITUS_B ?? "PSG";
 const JUMLAH_CORE = 144;
 const SERAT_PER_TABUNG = 12;
 
@@ -120,6 +126,19 @@ async function main() {
     keluarSalah(`kabel ${KODE} sudah ada. Tambahkan --ganti untuk memuat ulang.`);
   }
 
+  // Situs dicari lewat KODE, bukan id — kode itu yang tertulis di sheet dan
+  // yang dikenali orang. Situs yang tidak ketemu dilaporkan, bukan diam-diam
+  // dibiarkan null: kabel backbone tanpa ujung tercatat persis masalah yang
+  // kolom ini ada untuk menyelesaikannya.
+  const situs = await db
+    .select({ id: s.networkSites.id, code: s.networkSites.code })
+    .from(s.networkSites);
+  const cariSitus = (kode: string) => situs.find((x) => x.code === kode) ?? null;
+  const a = cariSitus(SITUS_A);
+  const b = cariSitus(SITUS_B);
+  if (!a) console.log(`[impor] PERINGATAN: situs ${SITUS_A} tidak ada; ujung A dikosongkan.`);
+  if (!b) console.log(`[impor] PERINGATAN: situs ${SITUS_B} tidak ada; ujung B dikosongkan.`);
+
   const terpakai = baris.filter((b) => b.usage || b.service).length;
   console.log(
     `\n[impor] akan membuat: 1 kabel ${KODE} · ${JUMLAH_CORE} serat ` +
@@ -147,6 +166,8 @@ async function main() {
       coreCount: JUMLAH_CORE,
       tubeSize: SERAT_PER_TABUNG,
       purpose: "feeder",
+      siteAId: a?.id ?? null,
+      siteBId: b?.id ?? null,
       notes: `Dimuat dari sheet Alokasi Core 144 (${BERKAS}).`,
     },
     null,

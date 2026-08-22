@@ -190,6 +190,35 @@ berbeda, sementara yang di lapangan tetap membaca sheetnya.
 Kalau sheetnya kelak dibetulkan di Google, laporan itu akan menyusut sendiri —
 itu tandanya, bukan sesuatu yang perlu dimatikan.
 
+### Ujung POP-nya dicatat, tapi jalurnya TIDAK digambar
+
+Baris pertama sheet berbunyi **"Segment: Kecicang- Pesagi"**. Itu fakta, dan
+sejak migrasi `0014_ujung_kabel_situs` ia tersimpan: `fiber_cable_segments`
+punya `site_a_id` dan `site_b_id`.
+
+Kolom itu ada karena letak kabel selama ini hanya bisa DITURUNKAN dari tempat
+core-nya menempel. Kabel backbone yang belum dipatch sama sekali — dan
+`BB-KECICANG-PESAGI-144` masuk dengan 144 serat dan **nol terminasi** —
+karena itu tidak punya ujung apa pun di model, padahal lapangan tahu persis
+ia membentang antara dua POP.
+
+**Peta tetap menolak menggambarnya, dan itu disengaja.** Jalur nyatanya
+mengikuti jalan sepanjang kilometer; garis lurus antara dua POP akan terbaca
+sebagai rute dan mengirim teknisi ke tempat yang salah saat kabel putus.
+Aturan yang sama sudah dipegang `fiber-geo.ts` sejak Fase 15.
+
+Yang berubah hanya penjelasannya. Dulu:
+
+> Belum ada core yang diterminasi atau disambung — kedua ujungnya belum diketahui.
+
+Sekarang:
+
+> Belum ada core yang diterminasi atau disambung — kedua ujungnya belum
+> diketahui. Ujungnya tercatat: KCC → PSG; jalurnya belum tersurvei, jadi
+> tidak digambar.
+
+Kabel akan mulai digambar begitu core-nya diterminasi ke OTB di kedua POP.
+
 ### Memuatnya
 
 ```bash
