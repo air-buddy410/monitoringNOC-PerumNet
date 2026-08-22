@@ -1702,6 +1702,108 @@ pekerjaan tampilan — datanya sudah tersedia di endpoint yang disebut, tidak
 ada yang perlu ditunggu dari backend. Tandai ✅ dan pindahkan ke §Selesai
 kalau sudah dikerjakan.
 
+### T-40. Layar `/ftth`: cari, saring, dan halaman untuk 580 ODP
+
+- **Layar:** `/ftth` — `src/components/operations/ftth-page.tsx`.
+- **Butuh:** `GET /api/v1/ftth/odps`, yang sekarang menerima parameter.
+
+**Masalahnya bukan beban server — itu penting supaya tidak salah
+diperbaiki.** Diukur di produksi: kuerinya **6,6 ms**, payloadnya **148 kB**
+untuk 580 ODP. Itu tidak menyakiti apa pun. Yang bermasalah adalah **tidak ada
+cara menemukan satu ODP**: 580 baris akordion, tanpa kotak cari, tanpa
+penyaring. Teknisi yang mencari satu ODP harus menggulir.
+
+**Parameter baru (semuanya opsional):**
+
+```
+q         cari di code DAN name sekaligus
+siteId    saring satu situs
+oltId     saring satu OLT
+sort      code | name | capacity | usedPorts     (default code)
+dir       asc | desc                              (default asc)
+page      halaman, 1-basis
+pageSize  20 | 50 | 100
+```
+
+**Jawaban:**
+
+```jsonc
+{
+  "odps": [ /* bentuk tiap barisnya tidak berubah */ ],
+  "total": 580,            // sesudah q/siteId/oltId, SEBELUM halaman
+  "page": 1,
+  "pageSize": 20,
+  "halamanTerakhir": 29,
+  "terpotong": false       // true kalau mode lama memotong diam-diam
+}
+```
+
+**Yang penting:**
+
+1. **Layar sekarang tidak akan pecah.** Tanpa `page` maupun `pageSize`,
+   jawabannya tetap seperti dulu — seluruh ODP sampai 2.000 baris. Disengaja
+   supaya `/ftth` tidak diam-diam kehilangan 560 dari 580 barisnya di antara
+   deploy backend dan pembaruan layar. Begitu kamu kirim `page` atau
+   `pageSize`, mode itu berhenti.
+2. **Pencariannya WAJIB lewat `q` ke server, jangan `filter()` di browser.**
+   Penyaringan di browser hanya menyaring yang TERKIRIM. Begitu paginasi
+   dipakai, hasil pencarian jadi tidak lengkap tanpa ada yang tahu — persis
+   kebohongan halus yang sudah dicabut dari layar PPPoE di T-28.
+3. **`total` adalah jumlah SESUDAH penyaringan, sebelum halaman.** Lencana
+   "580 ODP" di kepala layar harus membaca `total`, bukan `odps.length` —
+   yang kedua akan berbunyi "20 ODP" begitu paginasi menyala.
+4. **`terpotong: true` wajib ditampilkan** kalau sampai muncul. Ia berarti
+   jawabannya dipotong di 2.000 baris tanpa paginasi.
+
+**Isian dropdown penyaring:** situs dari `GET /api/v1/sites` yang sudah kamu
+pakai; OLT dari `GET /api/v1/ftth/olts`. Di produksi hari ini: **5 situs**
+(3 ODP tanpa situs) dan **6 OLT** — cukup kecil untuk dropdown biasa.
+
+### T-39. Chip ringkasan ONU: jangan diam-diam melewatkan status yang tak dikenal
+
+- **Layar:** `/console` — `src/components/operations/onu-list-panel.tsx`, plus
+  `src/types/operations.ts`.
+- **Butuh:** tidak ada endpoint baru. Kontraknya tidak berubah.
+
+**Yang terjadi sekarang.** Ringkasannya merender daftar tetap:
+
+```ts
+const ONU_PHASES: OnuPhaseState[] = ["working", "DyingGasp", "LOS", "syncMib"];
+…
+{ONU_PHASES.map((phase) => <NocStatus label={`${phaseLabel(phase)}: ${result.ringkas[phase] ?? 0}`} … />)}
+```
+
+Tapi `ringkas` dari server berisi **apa pun yang dikatakan perangkat** — ia
+dihitung dari `phaseState` mentah, bukan dari daftar yang kita kenal. ZTE di
+lapangan juga mengenal `offline`, `authing`, dan `LOSi`.
+
+**Seberapa parah — jangan dibesar-besarkan.** Barisnya sendiri sudah aman:
+`phaseTone` jatuh ke `info` dan `phaseLabel` mengembalikan nilai mentahnya,
+jadi status asing tetap tampil apa adanya di tabel tanpa crash. Yang bolong
+hanya **ringkasannya**: chip-nya tidak akan menjumlah ke `total`, mis. tertulis
+324 + 15 + 2 = 341 padahal `total` 356, dan selisih 15 itu tidak dijelaskan di
+mana pun.
+
+**Yang diminta:**
+
+1. Sesudah keempat chip yang dikenal, render juga kunci `ringkas` yang **tidak**
+   ada di `ONU_PHASES`, pakai `phaseTone`/`phaseLabel` yang sudah ada — nada
+   `info` dan label mentah sudah perilaku yang benar untuk status asing.
+2. Longgarkan `OnuPhaseState` di `src/types/operations.ts` supaya jujur
+   terhadap kontraknya, mis.:
+
+   ```ts
+   export type OnuPhaseState = "working" | "DyingGasp" | "LOS" | "syncMib" | (string & {});
+   ```
+
+   Server memang mengirim `string`; union tertutup menyatakan jaminan yang
+   tidak pernah diberikan backend.
+
+**Kenapa ini layak dikerjakan padahal jarang kejadian:** ringkasan yang tidak
+menjumlah ke total adalah bentuk salah yang paling mahal di portal ini —
+terlihat lengkap, tidak melempar galat, dan baru ketahuan saat seseorang
+menghitung manual. Sama persis dengan 15 ONU yang raib di balik `--More--`.
+
 ### ✅ T-38. Output konsol mentah: jangan tumpahkan ratusan baris sekaligus — frontend selesai 2026-08-22
 
 - **Layar:** `/console` — `src/components/operations/console-page.tsx`.
