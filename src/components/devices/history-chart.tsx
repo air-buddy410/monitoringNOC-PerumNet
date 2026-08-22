@@ -12,17 +12,28 @@ import {
   YAxis,
 } from "recharts";
 import { getJson } from "@/lib/api/http";
+import ReportSourceBanner, {
+  type ReportSource,
+} from "@/components/reports/report-source-banner";
 import {
   CHART_GRID_DARK,
   CHART_INK_MUTED,
   CHART_SLOT_1,
 } from "@/lib/chart-colors";
-import type { HistoryMetric, HistoryPoint } from "@/lib/mock-metrics";
+import type { HistoryMetric } from "@/lib/mock-metrics";
+
+interface HistoryChartPoint {
+  time: string;
+  value: number | null;
+}
 
 interface HistoryResponse {
   metric: HistoryMetric;
   hours: number;
-  points: HistoryPoint[];
+  points: HistoryChartPoint[];
+  sumber: ReportSource;
+  titikTerukur: number;
+  catatan?: string;
   updatedAt: string;
 }
 
@@ -104,6 +115,15 @@ export default function HistoryChart({ deviceId }: { deviceId: string }) {
           />
         </div>
       </div>
+      {history && (
+        <div className="space-y-2 border-b px-4 py-3">
+          <ReportSourceBanner source={history.sumber} />
+          <div className="text-xs text-muted-foreground">
+            <p>{history.titikTerukur} dari {history.points.length} titik terukur.</p>
+            {history.catatan && <p className="mt-1">{history.catatan}</p>}
+          </div>
+        </div>
+      )}
       <div className="h-72 px-2 py-3">
         <ResponsiveContainer width="100%" height="100%">
           <LineChart
@@ -134,7 +154,10 @@ export default function HistoryChart({ deviceId }: { deviceId: string }) {
                 fontSize: 12,
                 color: "var(--popover-foreground)",
               }}
-              formatter={(value) => [`${value}${meta.unit}`, meta.label]}
+              formatter={(value) => [
+                value == null ? "Belum ada pengukuran" : `${value}${meta.unit}`,
+                meta.label,
+              ]}
             />
             <Line
               type="monotone"
@@ -144,6 +167,7 @@ export default function HistoryChart({ deviceId }: { deviceId: string }) {
               strokeWidth={2}
               dot={false}
               activeDot={{ r: 4 }}
+              connectNulls={false}
               isAnimationActive={false}
             />
           </LineChart>

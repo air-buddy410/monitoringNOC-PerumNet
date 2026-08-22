@@ -1702,7 +1702,7 @@ pekerjaan tampilan — datanya sudah tersedia di endpoint yang disebut, tidak
 ada yang perlu ditunggu dari backend. Tandai ✅ dan pindahkan ke §Selesai
 kalau sudah dikerjakan.
 
-### T-34. Grafik riwayat perangkat harus mengaku sumbernya
+### ✅ T-34. Grafik riwayat perangkat mengaku sumbernya — frontend selesai 2026-08-22
 
 - **Layar:** `/devices/[id]` — `src/components/devices/history-chart.tsx`.
 - **Butuh:** `GET /api/devices/:id/metrics-history` (§5), yang sekarang
@@ -1743,6 +1743,12 @@ kalau sudah dikerjakan.
 Jadi sebagian besar grafik akan **kosong dengan penjelasan**. Itu benar, dan
 lebih baik daripada sebelumnya: sampai 22 Agustus semuanya berisi angka yang
 tidak pernah diukur, tanpa ada yang bisa membedakan.
+
+**Implementasi frontend selesai:** `history-chart.tsx` menampilkan banner
+sumber, jumlah titik terukur, dan `catatan` dari server. Nilai `null` tetap
+dikirim ke Recharts agar garis terputus, bukan diubah menjadi nol. Grafik
+CPU/RAM live juga menampilkan tanda `—` dan tooltip "Belum ada pengukuran"
+untuk sensor yang tidak terbaca.
 
 ### ✅ T-33. Tab Riwayat — layar OTB, kabel, dan closure — frontend selesai 2026-08-22
 
@@ -2366,6 +2372,9 @@ orang mengetik.
 
 ### Selesai
 
+- **T-34** — Grafik riwayat perangkat dan CPU/RAM live membedakan data terukur,
+  fixture, dan belum ada data; nilai `null` tetap menjadi jeda garis dan alasan
+  dari server terlihat di layar.
 - **T-20** — Kartu trafik dashboard kini membaca live/series traffic dengan
   polling SWR 10 detik, menampilkan angka uplink masuk/keluar dalam bps,
   kurva 24 jam yang memutus titik `null`, status stale/umur data, serta baris
@@ -2433,6 +2442,10 @@ orang mengetik.
 
 ## Riwayat
 
+- **2026-08-22** — **T-34 selesai di frontend.** Grafik riwayat perangkat kini
+  menampilkan `sumber`, `titikTerukur`, dan `catatan` dari endpoint; nilai
+  `null` tidak diubah menjadi nol. Grafik CPU/RAM live menampilkan `—` dan
+  tooltip yang jelas saat salah satu sensor tidak terbaca.
 - **2026-08-22** — **Grafik riwayat perangkat berhenti mengarang.**
   `/api/devices/:id/metrics-history` selalu mengisi deretnya dengan
   `generateHistorySeries()` — angka deterministik per deviceId, bentuk

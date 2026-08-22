@@ -25,6 +25,10 @@ const SERIES = {
   ram: { label: "RAM", color: CHART_SLOT_2 },
 };
 
+function formatUsage(value: number | null) {
+  return value === null ? "—" : `${value}%`;
+}
+
 export default function CpuRamChart({
   metrics,
 }: {
@@ -54,7 +58,7 @@ export default function CpuRamChart({
               />
               <span className="text-muted-foreground">{SERIES[key].label}</span>
               <span className="font-medium tabular-nums">
-                {latest[key]}%
+                {formatUsage(latest[key])}
               </span>
             </span>
           ))}
@@ -89,7 +93,10 @@ export default function CpuRamChart({
                 fontSize: 12,
                 color: "var(--popover-foreground)",
               }}
-              formatter={(value, name) => [`${value}%`, String(name)]}
+              formatter={(value, name) => [
+                value == null ? "Belum ada pengukuran" : `${value}%`,
+                String(name),
+              ]}
             />
             <Legend
               wrapperStyle={{ fontSize: 12 }}
@@ -105,6 +112,7 @@ export default function CpuRamChart({
               strokeWidth={2}
               dot={false}
               activeDot={{ r: 4 }}
+              connectNulls={false}
               isAnimationActive={false}
             />
             <Line
@@ -115,6 +123,7 @@ export default function CpuRamChart({
               strokeWidth={2}
               dot={false}
               activeDot={{ r: 4 }}
+              connectNulls={false}
               isAnimationActive={false}
             />
           </LineChart>
