@@ -196,6 +196,7 @@ export interface FiberCore {
   id: string;
   coreNumber: number;
   tubeNumber: number | null;
+  coreInTube: number | null;
   color: string | null;
   purpose: FiberCorePurpose;
   label: string | null;

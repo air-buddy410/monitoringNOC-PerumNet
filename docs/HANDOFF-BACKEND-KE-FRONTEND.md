@@ -2436,6 +2436,11 @@ orang mengetik.
   yang diperketat oleh tesnya sendiri: `terukur` hanya sah kalau ADA yang
   terukur — uplink terdaftar tanpa satu pun cuplikan tetap `belum-ada-data`.
   Tugas T-34.
+- **2026-08-22** — **Core-in-tube — frontend selesai.** Form tambah kabel
+  mengirim `tubeSize` bila diisi, sedangkan matriks core menampilkan
+  `coreNumber`, `tubeNumber`, dan `coreInTube` dari server. Frontend tidak
+  menghitung warna atau penomoran sendiri; kabel tanpa tube tetap tampil
+  sebagai "Tanpa tube".
 - **2026-08-22** — **Fase 16: riwayat topologi (§22).** Fase terakhir modul
   ini, dan tanpa satu pun tabel baru — seluruh riwayat sudah tertulis di
   `audit_logs` sejak Fase 11, di dalam transaksi yang sama dengan mutasinya.

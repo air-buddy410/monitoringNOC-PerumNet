@@ -150,6 +150,7 @@ interface CableFormState {
   category: FiberCableCategory;
   fiberType: FiberType;
   coreCount: string;
+  tubeSize: string;
   lengthM: string;
   purpose: "" | FiberCorePurpose;
   notes: string;
@@ -161,6 +162,7 @@ const initialCableForm: CableFormState = {
   category: "feeder",
   fiberType: "G.652D",
   coreCount: "24",
+  tubeSize: "",
   lengthM: "",
   purpose: "feeder",
   notes: "",
@@ -182,6 +184,7 @@ function CableCreateForm({ onCreated }: { onCreated: () => Promise<void> }) {
         category: form.category,
         fiberType: form.fiberType,
         coreCount: Number(form.coreCount),
+        tubeSize: form.tubeSize.trim() === "" ? undefined : Number(form.tubeSize),
         lengthM: form.lengthM.trim() === "" ? null : Number(form.lengthM),
         purpose: form.purpose || undefined,
         notes: form.notes.trim() || null,
@@ -203,6 +206,7 @@ function CableCreateForm({ onCreated }: { onCreated: () => Promise<void> }) {
         <div className="noc-field"><label htmlFor="cable-category">Kategori</label><select id="cable-category" className="noc-field-select" value={form.category} onChange={(event) => setForm({ ...form, category: event.target.value as FiberCableCategory })}>{categoryOptions.map((value) => <option key={value} value={value}>{categoryLabels[value]}</option>)}</select></div>
         <div className="noc-field"><label htmlFor="cable-fiber-type">Jenis serat</label><select id="cable-fiber-type" className="noc-field-select" value={form.fiberType} onChange={(event) => setForm({ ...form, fiberType: event.target.value as FiberType })}>{fiberTypeOptions.map((value) => <option key={value} value={value}>{fiberTypeLabels[value]}</option>)}</select></div>
         <div className="noc-field"><label htmlFor="cable-core-count">Jumlah core</label><Input id="cable-core-count" required type="number" min={1} max={288} value={form.coreCount} onChange={(event) => setForm({ ...form, coreCount: event.target.value })} /></div>
+        <div className="noc-field"><label htmlFor="cable-tube-size">Core per tube <span>(opsional)</span></label><Input id="cable-tube-size" type="number" min={1} max={288} value={form.tubeSize} onChange={(event) => setForm({ ...form, tubeSize: event.target.value })} placeholder="12" /><small className="noc-field-help">ADSS 144 biasanya 12; kosongkan untuk kabel tanpa tube.</small></div>
         <div className="noc-field"><label htmlFor="cable-length">Panjang (meter) <span>(opsional)</span></label><Input id="cable-length" type="number" min={0} value={form.lengthM} onChange={(event) => setForm({ ...form, lengthM: event.target.value })} placeholder="3250" /></div>
         <div className="noc-field"><label htmlFor="cable-purpose">Peruntukan seluruh core</label><select id="cable-purpose" className="noc-field-select" value={form.purpose} onChange={(event) => setForm({ ...form, purpose: event.target.value as "" | FiberCorePurpose })}><option value="">Ikuti kategori</option><option value="feeder">Feeder</option><option value="distribution">Distribution</option></select></div>
       </div>
@@ -245,10 +249,10 @@ function CoreTable({ cores }: { cores: FiberCore[] }) {
   return (
     <div className="noc-mini-table-wrap noc-fiber-table-wrap">
       <table className="noc-mini-table noc-fiber-table">
-        <thead><tr><th>Core</th><th>Warna dari server</th><th>Peruntukan</th><th>Status</th><th>Ujung terpakai</th><th>Label / catatan</th></tr></thead>
+        <thead><tr><th>Nomor core</th><th>Warna dari server</th><th>Peruntukan</th><th>Status</th><th>Ujung terpakai</th><th>Label / catatan</th></tr></thead>
         <tbody>{cores.map((core) => (
           <tr key={core.id}>
-            <td><div className="noc-table-primary"><strong>Core {core.coreNumber}</strong><small>{core.tubeNumber === null ? "Tanpa tube" : `Tube ${core.tubeNumber}`}</small></div></td>
+            <td><div className="noc-table-primary"><strong>Core {core.coreNumber}</strong><small>{core.tubeNumber === null || core.coreInTube === null ? "Tanpa tube" : `Tube ${core.tubeNumber} · Core ${core.coreInTube}`}</small></div></td>
             <td><span className="noc-fiber-color"><i style={{ backgroundColor: core.color ?? "#b8c6c3" }} />{core.color ?? "Belum diisi"}</span></td>
             <td><NocStatus label={purposeLabels[core.purpose]} tone="info" /></td>
             <td><NocStatus label={coreStatusLabels[core.status]} tone={coreTone(core.status)} /></td>
@@ -278,7 +282,7 @@ export function FiberCableDetailPage({ cableId }: { cableId: string }) {
     <main className="noc-page noc-feature-page">
       <div className="noc-fiber-heading"><Link className="noc-otb-back" href="/ftth/cables"><ArrowLeft aria-hidden="true" /> Kembali ke daftar kabel</Link><div className="noc-otb-heading-main"><div><div className="noc-otb-title-line"><span>Detail Kabel</span><NocStatus label={cableStatusLabels[cable.status]} tone={cableTone(cable.status)} /></div><h1>{cable.code}</h1><p>{cable.name ?? "Tanpa nama kabel"}</p></div><Button type="button" size="sm" variant="ghost" onClick={() => { void mutate(); }} aria-label="Muat ulang detail kabel"><RefreshCw aria-hidden="true" /></Button></div></div>
       <div className="noc-fiber-facts"><div><span>Kategori</span><strong>{categoryLabels[cable.category]}</strong></div><div><span>Jenis serat</span><strong>{cable.fiberType}</strong></div><div><span>Panjang</span><strong>{formatPanjang(cable.lengthM)}</strong></div><div><span>Jumlah core</span><strong>{cable.cores.length}/{cable.coreCount}</strong></div></div>
-      <NocPanel title="Matriks core" description="Nomor, warna, peruntukan, dan status berasal dari inventori server."><CoreTable cores={cable.cores} /></NocPanel>
+      <NocPanel title="Matriks core" description="Nomor core se-kabel, posisi tube, warna, peruntukan, dan status berasal dari inventori server."><CoreTable cores={cable.cores} /></NocPanel>
       <NocPanel title="Riwayat terminasi" description="Jejak terminasi yang dilepas harus tetap dapat dibaca saat investigasi."
         action={<NocStatus label="Termasuk yang dilepas" tone="info" />}>
         <FiberTerminationHistoryList cable={cable} />
