@@ -1654,9 +1654,13 @@ berubah, dan jangan tunjukkan angkanya sebagai fakta operasional.
   (`isLibrenmsConfigured()` false) atau aset belum punya `librenmsDeviceId`.
   Bentuk responsnya identik, isinya deterministik per `deviceId` — mudah
   disangka data sungguhan. Periksa `snapshotSource` di endpoint status.
-- **`/api/devices/:id/metrics-history` seluruhnya dibangkitkan** oleh
-  `generateHistorySeries()` — belum ada tabel `metric_history`. Bentuk
-  respons akan tetap; angkanya akan berubah total saat sumber asli masuk.
+- ~~**`/api/devices/:id/metrics-history` seluruhnya dibangkitkan**~~ —
+  **SUDAH DITUTUP 22 Agustus.** `bandwidth` kini dibaca dari
+  `traffic_samples` untuk perangkat yang punya interface uplink terdaftar, dan
+  jawabannya membawa `sumber` (`terukur` · `fixture` · `belum-ada-data`).
+  `cpu`, `ram`, dan `suhu` **tetap belum punya sumber** — tapi sekarang
+  mengaku `belum-ada-data` dengan `value: null`, bukan angka karangan.
+  Tugas T-34.
 - ~~**Laporan SLA & trafik di-seed otomatis**~~ — **SUDAH DITUTUP 21 Agustus.**
   Kedua seed kini berhenti begitu LibreNMS terkonfigurasi, jadi produksi tidak
   pernah lagi menerima angka karangan. Yang tersisa: rekapnya memang **belum
@@ -1697,6 +1701,40 @@ Papan permintaan Opus → Luna (`WORKFLOW-TIM.md` §5). Semua di sini murni
 pekerjaan tampilan — datanya sudah tersedia di endpoint yang disebut, tidak
 ada yang perlu ditunggu dari backend. Tandai ✅ dan pindahkan ke §Selesai
 kalau sudah dikerjakan.
+
+### T-34. Grafik riwayat perangkat harus mengaku sumbernya
+
+- **Layar:** `/devices/[id]` — `src/components/devices/history-chart.tsx`.
+- **Butuh:** `GET /api/devices/:id/metrics-history` (§5), yang sekarang
+  mengirim dua field baru.
+
+**Ada perubahan kontrak yang akan memecah grafik kalau diabaikan:**
+
+1. **`points[].value` sekarang `number | null`.** `null` berarti tidak ada
+   pengukuran pada rentang itu — **bukan nol**. Nol berarti "trafiknya
+   berhenti"; null berarti "kami tidak tahu". Recharts menggambar `null`
+   sebagai putus garis kalau nilainya benar-benar `null`; kalau kamu
+   `?? 0`-kan, layar akan melaporkan gangguan yang tidak pernah terjadi.
+
+2. **`sumber`** bernilai `terukur` · `fixture` · `belum-ada-data`.
+   Tampilkan penandanya — pola yang sama dengan `ReportSourceBanner` yang
+   sudah kamu buat untuk laporan. `catatan` terisi saat `belum-ada-data` dan
+   sudah berupa kalimat siap tampil.
+
+3. **`titikTerukur`** menyebut berapa titik yang benar-benar punya
+   pengukuran. Berguna untuk "12 dari 96 titik terukur".
+
+**Keadaan hari ini, supaya tidak dikira bug:**
+
+| Metrik | Perangkat | Sumber |
+|---|---|---|
+| `bandwidth` | router distribusi | **terukur** — dari `traffic_samples` |
+| `bandwidth` | 6 OLT | `belum-ada-data` — belum punya interface uplink terdaftar |
+| `cpu`, `ram`, `suhu` | semua | `belum-ada-data` — portal ini tidak menyimpan riwayatnya |
+
+Jadi sebagian besar grafik akan **kosong dengan penjelasan**. Itu benar, dan
+lebih baik daripada sebelumnya: sampai 22 Agustus semuanya berisi angka yang
+tidak pernah diukur, tanpa ada yang bisa membedakan.
 
 ### T-33. Tab Riwayat — layar OTB, kabel, dan closure
 
@@ -2377,6 +2415,17 @@ orang mengetik.
 
 ## Riwayat
 
+- **2026-08-22** — **Grafik riwayat perangkat berhenti mengarang.**
+  `/api/devices/:id/metrics-history` selalu mengisi deretnya dengan
+  `generateHistorySeries()` — angka deterministik per deviceId, bentuk
+  meyakinkan, tidak pernah diukur. Komentarnya sendiri berbunyi "nantinya
+  query tabel metric_history", dan tabel itu tidak pernah dibuat. Sementara
+  `traffic_samples` sudah berisi 81 ribu cuplikan nyata sejak 20 Agustus.
+  Sekarang `bandwidth` dibaca dari sana, jeda pengukuran jadi `null` bukan 0,
+  dan metrik yang belum punya sumber mengaku `belum-ada-data`. Satu keputusan
+  yang diperketat oleh tesnya sendiri: `terukur` hanya sah kalau ADA yang
+  terukur — uplink terdaftar tanpa satu pun cuplikan tetap `belum-ada-data`.
+  Tugas T-34.
 - **2026-08-22** — **Fase 16: riwayat topologi (§22).** Fase terakhir modul
   ini, dan tanpa satu pun tabel baru — seluruh riwayat sudah tertulis di
   `audit_logs` sejak Fase 11, di dalam transaksi yang sama dengan mutasinya.
