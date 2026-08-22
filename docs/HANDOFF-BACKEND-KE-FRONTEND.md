@@ -1702,10 +1702,16 @@ pekerjaan tampilan — datanya sudah tersedia di endpoint yang disebut, tidak
 ada yang perlu ditunggu dari backend. Tandai ✅ dan pindahkan ke §Selesai
 kalau sudah dikerjakan.
 
-### T-38. Output konsol mentah: jangan tumpahkan ratusan baris sekaligus
+### ✅ T-38. Output konsol mentah: jangan tumpahkan ratusan baris sekaligus — frontend selesai 2026-08-22
 
 - **Layar:** `/console` — `src/components/operations/console-page.tsx`.
 - **Butuh:** tidak ada endpoint baru. Murni tampilan.
+
+Selesai di `/console`: output sekarang berada di `<pre>` dengan tinggi tetap dan
+gulir sendiri, kepala hasil menampilkan jumlah baris serta ukuran byte, kotak
+pencarian memberi jumlah kecocokan, dan keluaran di atas 50 baris dimulai dari
+potongan yang eksplisit menyebut jumlah baris tersembunyi. Isi keluaran tetap
+ditampilkan sebagai teks mentah; penanda pencarian tidak mengubah isinya.
 
 **Masalahnya terukur.** Satu perintah `show gpon onu state` di
 ZTE-C300-102-Pesagi menjawab **21.589 karakter / 356 baris**, dan `<pre>` di
@@ -1729,11 +1735,18 @@ cara menampungnya di layar.
 Kalau butuh daftar ONU terurai yang bisa disaring, itu T-37 di bawah — layar
 terpisah, bukan pengganti panel ini.
 
-### T-37. Layar daftar ONU per OLT
+### ✅ T-37. Layar daftar ONU per OLT — frontend selesai 2026-08-22
 
 - **Layar:** baru. Saran tempat: tab di `/console`, atau di `/devices/[id]`
   untuk perangkat ber-grup OLT. Pilihanmu.
 - **Butuh:** `POST /api/v1/devices/onu` (baru).
+
+Selesai sebagai panel kedua di `/console`: pilihan OLT, pencarian indeks/port,
+filter status, ukuran halaman 20/50/100, pagination, ringkasan status dari
+respons server, perintah yang dijalankan, serta peringatan `takTerurai` sudah
+tersedia. Permintaan hanya dikirim setelah klik pengguna; 501 ditampilkan
+sebagai perangkat yang tidak mendukung daftar ONU, bukan daftar kosong, dan
+429 tidak dicoba ulang otomatis.
 
 **Kenapa POST dan bukan GET:** endpoint ini MEMBUKA SESI TELNET ke perangkat
 produksi. GET bisa terpicu prefetch peramban atau pratayang tautan, dan itu
@@ -2596,6 +2609,12 @@ orang mengetik.
 
 ### Selesai
 
+- **T-38** — Output konsol memiliki tinggi tetap dengan gulir, metadata ukuran,
+  pencarian dan hit count, serta pembukaan awal 50 baris yang menyebut jumlah
+  baris tersembunyi.
+- **T-37** — Panel daftar ONU di `/console` memakai POST eksplisit, menyajikan
+  filter/pagination/ringkasan dari server, mempertahankan `takTerurai`, dan
+  membedakan respons 501 dari daftar kosong.
 - **T-36** — Grid optik OLT menampilkan sumber dan catatan server, serta tidak
   mengubah `txPower: null` menjadi angka atau menambahkan tanda `+` yang salah.
 - **T-35** — Kartu suhu membedakan loading dari perangkat tanpa sensor; keadaan
@@ -2670,6 +2689,11 @@ orang mengetik.
 
 ## Riwayat
 
+- **2026-08-22** — **T-38 dan T-37 selesai di frontend.** Output konsol kini
+  dibatasi secara eksplisit dan dapat dicari tanpa mengubah teks mentahnya;
+  panel daftar ONU di `/console` menggunakan POST saat diminta, dengan filter,
+  pagination, ringkasan status, peringatan baris yang tak terurai, dan keadaan
+  501/429 yang jujur.
 - **2026-08-22** — **T-36 dan T-35 selesai di frontend.** Grid optik OLT kini
   menampilkan sumber/catatan, mempertahankan tanda dBm, dan menunjukkan "—"
   untuk `txPower` yang tidak terbaca. Kartu suhu membedakan loading dari

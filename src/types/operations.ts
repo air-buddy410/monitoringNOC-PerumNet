@@ -522,3 +522,29 @@ export interface ConsoleCommandResponse {
   command: string;
   output: string;
 }
+
+export type OnuPhaseState = "working" | "DyingGasp" | "LOS" | "syncMib";
+
+export interface OnuInventoryRow {
+  indeks: string;
+  ponPort: string;
+  onuId: number;
+  adminState: string;
+  omccState: string;
+  phaseState: OnuPhaseState;
+  keterangan: string;
+  sehat: boolean;
+}
+
+export interface OnuInventoryResponse {
+  olt: { id: string; name: string; vendor: string | null };
+  perintah: string;
+  ringkas: Record<string, number>;
+  total: number;
+  totalTersaring: number;
+  halaman: number;
+  ukuran: number;
+  halamanTerakhir: number;
+  baris: OnuInventoryRow[];
+  takTerurai: string[];
+}

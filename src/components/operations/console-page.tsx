@@ -1,12 +1,13 @@
 "use client";
 
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 import useSWR from "swr";
-import { BookOpen, Check, CircleAlert, RefreshCw, ShieldCheck, Terminal } from "lucide-react";
+import { BookOpen, Check, CircleAlert, RefreshCw, Search, ShieldCheck, Terminal } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { ApiError, getJson, sendJson } from "@/lib/api/http";
 import { NocPageHeader, NocPanel, NocState, NocStatus } from "@/components/noc-ui";
+import OnuListPanel from "@/components/operations/onu-list-panel";
 import { useSession } from "@/hooks/use-session";
 import type {
   ConsoleCommandResponse,
@@ -15,6 +16,64 @@ import type {
 } from "@/types/operations";
 
 const readOnlyCommands = ["show version", "display version", "show system", "enable", "?", "exit"];
+const INITIAL_OUTPUT_LINES = 50;
+
+function splitOutput(output: string) {
+  return output.split(/\r\n|\n|\r/);
+}
+
+function outputLineCount(output: string) {
+  if (!output) return 0;
+  const lines = splitOutput(output);
+  return lines.length - (/(\r\n|\n|\r)$/.test(output) ? 1 : 0);
+}
+
+function outputSize(output: string) {
+  const bytes = new TextEncoder().encode(output).byteLength;
+  if (bytes < 1024) return `${bytes} B`;
+  return `${Math.ceil(bytes / 1024)} KB`;
+}
+
+function outputMatchCount(output: string, query: string) {
+  const needle = query.trim().toLocaleLowerCase();
+  if (!needle) return 0;
+  const haystack = output.toLocaleLowerCase();
+  let count = 0;
+  let offset = 0;
+  while (offset < haystack.length) {
+    const match = haystack.indexOf(needle, offset);
+    if (match < 0) break;
+    count += 1;
+    offset = match + needle.length;
+  }
+  return count;
+}
+
+function escapeRegExp(value: string) {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+function highlightOutputLine(line: string, query: string): ReactNode {
+  const needle = query.trim();
+  if (!needle) return line;
+  const parts = line.split(new RegExp(`(${escapeRegExp(needle)})`, "gi"));
+  return parts.map((part, index) =>
+    part.toLocaleLowerCase() === needle.toLocaleLowerCase() ? (
+      <mark key={`${index}-${part}`} className="rounded bg-yellow-200/80 px-0.5 text-inherit">{part}</mark>
+    ) : (
+      <span key={`${index}-${part}`}>{part}</span>
+    ),
+  );
+}
+
+function renderOutputLines(lines: string[], query: string) {
+  return lines.map((line, index) => (
+    <span key={`${index}-${line}`}>
+      {highlightOutputLine(line, query)}
+      {index < lines.length - 1 ? "\n" : null}
+    </span>
+  ));
+}
 
 function errorTitle(error: unknown) {
   if (!(error instanceof ApiError)) return "Konsol tidak dapat dihubungi";
@@ -59,6 +118,8 @@ export default function ConsolePage() {
   const [response, setResponse] = useState<ConsoleCommandResponse | null>(null);
   const [requestError, setRequestError] = useState<ApiError | Error | null>(null);
   const [busy, setBusy] = useState(false);
+  const [outputQuery, setOutputQuery] = useState("");
+  const [showAllOutput, setShowAllOutput] = useState(false);
   const targets = targetsData?.olts ?? [];
   const readyTargets = targets.filter((target) => target.konsolSiap);
   const unavailableTargets = targets.filter((target) => !target.konsolSiap);
@@ -76,6 +137,8 @@ export default function ConsolePage() {
     setBusy(true);
     setRequestError(null);
     setResponse(null);
+    setOutputQuery("");
+    setShowAllOutput(false);
     try {
       const result = await sendJson<ConsoleCommandResponse>("POST", "/api/v1/devices/console", {
         oltId: activeOltId,
@@ -88,6 +151,16 @@ export default function ConsolePage() {
       setBusy(false);
     }
   }
+
+  const rawOutput = response?.output ?? "";
+  const allOutputLines = response ? splitOutput(rawOutput) : [];
+  const totalOutputLines = outputLineCount(rawOutput);
+  const outputHasMore = totalOutputLines > INITIAL_OUTPUT_LINES;
+  const hiddenOutputLines = Math.max(0, totalOutputLines - INITIAL_OUTPUT_LINES);
+  const visibleOutputLines = outputHasMore && !showAllOutput
+    ? allOutputLines.slice(0, INITIAL_OUTPUT_LINES)
+    : allOutputLines;
+  const outputMatches = outputMatchCount(rawOutput, outputQuery);
 
   return (
     <main className="noc-page noc-feature-page noc-console-page">
@@ -165,17 +238,34 @@ export default function ConsolePage() {
             {consoleAvailable && !targetsLoading && !targetsError && targets.length > 0 && readyTargets.length === 0 && <NocState kind="empty">Belum ada OLT yang siap dibuka. Periksa alasan pada daftar perangkat di atas.</NocState>}
           </NocPanel>
 
-          <NocPanel title="Output perangkat" description={response ? `${response.olt.name} · ${response.command}` : "Output mentah dipertahankan agar jawaban perangkat dapat ditelusuri apa adanya."} action={<Button type="button" size="sm" variant="ghost" onClick={() => { setResponse(null); setRequestError(null); }} disabled={!response && !requestError}><RefreshCw aria-label="Bersihkan output konsol" /></Button>}>
+          <NocPanel title="Output perangkat" description={response ? `${response.olt.name} · ${response.command}` : "Output mentah dipertahankan agar jawaban perangkat dapat ditelusuri apa adanya."} action={<Button type="button" size="sm" variant="ghost" onClick={() => { setResponse(null); setRequestError(null); setOutputQuery(""); setShowAllOutput(false); }} disabled={!response && !requestError}><RefreshCw aria-label="Bersihkan output konsol" /></Button>}>
             {response ? (
               <div className="noc-console-result">
-                <div className="noc-console-result-meta"><span><Check aria-hidden="true" /> Perintah selesai</span><small>{response.command}</small></div>
-                <pre>{response.output || "(Perangkat mengembalikan output kosong.)"}</pre>
+                <div className="noc-console-result-meta"><span><Check aria-hidden="true" /> Perintah selesai</span><small>{response.command}</small><small>{totalOutputLines} baris · {outputSize(rawOutput)}</small></div>
+                <div className="noc-console-output-tools">
+                  <label>
+                    <Search aria-hidden="true" />
+                    <Input value={outputQuery} onChange={(event) => setOutputQuery(event.target.value)} placeholder="Cari di dalam output" aria-label="Cari di dalam output konsol" />
+                  </label>
+                  <NocStatus label={outputQuery.trim() ? `${outputMatches} kecocokan` : "Cari di output"} tone={outputQuery.trim() && outputMatches > 0 ? "info" : "neutral"} />
+                  {outputHasMore && <Button type="button" size="sm" variant="outline" onClick={() => setShowAllOutput((current) => !current)}>{showAllOutput ? "Tampilkan sebagian" : `Tampilkan semua · ${hiddenOutputLines} baris lagi`}</Button>}
+                </div>
+                <p className="noc-console-output-note">
+                  {outputHasMore && !showAllOutput
+                    ? `Menampilkan ${INITIAL_OUTPUT_LINES} dari ${totalOutputLines} baris · ${hiddenOutputLines} baris disembunyikan sementara.`
+                    : `${totalOutputLines} baris ditampilkan apa adanya.`}
+                </p>
+                <pre aria-label="Output perangkat mentah">{renderOutputLines(response.output ? visibleOutputLines : ["(Perangkat mengembalikan output kosong.)"], outputQuery)}</pre>
               </div>
             ) : (
               <div className="noc-console-empty"><Terminal aria-hidden="true" /><strong>Belum ada output</strong><span>Pilih OLT dan jalankan satu perintah baca untuk melihat jawaban perangkat.</span></div>
             )}
           </NocPanel>
         </div>
+      )}
+
+      {hasSession && consoleAvailable && !consoleUnavailable && (
+        <OnuListPanel targets={targets} targetsLoading={targetsLoading} targetsError={targetsError} />
       )}
 
       <div className="noc-console-audit"><BookOpen aria-hidden="true" /><span><strong>Setiap percobaan tercatat</strong> · Perintah yang ditolak, berhasil, atau gagal disimpan bersama pengguna dan perangkatnya. Tidak ada tombol untuk mengubah keadaan perangkat dari layar ini.</span></div>

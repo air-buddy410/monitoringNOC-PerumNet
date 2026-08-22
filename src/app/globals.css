@@ -1130,7 +1130,12 @@
 .noc-console-result-meta span { display: inline-flex; align-items: center; gap: 5px; font-weight: 800; }
 .noc-console-result-meta span svg { width: 14px; height: 14px; }
 .noc-console-result-meta small { overflow: hidden; color: #8e9e9b; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; text-overflow: ellipsis; white-space: nowrap; }
-.noc-console-result pre { min-height: 330px; max-height: 560px; overflow: auto; margin: 0; padding: 16px; color: #d9efeb; background: #203536; border: 1px solid #315050; border-radius: 9px; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 11px; line-height: 1.6; white-space: pre-wrap; tab-size: 2; }
+.noc-console-output-tools { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; }
+.noc-console-output-tools > label { display: flex; min-width: 190px; flex: 1 1 250px; align-items: center; gap: 7px; color: #718381; }
+.noc-console-output-tools > label > svg { flex: 0 0 auto; width: 14px; height: 14px; }
+.noc-console-output-tools [data-slot="input"] { height: 32px; font-size: 11px; }
+.noc-console-output-note { margin: -2px 0 0; color: #8e9e9b; font-size: 10px; line-height: 1.4; }
+.noc-console-result pre { height: 420px; min-height: 330px; max-height: 560px; overflow: auto; margin: 0; padding: 16px; color: #d9efeb; background: #203536; border: 1px solid #315050; border-radius: 9px; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 11px; line-height: 1.6; white-space: pre-wrap; tab-size: 2; }
 .noc-console-empty { display: grid; min-height: 378px; align-content: center; justify-items: center; gap: 7px; padding: 30px; color: #839391; text-align: center; }
 .noc-console-empty > svg { width: 31px; height: 31px; color: #8eaaa5; }
 .noc-console-empty strong { color: #526767; font-size: 13px; }
@@ -1138,6 +1143,37 @@
 .noc-console-audit { display: flex; align-items: flex-start; gap: 8px; margin-top: 12px; color: #718381; font-size: 10px; line-height: 1.5; }
 .noc-console-audit > svg { flex: 0 0 auto; width: 16px; height: 16px; color: #04a99f; }
 .noc-console-audit strong { color: #526767; }
+.noc-onu-toolbar { display: grid; grid-template-columns: minmax(180px, 1fr) minmax(210px, 1.3fr) 132px 96px auto; align-items: end; gap: 10px; padding-bottom: 14px; border-bottom: 1px solid #edf3f1; }
+.noc-onu-control { display: grid; min-width: 0; gap: 5px; }
+.noc-onu-control > span:first-child { color: #718381; font-size: 10px; font-weight: 800; }
+.noc-onu-control .noc-field-select, .noc-onu-input-wrap [data-slot="input"] { min-width: 0; height: 34px; font-size: 11px; }
+.noc-onu-search { min-width: 0; }
+.noc-onu-input-wrap { position: relative; display: flex; align-items: center; }
+.noc-onu-input-wrap > svg { position: absolute; left: 9px; z-index: 1; width: 14px; height: 14px; color: #8fa09d; pointer-events: none; }
+.noc-onu-input-wrap [data-slot="input"] { padding-left: 28px; }
+.noc-onu-target-note { margin: 11px 0 0; color: #8e9e9b; font-size: 10px; line-height: 1.45; }
+.noc-onu-target-note strong { color: #526767; }
+.noc-onu-error { display: grid; gap: 4px; margin-top: 12px; }
+.noc-onu-error .noc-feature-state { margin: 0; }
+.noc-onu-error p { margin: 0; padding: 8px 10px; color: #9a712c; background: #fffaf0; border: 1px solid #eddfc4; border-radius: 7px; font-size: 10px; line-height: 1.45; }
+.noc-onu-result { display: grid; gap: 12px; margin-top: 14px; padding-top: 14px; border-top: 1px solid #edf3f1; }
+.noc-onu-result-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; }
+.noc-onu-result-heading > div { display: grid; gap: 3px; min-width: 0; }
+.noc-onu-result-heading strong { overflow: hidden; color: #3f5656; font-size: 13px; text-overflow: ellipsis; white-space: nowrap; }
+.noc-onu-result-heading span { color: #8e9e9b; font-size: 10px; }
+.noc-onu-summary { display: flex; flex-wrap: wrap; gap: 6px; }
+.noc-onu-result-facts { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 8px; color: #8e9e9b; font-size: 10px; }
+.noc-onu-warning { display: flex; align-items: flex-start; gap: 8px; padding: 10px 11px; color: #735832; background: #fffaf0; border: 1px solid #eddfc4; border-radius: 8px; font-size: 10px; line-height: 1.45; }
+.noc-onu-warning > svg { flex: 0 0 auto; width: 15px; height: 15px; color: #b17d2e; }
+.noc-onu-warning strong { color: #6d521b; }
+.noc-onu-warning p { margin: 3px 0 0; color: #987c5c; }
+.noc-onu-warning pre { max-height: 140px; overflow: auto; margin: 7px 0 0; padding: 7px; color: #735832; background: #fffdf8; border: 1px solid #f0e4cf; border-radius: 5px; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 9px; white-space: pre-wrap; }
+.noc-onu-table { min-width: 900px; }
+.noc-onu-table td { white-space: nowrap; }
+.noc-onu-table td:nth-child(7) { max-width: 180px; overflow: hidden; text-overflow: ellipsis; }
+.noc-onu-pagination { display: flex; align-items: center; justify-content: space-between; gap: 10px; color: #8e9e9b; font-size: 10px; }
+.noc-onu-pagination > div { display: flex; align-items: center; gap: 8px; }
+.noc-onu-pagination strong { color: #526767; font-size: 10px; white-space: nowrap; }
 
 /* Fiber route layer and its honest missing-geometry queue. */
 .noc-map-layout { display: grid; grid-template-columns: minmax(0, 1fr) minmax(270px, 320px); gap: 14px; min-height: 0; flex: 1; }
@@ -1157,15 +1193,20 @@
 
 @media (max-width: 1120px) {
   .noc-console-grid { grid-template-columns: 1fr; }
+  .noc-onu-toolbar { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .noc-onu-toolbar > button { width: 100%; }
   .noc-map-layout { grid-template-columns: 1fr; }.noc-map-fiber-panel { max-height: 300px; }.noc-map-fiber-unavailable { max-height: 155px; }
 }
 
 @media (max-width: 580px) {
   .noc-console-guard { padding: 10px; }
   .noc-console-presets { gap: 5px; }
-  .noc-console-result pre { min-height: 270px; padding: 13px; font-size: 10px; }
+  .noc-console-result pre { height: 300px; min-height: 270px; padding: 13px; font-size: 10px; }
   .noc-console-empty { min-height: 270px; padding: 22px; }
   .noc-console-result-meta { align-items: flex-start; flex-direction: column; }
+  .noc-onu-toolbar { grid-template-columns: 1fr; }
+  .noc-onu-result-heading, .noc-onu-pagination { align-items: flex-start; flex-direction: column; }
+  .noc-onu-pagination > div { width: 100%; justify-content: space-between; }
   .noc-map-fiber-controls { top: 12px; left: 12px; width: 180px; }.noc-map-layout .noc-map-canvas { min-height: 440px; }.noc-map-fiber-panel { max-height: 330px; padding: 13px; }
 }
 
