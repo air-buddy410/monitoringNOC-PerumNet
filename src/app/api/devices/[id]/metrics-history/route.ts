@@ -1,11 +1,8 @@
 import { NextResponse } from "next/server";
-import {
-  generateHistorySeries,
-  type HistoryMetric,
-  type HistoryPoint,
-} from "@/lib/mock-metrics";
+import type { HistoryMetric } from "@/lib/mock-metrics";
 import { cache } from "@/server/cache";
 import { getLatestDevices } from "@/server/device-store";
+import { riwayatMetrik, type HasilRiwayat } from "@/server/metrics-history";
 import { withRole } from "@/server/rbac";
 
 export const dynamic = "force-dynamic";
@@ -14,16 +11,19 @@ const VALID_METRICS: HistoryMetric[] = ["cpu", "ram", "suhu", "bandwidth"];
 const MAX_HOURS = 24 * 30; // maksimal 30 hari ke belakang
 const HISTORY_TTL_SECONDS = 60;
 
-interface HistorySnapshot {
-  metric: HistoryMetric;
-  hours: number;
-  points: HistoryPoint[];
-  updatedAt: string;
-}
+type HistorySnapshot = HasilRiwayat & { updatedAt: string };
 
 /**
  * GET /api/devices/:id/metrics-history?metric=<cpu|ram|suhu|bandwidth>&hours=<n>
+ *
  * Deret historis satu metrik untuk rentang `hours` terakhir (default 24).
+ *
+ * **`sumber` WAJIB dibaca:** `terukur` berarti angkanya dari pengukuran,
+ * `fixture` berarti deret tiruan pengembangan, `belum-ada-data` berarti
+ * portal ini memang belum menyimpan riwayat metrik itu. Sampai 22 Agustus
+ * 2026 endpoint ini selalu mengarang angkanya tanpa mengatakannya.
+ *
+ * `points[].value` boleh `null` — itu jeda pengukuran, bukan nol.
  */
 export const GET = withRole<{ params: Promise<{ id: string }> }>(
   [],
@@ -59,13 +59,10 @@ export const GET = withRole<{ params: Promise<{ id: string }> }>(
     const key = `metrics-history:${id}:${metric}:${hours}`;
     let history = await cache.get<HistorySnapshot>(key);
     if (!history) {
-      // Sumber tiruan deterministik; nantinya query tabel metric_history.
-      history = {
-        metric,
-        hours,
-        points: generateHistorySeries(id, metric, hours),
-        updatedAt: new Date().toISOString(),
-      };
+      // Hostname diambil sendiri oleh store dari `assets` — proyeksi
+      // `NetworkDevice` di sini memuat `display_name`, bukan hostname.
+      const hasil = await riwayatMetrik({ assetId: id, metric, hours });
+      history = { ...hasil, updatedAt: new Date().toISOString() };
       await cache.set(key, history, HISTORY_TTL_SECONDS);
     }
 
