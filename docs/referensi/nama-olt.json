@@ -1,0 +1,41 @@
+{
+  "_asal": "Disalin dari crm/data/nama-olt.json, 22 Agustus 2026. CRM TIDAK diubah.",
+  "_kenapa": "Portal NOC sudah punya keenam OLT di olt_devices. Yang belum ada di sini: tabel ALIAS nama, dan alamat yang benar-benar terjangkau. Keduanya di bawah.",
+  "_alamatBenar": "hostname → alamat & port yang DIUJI MENJAWAB dari VPS pada 22 Agustus 2026. Bandingkan dengan olt_devices sebelum memakai: per tanggal itu 5 dari 6 baris di database masih memakai 172.30.10.6 yang tidak menjawab sama sekali.",
+  "alamatBenar": {
+    "HSGQ-100-Kecicang": {
+      "ip": "192.168.100.10",
+      "telnetPort": 1023
+    },
+    "HSGQ-102-SerayaBarat": {
+      "ip": "192.168.100.11",
+      "telnetPort": 1024
+    },
+    "HSGQ-102-SerayaTengah": {
+      "ip": "192.168.100.12",
+      "telnetPort": 1025
+    },
+    "ZTE-C300-102-Pesagi": {
+      "ip": "192.168.100.30",
+      "telnetPort": 23
+    },
+    "ZTE-C600-100-Kecicang": {
+      "ip": "192.168.100.60",
+      "telnetPort": 23
+    },
+    "ZTE-C600-104-Abang": {
+      "ip": "192.168.100.61",
+      "telnetPort": 23
+    }
+  },
+  "_aliasSheet": "Nama sebagaimana ditulis sheet/berkas ODP → hostname. Sheet lapangan memakai nama berspasi; database memakai bentuk berstrip. Menjodohkannya dengan aturan berarti menebak, dan menebak berarti suatu hari menautkan ODP ke OLT yang salah tanpa ada yang tahu. Tambah barisnya di sini, jangan tambah penebak di kode.",
+  "aliasSheet": {
+    "HSGQ-100-Kecicang": "OLT HSGQ Kecicang",
+    "HSGQ-102-SerayaBarat": "OLT HSGQ Seraya Barat",
+    "HSGQ-102-SerayaTengah": "OLT HSGQ Seraya Tengah",
+    "ZTE-C300-102-Pesagi": "OLT ZTE C300 Pesagi",
+    "ZTE-C600-100-Kecicang": "OLT ZTE C600 Kecicang",
+    "ZTE-C600-104-Abang": "OLT ZTE C600 Abang"
+  },
+  "_kredensialTidakDisalin": "Kunci `kredensial` di berkas asal sengaja TIDAK disalin. Portal ini sudah menyimpan nama env var-nya sendiri di olt_devices.credential_ref, dan keduanya cocok per 22 Agustus. Menyalinnya berarti dua tempat yang bisa berbeda tentang hal yang sama."
+}
