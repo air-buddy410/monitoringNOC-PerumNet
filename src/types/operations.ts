@@ -242,6 +242,33 @@ export interface FiberTerminationHistoryResponse {
   terminations: FiberTerminationHistory[];
 }
 
+export type TopologyHistoryEntityType =
+  | "otb"
+  | "otb_tray"
+  | "otb_port"
+  | "fiber_cable"
+  | "fiber_core"
+  | "fiber_termination"
+  | "fiber_closure"
+  | "fiber_splice"
+  | "olt_device";
+
+export interface TopologyHistoryRow {
+  id: string;
+  waktu: string;
+  action: string;
+  ringkas: string;
+  entityType: string;
+  entityId: string;
+  oleh: string;
+  detail: Record<string, unknown> | null;
+}
+
+export interface TopologyHistoryResponse {
+  baris: TopologyHistoryRow[];
+  berikutnya: string | null;
+}
+
 export type ClosureType = "inline" | "dome" | "lain";
 export type ClosureStatus = "aktif" | "nonaktif";
 

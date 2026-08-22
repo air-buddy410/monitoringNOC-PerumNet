@@ -1736,7 +1736,17 @@ Jadi sebagian besar grafik akan **kosong dengan penjelasan**. Itu benar, dan
 lebih baik daripada sebelumnya: sampai 22 Agustus semuanya berisi angka yang
 tidak pernah diukur, tanpa ada yang bisa membedakan.
 
-### T-33. Tab Riwayat — layar OTB, kabel, dan closure
+### ✅ T-33. Tab Riwayat — layar OTB, kabel, dan closure — frontend selesai 2026-08-22
+
+Frontend menambahkan timeline audit topologi reusable di OTB, kabel, dan
+closure. Tab Riwayat OTB kini membaca endpoint §22; tiap baris menampilkan
+waktu, `ringkas`, pelaku, dan detail expandable. Tombol "Muat lebih banyak"
+mengirim cursor `berikutnya` melalui `sesudah`, tanpa menyaring ulang ruang
+lingkup yang sudah dikembangkan server. Action yang belum dikenal tetap
+terlihat melalui `ringkas` dan kode action mentah di detail.
+
+- **Komponen:** `src/components/operations/topology-history.tsx` menjadi satu
+  sumber perilaku pagination, refresh, state error/empty, dan detail audit.
 
 - **Layar:** tab **"Riwayat (History)"** di `/ftth/otb/[id]` yang sejak Fase 11
   berbunyi *"belum tersedia pada kontrak endpoint OTB"*. Sekarang tersedia.

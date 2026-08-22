@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { NocPageHeader, NocPanel, NocState, NocStatus } from "@/components/noc-ui";
 import { useSession } from "@/hooks/use-session";
+import { TopologyHistoryPanel } from "@/components/operations/topology-history";
 import { ApiError, getJson, sendJson } from "@/lib/api/http";
 import type {
   ClosureCommitResponse,
@@ -317,6 +318,8 @@ export function ClosureDetailPage({ closureId }: { closureId: string }) {
         {detail.splices.length === 0 && <NocState kind="empty">Belum ada silangan {showHistory ? "atau riwayat silangan" : "aktif"} pada closure ini.</NocState>}
         {detail.splices.length > 0 && <div className="noc-splice-list">{detail.splices.map((splice) => <SpliceHistoryRow key={splice.id} splice={splice} canManage={canManage} releasing={saving && releaseTarget?.id === splice.id} onRelease={(target) => { setReleaseTarget(target); setActionError(null); }} />)}</div>}
       </NocPanel>
+
+      <TopologyHistoryPanel entityType="fiber_closure" entityId={detail.id} description="Perubahan closure dan silangan terbaru ditampilkan lebih dulu." />
 
       <NocPanel title="Pasang silangan" description="Susun batch, jalankan pratinjau, lalu commit. Server menjamin semua atau tidak sama sekali.">
         {!canManage && <NocState kind="empty">Pemasangan silangan memerlukan peran admin atau NOC.</NocState>}

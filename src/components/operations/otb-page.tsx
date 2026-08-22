@@ -10,6 +10,7 @@ import { Input } from "@/components/ui/input";
 import { NocPageHeader, NocPanel, NocState, NocStatus } from "@/components/noc-ui";
 import { OtbTerminationPanel } from "@/components/operations/fiber-termination";
 import { TracePanel } from "@/components/operations/trace-panel";
+import { TopologyHistoryPanel } from "@/components/operations/topology-history";
 import { useSession } from "@/hooks/use-session";
 import { ApiError, getJson, sendJson } from "@/lib/api/http";
 import type {
@@ -286,13 +287,6 @@ function TrayCapacityEditor({
   );
 }
 
-function EmptyOtbTab({ tab }: { tab: "riwayat" }) {
-  const messages: Record<"riwayat", string> = {
-    riwayat: "Riwayat perubahan port belum tersedia pada kontrak endpoint OTB. Audit log tetap dikelola oleh backend.",
-  };
-  return <NocState kind="empty">{messages[tab]}</NocState>;
-}
-
 export function OtbDetailPage({ otbId }: { otbId: string }) {
   const router = useRouter();
   const { session } = useSession();
@@ -420,7 +414,7 @@ export function OtbDetailPage({ otbId }: { otbId: string }) {
 
       {tab === "core" && <NocPanel title="Detail Core" description="Rincian core, silangan, panjang, dan output mengikuti respons mesin trace."><TracePanel source={traceSource} focus="core" /></NocPanel>}
 
-      {tab === "riwayat" && <NocPanel title="Riwayat (History)"><EmptyOtbTab tab="riwayat" /></NocPanel>}
+      {tab === "riwayat" && <TopologyHistoryPanel entityType="otb" entityId={detail.id} title="Riwayat (History)" description="Perubahan OTB, tray, dan port terbaru ditampilkan lebih dulu." />}
 
       {tab === "inventori" && (
         <NocPanel

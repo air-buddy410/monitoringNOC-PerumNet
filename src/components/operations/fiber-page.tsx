@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { NocPageHeader, NocPanel, NocState, NocStatus } from "@/components/noc-ui";
 import { useSession } from "@/hooks/use-session";
+import { TopologyHistoryPanel } from "@/components/operations/topology-history";
 import { ApiError, getJson, sendJson } from "@/lib/api/http";
 import { formatDateTime, formatPanjang } from "@/lib/noc-format";
 import type {
@@ -282,6 +283,7 @@ export function FiberCableDetailPage({ cableId }: { cableId: string }) {
         action={<NocStatus label="Termasuk yang dilepas" tone="info" />}>
         <FiberTerminationHistoryList cable={cable} />
       </NocPanel>
+      <TopologyHistoryPanel entityType="fiber_cable" entityId={cable.id} description="Perubahan kabel, core, terminasi, dan silangan terbaru ditampilkan lebih dulu." />
       <p className="noc-source-note"><Check aria-hidden="true" /> Dibuat pada {formatDate(cable.createdAt)}. Identitas pelanggan tidak ditampilkan.</p>
     </main>
   );
