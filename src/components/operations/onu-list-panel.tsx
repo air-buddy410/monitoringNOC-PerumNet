@@ -14,6 +14,7 @@ import type {
 
 const PAGE_SIZES = [20, 50, 100] as const;
 const ONU_PHASES: OnuPhaseState[] = ["working", "DyingGasp", "LOS", "syncMib"];
+const KNOWN_ONU_PHASES = new Set<string>(ONU_PHASES);
 
 type PageSize = (typeof PAGE_SIZES)[number];
 type OnuStatusFilter = "" | "tidak-sehat" | OnuPhaseState;
@@ -66,6 +67,10 @@ export default function OnuListPanel({
   const [loading, setLoading] = useState(false);
   const activeOltId = selectedOltId || readyTargets[0]?.id || "";
   const activeTarget = readyTargets.find((target) => target.id === activeOltId) ?? null;
+  const unknownSummaryPhases = result
+    ? Object.keys(result.ringkas).filter((phase) => !KNOWN_ONU_PHASES.has(phase)).sort((a, b) => a.localeCompare(b))
+    : [];
+  const summaryPhases = [...ONU_PHASES, ...unknownSummaryPhases] as OnuPhaseState[];
 
   async function loadPage(event?: FormEvent<HTMLFormElement>, requestedPage = 1) {
     event?.preventDefault();
@@ -233,7 +238,7 @@ export default function OnuListPanel({
               </div>
 
               <div className="noc-onu-summary" aria-label="Ringkasan status ONU">
-                {ONU_PHASES.map((phase) => (
+                {summaryPhases.map((phase) => (
                   <NocStatus
                     key={phase}
                     label={`${phaseLabel(phase)}: ${result.ringkas[phase] ?? 0}`}

@@ -1,21 +1,26 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import useSWR from "swr";
-import { Cable, Check, MapPin, Plus, RefreshCw } from "lucide-react";
+import { Cable, Check, ChevronLeft, ChevronRight, MapPin, Plus, RefreshCw, Search } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { useDebouncedValue } from "@/hooks/use-debounced-value";
 import { ApiError, getJson, sendJson } from "@/lib/api/http";
 import { NocPageHeader, NocPanel, NocState, NocStatus } from "@/components/noc-ui";
 import { useSession } from "@/hooks/use-session";
 import type {
   NetworkSite,
   Odp,
+  OdpPageSize,
   OdpPort,
   OdpPortStatus,
   OdpPortsResponse,
+  OdpSortColumn,
+  OdpSortDirection,
   OdpsResponse,
+  OltConsoleTargetsResponse,
   SitesResponse,
 } from "@/types/operations";
 
@@ -31,6 +36,74 @@ function portTone(status: OdpPortStatus) {
   if (status === "rusak") return "danger" as const;
   if (status === "dicadangkan") return "warning" as const;
   return "neutral" as const;
+}
+
+const ODP_PAGE_SIZES: OdpPageSize[] = [20, 50, 100];
+
+const ODP_SORT_OPTIONS: Array<{ value: OdpSortColumn; label: string }> = [
+  { value: "code", label: "Kode" },
+  { value: "name", label: "Nama" },
+  { value: "capacity", label: "Kapasitas" },
+  { value: "usedPorts", label: "Port terpakai" },
+];
+
+function buildOdpsUrl({
+  query,
+  siteId,
+  oltId,
+  sort,
+  dir,
+  page,
+  pageSize,
+}: {
+  query: string;
+  siteId: string;
+  oltId: string;
+  sort: OdpSortColumn;
+  dir: OdpSortDirection;
+  page: number;
+  pageSize: OdpPageSize;
+}) {
+  const params = new URLSearchParams({
+    sort,
+    dir,
+    page: String(page),
+    pageSize: String(pageSize),
+  });
+  if (query.trim()) params.set("q", query.trim());
+  if (siteId) params.set("siteId", siteId);
+  if (oltId) params.set("oltId", oltId);
+  return `/api/v1/ftth/odps?${params.toString()}`;
+}
+
+function OdpPagination({
+  page,
+  lastPage,
+  total,
+  pageSize,
+  isValidating,
+  onPageChange,
+}: {
+  page: number;
+  lastPage: number;
+  total: number;
+  pageSize: OdpPageSize;
+  isValidating: boolean;
+  onPageChange: (page: number) => void;
+}) {
+  if (total === 0) return null;
+  const first = (page - 1) * pageSize + 1;
+  const last = Math.min(page * pageSize, total);
+  return (
+    <div className="noc-odp-pagination">
+      <span>Menampilkan {first}–{last} dari {total} ODP</span>
+      <div>
+        <Button type="button" variant="outline" size="icon-sm" onClick={() => onPageChange(Math.max(1, page - 1))} disabled={isValidating || page <= 1} aria-label="Halaman ODP sebelumnya"><ChevronLeft aria-hidden="true" /></Button>
+        <strong>Halaman {page} / {lastPage}</strong>
+        <Button type="button" variant="outline" size="icon-sm" onClick={() => onPageChange(Math.min(lastPage, page + 1))} disabled={isValidating || page >= lastPage} aria-label="Halaman ODP berikutnya"><ChevronRight aria-hidden="true" /></Button>
+      </div>
+    </div>
+  );
 }
 
 function PortRow({ port, onSaved }: { port: OdpPort; onSaved: () => void }) {
@@ -116,15 +189,44 @@ const emptyOdp: OdpForm = { code: "", name: "", siteId: "", oltId: "", capacity:
 export default function FtthPage() {
   const { session } = useSession();
   const canManage = session?.user.role === "admin" || session?.user.role === "noc";
-  const { data, error, isLoading, mutate } = useSWR<OdpsResponse>("/api/v1/ftth/odps", getJson<OdpsResponse>, { revalidateOnFocus: false });
-  const { data: sitesData } = useSWR<SitesResponse>("/api/v1/sites", getJson<SitesResponse>, { revalidateOnFocus: false });
+  const [query, setQuery] = useState("");
+  const [siteId, setSiteId] = useState("");
+  const [oltId, setOltId] = useState("");
+  const [sort, setSort] = useState<OdpSortColumn>("code");
+  const [dir, setDir] = useState<OdpSortDirection>("asc");
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState<OdpPageSize>(20);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [form, setForm] = useState<OdpForm>(emptyOdp);
   const [saving, setSaving] = useState(false);
   const [formError, setFormError] = useState<string | null>(null);
+  const debouncedQuery = useDebouncedValue(query, 300);
+  const requestUrl = useMemo(() => buildOdpsUrl({ query: debouncedQuery, siteId, oltId, sort, dir, page, pageSize }), [debouncedQuery, siteId, oltId, sort, dir, page, pageSize]);
+  const { data, error, isLoading, isValidating, mutate } = useSWR<OdpsResponse>(requestUrl, getJson<OdpsResponse>, { revalidateOnFocus: false, keepPreviousData: true });
+  const { data: sitesData, error: sitesError, isLoading: sitesLoading } = useSWR<SitesResponse>("/api/v1/sites", getJson<SitesResponse>, { revalidateOnFocus: false });
+  const { data: oltsData, error: oltsError, isLoading: oltsLoading } = useSWR<OltConsoleTargetsResponse>("/api/v1/ftth/olts", getJson<OltConsoleTargetsResponse>, { revalidateOnFocus: false });
   const odps = data?.odps ?? [];
+  const total = data?.total ?? 0;
+  const currentPage = data?.page ?? page;
+  const lastPage = Math.max(data?.halamanTerakhir ?? 1, 1);
   const sites = sitesData?.sites ?? [];
+  const olts = oltsData?.olts ?? [];
   const siteNames = new Map<string, string>(sites.map((site: NetworkSite) => [site.id, `${site.code} · ${site.name}`]));
+
+  function resetListPosition() {
+    setPage(1);
+    setSelectedId(null);
+  }
+
+  function changeSort(nextSort: OdpSortColumn) {
+    if (nextSort === sort) {
+      setDir((current) => current === "asc" ? "desc" : "asc");
+    } else {
+      setSort(nextSort);
+      setDir("asc");
+    }
+    resetListPosition();
+  }
 
   async function createOdp(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -151,7 +253,7 @@ export default function FtthPage() {
 
   return (
     <main className="noc-page noc-feature-page">
-      <NocPageHeader title="FTTH / ODP" description="Pantau kapasitas ODP dan kelola status port tanpa menyimpan identitas pelanggan." action={<NocStatus label={`${odps.length} ODP`} tone="info" />} />
+      <NocPageHeader title="FTTH / ODP" description="Pantau kapasitas ODP dan kelola status port tanpa menyimpan identitas pelanggan." action={<NocStatus label={`${total} ODP`} tone="info" />} />
       <div className="noc-feature-grid is-two-column">
         <NocPanel title="Tambah ODP" description="Pembuatan ODP otomatis menyiapkan seluruh port sesuai kapasitas.">
           {canManage ? (
@@ -171,11 +273,49 @@ export default function FtthPage() {
           ) : <NocState kind="empty">Penambahan ODP memerlukan peran admin atau NOC.</NocState>}
         </NocPanel>
 
-        <NocPanel title="Daftar ODP" description="Angka terpakai dan rusak datang langsung dari server.">
+        <NocPanel title="Daftar ODP" description="Pencarian, penyaringan, dan urutan dikerjakan server; daftar hanya memuat halaman yang diminta." action={isValidating ? <span className="noc-odp-refreshing">Memperbarui…</span> : undefined}>
+          <div className="noc-odp-toolbar" aria-label="Saringan daftar ODP">
+            <label className="noc-odp-search">
+              <span>Cari ODP</span>
+              <span className="noc-odp-search-input">
+                <Search aria-hidden="true" />
+                <Input value={query} onChange={(event) => { setQuery(event.target.value); resetListPosition(); }} placeholder="Kode atau nama ODP" aria-label="Cari kode atau nama ODP" autoComplete="off" />
+              </span>
+            </label>
+            <label className="noc-odp-control">
+              <span>Situs</span>
+              <select className="noc-field-select" value={siteId} onChange={(event) => { setSiteId(event.target.value); resetListPosition(); }} disabled={sitesLoading} aria-label="Saring berdasarkan situs">
+                <option value="">Semua situs</option>
+                {sites.map((site) => <option key={site.id} value={site.id}>{site.code} · {site.name}</option>)}
+              </select>
+            </label>
+            <label className="noc-odp-control">
+              <span>OLT</span>
+              <select className="noc-field-select" value={oltId} onChange={(event) => { setOltId(event.target.value); resetListPosition(); }} disabled={oltsLoading} aria-label="Saring berdasarkan OLT">
+                <option value="">Semua OLT</option>
+                {olts.map((olt) => <option key={olt.id} value={olt.id}>{olt.name}{olt.vendor ? ` · ${olt.vendor}` : ""}</option>)}
+              </select>
+            </label>
+            <label className="noc-odp-control">
+              <span>Urutkan</span>
+              <select className="noc-field-select" value={sort} onChange={(event) => changeSort(event.target.value as OdpSortColumn)} aria-label="Kolom urutan ODP">
+                {ODP_SORT_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}
+              </select>
+            </label>
+            <Button type="button" variant="outline" size="sm" onClick={() => changeSort(sort)} aria-label={`Urutan ${dir === "asc" ? "menaik" : "menurun"}`}>{dir === "asc" ? "Naik" : "Turun"}</Button>
+            <label className="noc-odp-control">
+              <span>Baris</span>
+              <select className="noc-field-select" value={pageSize} onChange={(event) => { setPageSize(Number(event.target.value) as OdpPageSize); resetListPosition(); }} aria-label="Jumlah ODP per halaman">
+                {ODP_PAGE_SIZES.map((value) => <option key={value} value={value}>{value} ODP</option>)}
+              </select>
+            </label>
+          </div>
+          {(sitesError || oltsError) && <p className="noc-odp-filter-note">Sebagian pilihan filter belum dapat dimuat; daftar ODP tetap tersedia.</p>}
           {isLoading && <NocState kind="loading">Memuat ODP…</NocState>}
           {error && <NocState kind="error">{error instanceof ApiError ? error.message : "ODP tidak dapat dimuat."}</NocState>}
-          {!isLoading && !error && odps.length === 0 && <NocState kind="empty">Belum ada ODP terdaftar.</NocState>}
-          <div className="noc-odp-list">
+          {data?.terpotong && <div className="noc-odp-warning" role="status"><strong>Daftar ODP dipotong server</strong><span>Hasil ini dibatasi sampai 2.000 baris. Gunakan pencarian atau filter untuk mempersempit daftar.</span></div>}
+          {!isLoading && !error && data && odps.length === 0 && <NocState kind="empty">{query.trim() || siteId || oltId ? "Tidak ada ODP yang cocok dengan saringan ini." : "Belum ada ODP terdaftar."}</NocState>}
+          {odps.length > 0 && <div className="noc-odp-list">
             {odps.map((odp: Odp) => {
               const open = selectedId === odp.id;
               return (
@@ -191,7 +331,8 @@ export default function FtthPage() {
                 </div>
               );
             })}
-          </div>
+          </div>}
+          {data && <OdpPagination page={currentPage} lastPage={lastPage} total={total} pageSize={pageSize} isValidating={isValidating} onPageChange={(nextPage) => { setPage(nextPage); setSelectedId(null); }} />}
         </NocPanel>
       </div>
     </main>

@@ -1702,10 +1702,14 @@ pekerjaan tampilan — datanya sudah tersedia di endpoint yang disebut, tidak
 ada yang perlu ditunggu dari backend. Tandai ✅ dan pindahkan ke §Selesai
 kalau sudah dikerjakan.
 
-### T-40. Layar `/ftth`: cari, saring, dan halaman untuk 580 ODP
+### ✅ T-40. Layar `/ftth`: cari, saring, dan halaman untuk 580 ODP — frontend selesai 2026-08-22
 
 - **Layar:** `/ftth` — `src/components/operations/ftth-page.tsx`.
 - **Butuh:** `GET /api/v1/ftth/odps`, yang sekarang menerima parameter.
+
+Selesai di `/ftth`: pencarian server-side, filter situs/OLT, urutan kode/nama/
+kapasitas/port terpakai dengan arah naik/turun, ukuran halaman 20/50/100,
+pagination, total hasil dari server, serta peringatan saat respons dipotong.
 
 **Masalahnya bukan beban server — itu penting supaya tidak salah
 diperbaiki.** Diukur di produksi: kuerinya **6,6 ms**, payloadnya **148 kB**
@@ -1759,11 +1763,15 @@ pageSize  20 | 50 | 100
 pakai; OLT dari `GET /api/v1/ftth/olts`. Di produksi hari ini: **5 situs**
 (3 ODP tanpa situs) dan **6 OLT** — cukup kecil untuk dropdown biasa.
 
-### T-39. Chip ringkasan ONU: jangan diam-diam melewatkan status yang tak dikenal
+### ✅ T-39. Chip ringkasan ONU: jangan diam-diam melewatkan status yang tak dikenal — frontend selesai 2026-08-22
 
 - **Layar:** `/console` — `src/components/operations/onu-list-panel.tsx`, plus
   `src/types/operations.ts`.
 - **Butuh:** tidak ada endpoint baru. Kontraknya tidak berubah.
+
+Selesai: chip fase yang dikenal tetap tampil lebih dulu, lalu seluruh kunci
+`ringkas` yang belum dikenal ikut ditampilkan dengan nada informasi dan label
+mentahnya. Tipe `OnuPhaseState` sekarang menerima status string dari perangkat.
 
 **Yang terjadi sekarang.** Ringkasannya merender daftar tetap:
 
@@ -2711,6 +2719,10 @@ orang mengetik.
 
 ### Selesai
 
+- **T-40** — `/ftth` memakai pencarian/filter/sorting/pagination server-side,
+  membaca `total`, dan menampilkan `terpotong` bila respons dibatasi.
+- **T-39** — Ringkasan ONU menampilkan status fase tak dikenal tanpa
+  menghilangkan selisih terhadap total ONU.
 - **T-38** — Output konsol memiliki tinggi tetap dengan gulir, metadata ukuran,
   pencarian dan hit count, serta pembukaan awal 50 baris yang menyebut jumlah
   baris tersembunyi.
@@ -2791,6 +2803,10 @@ orang mengetik.
 
 ## Riwayat
 
+- **2026-08-22** — **T-40 dan T-39 selesai di frontend.** Daftar ODP di
+  `/ftth` kini mencari dan menyaring lewat server dengan pagination, sedangkan
+  ringkasan ONU di `/console` tidak lagi menyembunyikan fase perangkat yang
+  belum dikenal.
 - **2026-08-22** — **T-38 dan T-37 selesai di frontend.** Output konsol kini
   dibatasi secara eksplisit dan dapat dicari tanpa mengubah teks mentahnya;
   panel daftar ONU di `/console` menggunakan POST saat diminta, dengan filter,

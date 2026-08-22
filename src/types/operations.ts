@@ -88,8 +88,17 @@ export interface Odp {
   brokenPorts: number;
 }
 
+export type OdpSortColumn = "code" | "name" | "capacity" | "usedPorts";
+export type OdpSortDirection = "asc" | "desc";
+export type OdpPageSize = 20 | 50 | 100;
+
 export interface OdpsResponse {
   odps: Odp[];
+  total: number;
+  page: number;
+  pageSize: number;
+  halamanTerakhir: number;
+  terpotong: boolean;
 }
 
 export type OdpPortStatus = "kosong" | "terpakai" | "rusak" | "dicadangkan";
@@ -523,7 +532,7 @@ export interface ConsoleCommandResponse {
   output: string;
 }
 
-export type OnuPhaseState = "working" | "DyingGasp" | "LOS" | "syncMib";
+export type OnuPhaseState = "working" | "DyingGasp" | "LOS" | "syncMib" | (string & {});
 
 export interface OnuInventoryRow {
   indeks: string;
