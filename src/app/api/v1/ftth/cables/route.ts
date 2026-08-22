@@ -35,6 +35,16 @@ export const POST = withRole(["admin", "noc"], async (request, user) => {
       { status: 400 },
     );
   }
+  if (
+    body.tubeSize !== undefined &&
+    body.tubeSize !== null &&
+    !Number.isInteger(body.tubeSize)
+  ) {
+    return NextResponse.json(
+      { error: "tubeSize harus bilangan bulat, atau dikosongkan untuk kabel tanpa tabung." },
+      { status: 400 },
+    );
+  }
   if (body.purpose && body.purpose !== "feeder" && body.purpose !== "distribution") {
     return NextResponse.json(
       { error: "purpose harus feeder atau distribution." },

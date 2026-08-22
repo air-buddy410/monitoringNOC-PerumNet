@@ -102,20 +102,14 @@ async function main() {
 
   const kabelId: Record<string, string> = {};
   for (const k of L.KABEL) {
+    // `tubeSize` diserahkan ke store: ia yang mengisi tube_number dan
+    // core_in_tube sekaligus, jadi tidak ada jalur kedua yang bisa menyimpang.
     const h = await fiber.buatKabel({
       code: k.code, category: k.category, coreCount: k.coreCount,
-      lengthM: k.lengthM, notes: L.CATATAN,
+      lengthM: k.lengthM, tubeSize: k.tubeSize, notes: L.CATATAN,
     }, aktor);
     if (!h.ok) throw new Error(`kabel ${k.code}: ${h.error}`);
     kabelId[k.code] = h.data.id;
-    // Nomor tabung diisi sesudahnya — bentuk yang sama dengan sheet lapangan,
-    // yang menomori core per tabung, bukan hanya berurut se-kabel.
-    const cores = await db.select().from(s.fiberCores).where(eq(s.fiberCores.segmentId, h.data.id));
-    for (const c of cores) {
-      await db.update(s.fiberCores)
-        .set({ tubeNumber: L.tabungUntuk(c.coreNumber, k.tubeSize) })
-        .where(eq(s.fiberCores.id, c.id));
-    }
   }
 
   const hCl = await closure.buatClosure({

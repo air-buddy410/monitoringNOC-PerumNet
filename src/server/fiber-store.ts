@@ -267,7 +267,25 @@ export interface BuatKabelInput {
   coreCount: number;
   lengthM?: number | null;
   purpose?: PeruntukanCore;
+  /**
+   * Jumlah serat per tabung. Kalau diisi, `tube_number` dan `core_in_tube`
+   * ikut terisi — dan penomoran ganda yang dipakai catatan lapangan langsung
+   * dijaga constraint. ADSS 144 core lazimnya 12 tabung × 12 serat.
+   *
+   * Dikosongkan untuk kabel yang memang tidak bertabung (dropcore, patch).
+   */
+  tubeSize?: number | null;
   notes?: string | null;
+}
+
+/** Nomor tabung sebuah core, 1-basis. */
+export function tabungUntuk(coreNumber: number, tubeSize: number) {
+  return Math.floor((coreNumber - 1) / tubeSize) + 1;
+}
+
+/** Posisi core di dalam tabungnya, 1-basis. */
+export function posisiDalamTabung(coreNumber: number, tubeSize: number) {
+  return ((coreNumber - 1) % tubeSize) + 1;
 }
 
 /**
@@ -290,6 +308,17 @@ export async function buatKabel(
     input.coreCount > MAKS_CORE
   ) {
     return { ok: false, status: 400, error: `coreCount harus 1–${MAKS_CORE}.` };
+  }
+  const tubeSize = input.tubeSize ?? null;
+  if (
+    tubeSize !== null &&
+    (!Number.isInteger(tubeSize) || tubeSize < 1 || tubeSize > input.coreCount)
+  ) {
+    return {
+      ok: false,
+      status: 400,
+      error: `tubeSize harus 1–${input.coreCount}, atau dikosongkan untuk kabel tanpa tabung.`,
+    };
   }
   if (
     input.lengthM !== undefined &&
@@ -334,7 +363,12 @@ export async function buatKabel(
         id: randomUUID(),
         segmentId: id,
         coreNumber: i + 1,
-        color: warnaCore(i + 1),
+        // Warna mengikuti posisi DI DALAM tabung, bukan nomor se-kabel —
+        // itulah yang tercetak pada seratnya. Tanpa tabung, ia jatuh ke
+        // nomor core, yang untuk kabel kecil hasilnya sama.
+        color: warnaCore(tubeSize ? posisiDalamTabung(i + 1, tubeSize) : i + 1),
+        tubeNumber: tubeSize ? tabungUntuk(i + 1, tubeSize) : null,
+        coreInTube: tubeSize ? posisiDalamTabung(i + 1, tubeSize) : null,
         purpose,
       })),
     );
@@ -342,6 +376,7 @@ export async function buatKabel(
       code,
       category: input.category,
       coreCount: input.coreCount,
+      tubeSize,
       purpose,
     });
   });
