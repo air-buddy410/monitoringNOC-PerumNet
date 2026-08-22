@@ -67,7 +67,7 @@ async function isiSampel(interfaceId: string, menit: number, bps: number) {
     baris.push({
       interfaceId, sampledAt: t,
       rxBps: bps, txBps: bps / 2,
-      rxByte: 0n, txByte: 0n, dtMs: 120_000,
+      rxByte: BigInt(0), txByte: BigInt(0), dtMs: 120_000,
     });
   }
   await d().insert(schema.trafficSamples).values(baris);
@@ -108,7 +108,7 @@ describe("bandwidth dari pengukuran", () => {
   it("cuplikan acuan (dt_ms = 0) tidak digambar sebagai 0 bps", async () => {
     await d().insert(schema.trafficSamples).values({
       interfaceId: "if-up", sampledAt: new Date(SEKARANG.getTime() - 60_000),
-      rxBps: 0, txBps: 0, rxByte: 0n, txByte: 0n, dtMs: 0,
+      rxBps: 0, txBps: 0, rxByte: BigInt(0), txByte: BigInt(0), dtMs: 0,
     });
     const h = await riwayatMetrik({ assetId: "rtr", metric: "bandwidth", hours: 24, now: SEKARANG });
     expect(h.sumber).toBe("belum-ada-data");
