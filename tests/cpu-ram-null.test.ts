@@ -31,7 +31,8 @@ vi.mock("@/server/librenms", async (asli) => ({
   ...(await asli<typeof import("@/server/librenms")>()),
   isLibrenmsConfigured: () => true,
   fetchDevicePorts: async () => [],
-  fetchDeviceHealth: async () => mocks.sensors,
+  fetchHealthSensors: async (_id: number, kelas: string) =>
+    kelas === "device_temperature" ? mocks.sensors : [],
   fetchDeviceCpuUsage: async () => mocks.cpu,
   fetchDeviceMemUsage: async () => mocks.ram,
 }));

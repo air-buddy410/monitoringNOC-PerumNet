@@ -440,6 +440,35 @@ terjadi adalah sensornya tidak menjawab. Aturan yang sama berlaku pada jeda
 trafik dan `averageUptime` di laporan SLA. Perangkat yang MEMANG menganggur
 tetap melaporkan `0` — dan itu tersimpan sebagai `0`.
 
+**Bentuk API LibreNMS yang mudah salah dibaca** — ini yang membuat CPU, RAM,
+dan suhu tidak pernah terbaca sejak LibreNMS tersambung sampai 22 Agustus
+2026:
+
+| Endpoint | Isinya |
+|---|---|
+| `/devices/{id}/health` | **katalog nama kelas** — `[{desc: "Temperature", name: "device_temperature"}]`. Bukan sensor. Tidak ada `sensor_class` maupun `sensor_current`. |
+| `/devices/{id}/health/{kelas}` | daftar `sensor_id` saja |
+| `/devices/{id}/health/{kelas}/{sensor_id}` | barisnya yang sesungguhnya |
+
+Dan baris terakhir itu **tidak memakai nama field yang sama untuk semua
+kelas**, karena LibreNMS menyimpannya di tabel yang berbeda:
+
+| Kelas | Field nilainya |
+|---|---|
+| `device_processor` | `processor_usage` |
+| `device_mempool` | `mempool_perc` |
+| `device_temperature`, `device_dbm` | `sensor_current` |
+
+Kode lama membaca `sensor_current` untuk keempatnya, dan memperlakukan hasil
+`/health` sebagai daftar sensor. Dua-duanya menghasilkan `null` tanpa galat —
+grafik CPU/RAM kosong (terlihat seperti "belum ada data") dan kartu suhu
+menampilkan **0 °C berlencana hijau "Normal"** untuk setiap perangkat.
+Tesnya pun ikut lolos, karena ia menstub payload yang tidak pernah dikirim
+server sungguhan.
+
+Kalau kelak menambah kelas health baru, **ambil payload aslinya dulu** dari
+server produksi sebelum menulis pembacanya.
+
 **Kalau grafik kosong padahal perangkatnya hidup**, urutan periksanya:
 
 ```

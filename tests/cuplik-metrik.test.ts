@@ -32,7 +32,8 @@ vi.mock("@/server/librenms", async (asli) => ({
     return mocks.cpu.get(id) ?? null;
   },
   fetchDeviceMemUsage: async (id: number) => mocks.ram.get(id) ?? null,
-  fetchDeviceHealth: async (id: number) => mocks.sensors.get(id) ?? [],
+  fetchHealthSensors: async (id: number, kelas: string) =>
+    kelas === "device_temperature" ? (mocks.sensors.get(id) ?? []) : [],
 }));
 
 import * as schema from "@/db/schema";
