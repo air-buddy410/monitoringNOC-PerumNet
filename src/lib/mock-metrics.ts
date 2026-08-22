@@ -271,8 +271,14 @@ export interface OnuInfo {
 export interface PonPortHealth {
   port: string;
   sfpUp: boolean;
-  /** Daya pancar SFP PON (dBm). */
-  txPower: number;
+  /**
+   * Daya pancar SFP PON (dBm), `null` bila sensornya tidak menjawab.
+   *
+   * BUKAN 0. Nol dBm adalah 1 mW — pembacaan optik yang sangat kuat. Jadi
+   * "tidak diketahui" yang digambar 0 tidak sekadar meleset, ia tampil
+   * sebagai kondisi terbaik yang mungkin.
+   */
+  txPower: number | null;
   onus: OnuInfo[];
 }
 

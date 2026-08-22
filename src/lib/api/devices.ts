@@ -31,6 +31,8 @@ export interface DeviceMetricsResponse {
 
 export interface OltOpticsResponse {
   ports: PonPortHealth[];
+  sumber: "terukur" | "fixture" | "belum-ada-data";
+  catatan?: string;
   updatedAt: string;
 }
 

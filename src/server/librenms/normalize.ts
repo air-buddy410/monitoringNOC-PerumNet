@@ -106,9 +106,10 @@ export function dbmSensorsToOptics(sensors: LibrenmsSensor[]): PonPortHealth[] {
     .map((sensor) => ({
       port: sensor.sensor_descr,
       sfpUp: sensor.sensor_current != null,
+      // `null`, bukan 0 — lihat alasannya di `PonPortHealth.txPower`.
       txPower:
         sensor.sensor_current == null
-          ? 0
+          ? null
           : Math.round(Number(sensor.sensor_current) * 10) / 10,
       onus: [],
     }));
