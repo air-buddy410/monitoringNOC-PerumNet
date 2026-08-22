@@ -646,6 +646,35 @@ oleh ALUS, jadi pemetaannya bukan tebakan:
 **Keenam OLT kini menjawab `show version` lewat konsol** — sebelumnya hanya
 satu. Diuji langsung 20 Agustus.
 
+> **Koreksi 22 Agustus 2026 — tabel di atas benar, databasenya tidak.**
+>
+> Pengujian 20 Agustus dilakukan dengan menghubungi alamat LAN secara manual.
+> Nilai di kolom "Sekarang" **tidak pernah masuk `olt_devices`**; lima dari
+> enam baris tetap menyimpan `172.30.10.6` sampai hari ini. Jadi selama dua
+> hari fitur konsol gagal untuk lima OLT — dan gagalnya berupa waktu-habis,
+> bukan pesan yang bisa dijelaskan siapa pun.
+>
+> Diuji ulang dari VPS 22 Agustus: `172.30.10.6` port 23, 231, dan 1024 tidak
+> menjawab satu pun; keenam alamat LAN menjawab semua. Database sudah
+> diperbaiki, dengan lima baris audit `olt.address_fixed` yang memuat nilai
+> sebelum dan sesudahnya.
+>
+> **Sebabnya bertahan:** `scripts/impor-dari-crm.ts` menyalin `management_ip`
+> dan `telnet_port` dari CRM apa adanya, dan CRM memang menyimpan alamat jalur
+> luar. Setiap kali impor dijalankan, perbaikan manual akan hilang lagi.
+> Importir sekarang **tidak lagi menyentuh kedua kolom itu** saat memperbarui
+> — alasannya sama dengan `site_id` di berkas yang sama — dan dijaga
+> `tests/impor-crm-alamat-olt.test.ts`. OLT yang benar-benar baru tetap
+> memakai alamat CRM sebagai titik awal, tapi impornya mencetak peringatan
+> bahwa alamat itu perlu diperiksa dari VPS.
+>
+> **Pelajaran yang lebih besar dari alamatnya:** perbaikan ini sudah tertulis
+> lengkap di dokumen ini selama dua hari, dan tidak ada satu pun yang
+> memeriksa apakah dokumen dan database sepakat. Dokumen yang menulis
+> "Sekarang" tanpa ada yang menguji ulang isinya adalah dokumen yang
+> menenangkan tanpa dasar. Alamat yang terbukti menjawab kini juga tercatat
+> di `docs/referensi/nama-olt.json`.
+
 Ini pengulangan persis pelajaran MikroTik: `managementUrl` router dulu juga
 memakai alamat luar, dan penarikan PPPoE berhenti gagal begitu ia dipindah ke
 IP internal. **VPS satu jaringan dengan MikroTik, OLT, dan switch** — alamat
