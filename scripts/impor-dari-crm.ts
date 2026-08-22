@@ -133,10 +133,26 @@ async function main() {
         "SELECT id FROM olt_devices WHERE name = $1", [o.name]);
       if (ada.rows[0]) petaOlt.set(o.id, ada.rows[0].id);
       if (ada.rows[0]) {
+        // `management_ip` dan `telnet_port` sengaja TIDAK disentuh saat
+        // memperbarui — alasannya sama dengan `site_id` di atas, tapi
+        // akibatnya lebih mahal.
+        //
+        // CRM menyimpan alamat jalur port-forwarding ALUS (172.30.10.x).
+        // Portal ini hidup SATU JARINGAN dengan OLT-nya, jadi alamat itu
+        // tidak pernah bisa dihubunginya: diuji dari VPS 22 Agustus 2026,
+        // 172.30.10.6 port 23/231/1024 tidak menjawab satu pun, sedangkan
+        // keenam alamat LAN menjawab semua.
+        //
+        // Sebelum ini importir menimpanya tiap kali dijalankan, dan konsol
+        // perangkat gagal untuk 5 dari 6 OLT — gagalnya berupa waktu-habis,
+        // bukan pesan yang bisa dijelaskan. Portal ini yang tahu apa yang
+        // terjangkau dari tempatnya berdiri; CRM tidak.
+        //
+        // Dijaga `tests/impor-crm-alamat-olt.test.ts`.
         if (!DRY) {
           await noc.query(
-            `UPDATE olt_devices SET management_ip=$2, vendor=$3, model=$4, telnet_port=$5, credential_ref=$6 WHERE id=$1`,
-            [ada.rows[0].id, o.managementIp, o.vendor, o.model, o.telnetPort, o.credentialRef]);
+            `UPDATE olt_devices SET vendor=$2, model=$3, credential_ref=$4 WHERE id=$1`,
+            [ada.rows[0].id, o.vendor, o.model, o.credentialRef]);
         }
         olt.diperbarui += 1;
       } else {
@@ -149,6 +165,13 @@ async function main() {
             [idBaru, o.name, o.managementIp, o.vendor, o.model, o.telnetPort, o.credentialRef]);
         }
         olt.dibuat += 1;
+        // OLT baru memakai alamat CRM sebagai titik awal — tidak ada sumber
+        // lain. Hampir pasti alamat jalur luar, jadi ia harus diperiksa dari
+        // VPS sebelum konsolnya dipakai.
+        console.log(
+          `  ! OLT baru ${o.name} memakai alamat CRM (${o.managementIp}:${o.telnetPort ?? "-"}).` +
+          " Periksa dari VPS; kemungkinan besar butuh alamat LAN.",
+        );
       }
     }
     console.log(`  OLT        : ${olt.dibuat} baru, ${olt.diperbarui} diperbarui`);
