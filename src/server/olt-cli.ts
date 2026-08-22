@@ -135,14 +135,60 @@ export function kirimPerintah(kirim: Pengirim, perintah: string): void {
 export const TANDA_MORE = /[ \t]*--More--[ \t]*/g;
 
 /**
+ * Sisa hapus-terminal sesudah `--More--` dijawab.
+ *
+ * Perangkat tidak sekadar melanjutkan: ia MENGHAPUS promptnya dengan urutan
+ * backspace-spasi-backspace, satu set per karakter. Diambil apa adanya dari
+ * ZTE-C300-102-Pesagi 22 Agustus 2026 — kode karakternya:
+ *
+ * ```
+ * 8 32 8  8 32 8  8 32 8  8 32 8  8 32 8  8 32 8  8 32 8  8 32 8
+ * ```
+ *
+ * `TANDA_MORE` hanya membuang spasi dan tab di sekitar penandanya, jadi
+ * urutan ini tertinggal di awal baris BERIKUTNYA. Akibatnya baris itu tidak
+ * lagi diawali indeks ONU, dan `String.trim()` tidak menolong — 0x08 bukan
+ * whitespace menurut Unicode, jadi ia tidak ikut terpangkas.
+ *
+ * Diukur: dari 356 baris ONU pada satu OLT, **15 di antaranya** tidak terbaca
+ * karena ini. Kehilangan 4% yang tidak menimbulkan galat apa pun.
+ *
+ * Dibuang, bukan diterapkan sebagai backspace sungguhan: yang seharusnya
+ * dihapus urutan ini adalah `--More--` itu sendiri, dan itu sudah lebih dulu
+ * dibuang `TANDA_MORE`. Menerapkannya justru akan memakan teks sebelumnya.
+ *
+ * Catat `\x08`, BUKAN `\b` — di dalam regex `\b` berarti batas kata, dan
+ * polanya akan diam-diam tidak cocok dengan apa pun.
+ */
+export const SISA_HAPUS = /(?:\x08 \x08)+|\x08+/g;
+
+/** Buang tanda halaman beserta sisa hapus-terminalnya. */
+export function bersihkanHalaman(teks: string): string {
+  return teks.replace(TANDA_MORE, "\n").replace(SISA_HAPUS, "");
+}
+
+/**
  * Pisahkan negosiasi telnet (IAC, 0xFF) dari teks, dan susun jawabannya.
  *
  * Semua opsi DITOLAK: perangkat ini tidak butuh echo maupun terminal-type dari
  * kita, dan menjawab dengan benar lebih sederhana daripada mengabaikannya.
- * Mengabaikannya BUKAN pilihan yang aman — terbukti 19 Agustus 2026: tanpa
- * jawaban, HSGQ menerima "show gpon onu detail-info" sebagai
- * "show gpononudetail-info" (spasinya hilang) lalu menolaknya. Perintahnya
- * benar, salurannya yang belum siap.
+ *
+ * **Catatan 22 Agustus 2026 — diagnosis lama di sini KELIRU.** Komentar ini
+ * dulu berbunyi: tanpa jawaban IAC, HSGQ menerima "show gpon onu detail-info"
+ * sebagai "show gpononudetail-info" (spasinya hilang), jadi "perintahnya
+ * benar, salurannya yang belum siap".
+ *
+ * Diuji ulang langsung ke HSGQ-100-Kecicang: `show version` dan `show system`
+ * sampai dengan spasi utuh, jadi salurannya memang sudah beres. Yang tidak
+ * ada adalah perintahnya. `show ?` menjawab hanya `history` dan `version`;
+ * sesudah `enable`, hanya `history`, `memory`, `startup-config`, `version`.
+ * **HSGQ-G008 tidak punya daftar ONU di vty-nya sama sekali** — bukan di mode
+ * biasa, bukan di mode istimewa.
+ *
+ * Spasi yang "hilang" itu ulah pelengkap-otomatis perangkat saat bertemu
+ * token yang tidak dikenalnya, bukan gejala saluran. Jangan pakai gejala itu
+ * lagi sebagai bukti negosiasi telnet gagal — jawaban IAC di bawah tetap
+ * benar, alasannya saja yang perlu diluruskan.
  */
 export function pisahkanIac(bytes: Uint8Array): { teks: Buffer; balas: Buffer } {
   const balas: number[] = [];
@@ -207,6 +253,17 @@ export async function jalankanPerintahBaca(
       buffer += potongan;
       // Kredensial tidak pernah masuk keluaran yang dikembalikan.
       if (tahap === "perintah") keluaran += potongan;
+
+      // Sisa hapus-terminal dibuang pada SETIAP potongan, bukan hanya saat
+      // `--More--` terlihat: perangkat mengirim urutan hapusnya SESUDAH kita
+      // menjawab spasi, jadi ia tiba di potongan berikutnya — ketika
+      // penandanya sendiri sudah lama dibuang dan cabang di bawah tidak
+      // akan pernah jalan lagi.
+      //
+      // Dikerjakan atas string yang sudah utuh, bukan atas potongannya,
+      // supaya satu urutan `\x08 \x08` yang terbelah dua paket tetap kena.
+      buffer = buffer.replace(SISA_HAPUS, "");
+      if (tahap === "perintah") keluaran = keluaran.replace(SISA_HAPUS, "");
 
       // Dijawab SEBELUM deteksi prompt — lihat catatan pada TANDA_MORE.
       if (tahap === "perintah" && /--More--/.test(buffer)) {
