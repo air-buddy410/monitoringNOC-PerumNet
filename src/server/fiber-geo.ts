@@ -68,8 +68,17 @@ export interface GarisKabel {
    * yang menyusur jalan akan diikuti dengan percaya penuh.
    */
   sumberGeometri: "tersurvei" | "perkiraan-jalan" | "garis-lurus";
-  dari: { jenis: JenisSimpul; code: string };
-  ke: { jenis: JenisSimpul; code: string };
+  /**
+   * Simpul di kedua ujung — `null` kalau kabelnya digambar dari `route`
+   * tersimpan dan core-nya belum diterminasi ke mana pun.
+   *
+   * Kabel distribusi ke ODP sengaja TIDAK diterminasi: port ODP itu catatan
+   * produksi, 1.687 di antaranya membawa layanan pelanggan, dan memakainya
+   * untuk kabel turunan akan merusak angka okupansi yang dipakai orang
+   * menjual sambungan.
+   */
+  dari: { jenis: JenisSimpul; code: string } | null;
+  ke: { jenis: JenisSimpul; code: string } | null;
   coreTerpakai: number;
   coreTotal: number;
 }
@@ -239,6 +248,19 @@ export async function petaFiber() {
     const a = [...per.A.values()];
     const b = [...per.B.values()];
 
+    // Jalur cacat TIDAK dipakai diam-diam: kalau tersimpan tapi tidak lolos
+    // pemeriksaan, kabelnya jatuh ke jalur turunan dan alasannya dicatat.
+    // Menggambar deret yang rusak lebih buruk daripada tidak menggambar.
+    let jalur: Array<[number, number]> | null = null;
+    if (k.route) {
+      try {
+        jalur = periksaJalur(k.route).titik;
+      } catch (e) {
+        jalur = null;
+        catatJalurRusak(k.code, (e as Error).message);
+      }
+    }
+
     const punyaUjung = k.siteACode !== null || k.siteBCode !== null;
     const catat = (alasan: string) =>
       tanpaGeometri.push({
@@ -252,6 +274,51 @@ export async function petaFiber() {
           ? { ujungTercatat: { a: k.siteACode, b: k.siteBCode } }
           : {}),
       });
+
+    // Kabel yang punya JALUR tersimpan digambar dari jalurnya, dengan atau
+    // tanpa jangkar. Jangkar dibutuhkan untuk MENURUNKAN geometri; kabel yang
+    // sudah punya geometri sendiri tidak memerlukannya.
+    //
+    // Ini yang membuat kabel distribusi bisa tergambar tanpa menyentuh port
+    // ODP produksi, dan yang membuat kabel backbone tersurvei bisa tergambar
+    // sebelum satu core pun dipatch.
+    if (jalur) {
+      const simpulAtau = (j: Jangkar[] | undefined) =>
+        j && j.length === 1 && berkoordinat(j[0])
+          ? { jenis: j[0].jenis, code: j[0].code }
+          : null;
+      for (const j of [...a, ...b]) {
+        if (berkoordinat(j)) {
+          simpul.set(`${j.jenis}:${j.id}`, {
+            jenis: j.jenis, id: j.id, code: j.code, name: j.name,
+            latitude: j.latitude, longitude: j.longitude,
+          });
+        }
+      }
+      const terpasangJalur = await db
+        .select({ id: fiberCoreTerminations.id })
+        .from(fiberCoreTerminations)
+        .innerJoin(fiberCores, eq(fiberCores.id, fiberCoreTerminations.coreId))
+        .where(
+          and(
+            eq(fiberCores.segmentId, k.id),
+            isNull(fiberCoreTerminations.deactivatedAt),
+          ),
+        );
+      garis.push({
+        id: k.id,
+        code: k.code,
+        category: k.category,
+        lengthM: k.lengthM,
+        koordinat: jalur,
+        sumberGeometri: k.routeSource ?? "perkiraan-jalan",
+        dari: simpulAtau(a),
+        ke: simpulAtau(b),
+        coreTerpakai: terpasangJalur.length,
+        coreTotal: k.coreCount,
+      });
+      continue;
+    }
 
     if (a.length === 0 || b.length === 0) {
       catat(
@@ -291,19 +358,6 @@ export async function petaFiber() {
         ),
       );
 
-    // Jalur cacat TIDAK dipakai diam-diam: kalau tersimpan tapi tidak lolos
-    // pemeriksaan, kabelnya jatuh ke garis lurus dan alasannya dicatat.
-    // Menggambar deret yang rusak lebih buruk daripada tidak menggambar.
-    let jalur: Array<[number, number]> | null = null;
-    if (k.route) {
-      try {
-        jalur = periksaJalur(k.route).titik;
-      } catch (e) {
-        jalur = null;
-        catatJalurRusak(k.code, (e as Error).message);
-      }
-    }
-
     for (const j of [ja, jb]) {
       simpul.set(`${j.jenis}:${j.id}`, {
         jenis: j.jenis, id: j.id, code: j.code, name: j.name,
@@ -320,18 +374,11 @@ export async function petaFiber() {
       // jangkar dihubungkan langsung — dan `sumberGeometri` di bawah yang
       // mengatakan mana yang terjadi. Peta TIDAK boleh menyembunyikan
       // bedanya.
-      koordinat:
-        jalur ??
-        ([
-          [ja.longitude, ja.latitude],
-          [jb.longitude, jb.latitude],
-        ] as Array<[number, number]>),
-      sumberGeometri: jalur
-        ? // Jalur tersimpan tanpa `route_source` diperlakukan sebagai
-          // perkiraan, bukan tersurvei. Menganggapnya tersurvei berarti
-          // menaikkan kepercayaan atas dasar kolom yang kosong.
-          (k.routeSource ?? "perkiraan-jalan")
-        : ("garis-lurus" as const),
+      koordinat: [
+        [ja.longitude, ja.latitude],
+        [jb.longitude, jb.latitude],
+      ] as Array<[number, number]>,
+      sumberGeometri: "garis-lurus" as const,
       dari: { jenis: ja.jenis, code: ja.code },
       ke: { jenis: jb.jenis, code: jb.code },
       coreTerpakai: terpasang.length,
