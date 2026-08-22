@@ -5,8 +5,19 @@ import type { DeviceGroup } from "@/types/device";
 
 export interface UsagePoint {
   time: string;
-  cpu: number;
-  ram: number;
+  /**
+   * Persen pemakaian, atau `null` kalau tidak terbaca.
+   *
+   * BUKAN 0. Sampai 22 Agustus 2026 nilai yang tidak terbaca disimpan sebagai
+   * `0`, dan garis datar 0% pada grafik terbaca sebagai "perangkat ini nyaris
+   * tidak memakai memori" — bukan "sensornya tidak menjawab". Keduanya
+   * terlihat persis sama, dan yang pertama menenangkan.
+   *
+   * Sebagian perangkat memang hanya melaporkan salah satu: LibreNMS bisa
+   * memberi CPU tanpa memori, dan sebaliknya.
+   */
+  cpu: number | null;
+  ram: number | null;
 }
 
 // mulberry32 — PRNG kecil deterministik dari seed numerik
@@ -127,10 +138,15 @@ const usageStates = new Map<string, UsagePoint[]>();
 export function advanceUsageSeries(deviceId: string): UsagePoint[] {
   const prev = usageStates.get(deviceId) ?? generateUsageSeries(deviceId);
   const last = prev[prev.length - 1];
+  // Deret tiruan tidak pernah memuat `null` — ia dibangkitkan sendiri di
+  // berkas ini. Cadangan di bawah hanya memenuhi tipe yang kini membolehkan
+  // `null` untuk nilai NYATA yang tidak terbaca.
+  const cpuLalu = last.cpu ?? 50;
+  const ramLalu = last.ram ?? 50;
   const next: UsagePoint = {
     time: timeLabel(),
-    cpu: Math.round(clamp(last.cpu + (Math.random() - 0.5) * 12, 3, 98)),
-    ram: Math.round(clamp(last.ram + (Math.random() - 0.5) * 6, 10, 95)),
+    cpu: Math.round(clamp(cpuLalu + (Math.random() - 0.5) * 12, 3, 98)),
+    ram: Math.round(clamp(ramLalu + (Math.random() - 0.5) * 6, 10, 95)),
   };
   const series = [...prev.slice(1), next];
   usageStates.set(deviceId, series);
