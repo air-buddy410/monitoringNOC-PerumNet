@@ -15,6 +15,7 @@ import useSWR from "swr";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { NocPageHeader, NocMetric, NocPanel, NocState, NocStatus } from "@/components/noc-ui";
+import { useDebouncedValue } from "@/hooks/use-debounced-value";
 import { ApiError, getJson } from "@/lib/api/http";
 import { formatAge, formatDateTime, formatDuration, formatNumber } from "@/lib/noc-format";
 import type {
@@ -202,7 +203,8 @@ export default function PppoePage() {
   const [dir, setDir] = useState<"asc" | "desc">("asc");
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState<PppoePageSize>(20);
-  const requestUrl = useMemo(() => buildSessionsUrl({ query, router, sort, dir, page, pageSize }), [query, router, sort, dir, page, pageSize]);
+  const debouncedQuery = useDebouncedValue(query, 300);
+  const requestUrl = useMemo(() => buildSessionsUrl({ query: debouncedQuery, router, sort, dir, page, pageSize }), [debouncedQuery, router, sort, dir, page, pageSize]);
   const { data, error, isLoading, isValidating, mutate } = useSWR<PppoeSessionsResponse>(
     requestUrl,
     getJson<PppoeSessionsResponse>,

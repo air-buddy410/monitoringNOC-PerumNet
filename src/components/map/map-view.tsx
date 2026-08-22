@@ -2,6 +2,7 @@
 
 import { useMemo, useState } from "react";
 import dynamic from "next/dynamic";
+import { useFiberGeo } from "@/hooks/use-fiber-geo";
 import MapFilters, {
   type AreaFilter,
   type GroupFilter,
@@ -22,6 +23,9 @@ export default function MapView() {
   const { devices } = useDevices();
   const [area, setArea] = useState<AreaFilter>("all");
   const [group, setGroup] = useState<GroupFilter>("all");
+  const [fiberVisible, setFiberVisible] = useState(true);
+  const [fiberCategory, setFiberCategory] = useState<"all" | "feeder" | "distribution">("all");
+  const { data: fiberGeo } = useFiberGeo();
 
   const areas = useMemo(
     () => [...new Set(devices.map((device) => device.area))].sort(),
@@ -39,6 +43,15 @@ export default function MapView() {
   );
 
   const isFiltered = area !== "all" || group !== "all";
+  const visibleFiberLines = useMemo(
+    () => (fiberGeo?.garis ?? []).filter((line) => fiberCategory === "all" || line.category === fiberCategory),
+    [fiberCategory, fiberGeo?.garis],
+  );
+  const visibleFiberNodeCodes = useMemo(() => new Set(visibleFiberLines.flatMap((line) => [line.dari.code, line.ke.code])), [visibleFiberLines]);
+  const visibleFiberNodes = useMemo(
+    () => (fiberGeo?.simpul ?? []).filter((node) => visibleFiberNodeCodes.has(node.code)),
+    [fiberGeo?.simpul, visibleFiberNodeCodes],
+  );
 
   return (
     <>
@@ -62,7 +75,16 @@ export default function MapView() {
           dari {devices.length} perangkat
         </p>
       )}
-      <NetworkMap devices={visibleDevices} filterKey={`${area}|${group}`} />
+      <div className="noc-map-fiber-controls" aria-label="Kontrol lapisan fiber">
+        <label><input type="checkbox" checked={fiberVisible} onChange={(event) => setFiberVisible(event.target.checked)} /> <span>Tampilkan jalur fiber</span></label>
+        <select value={fiberCategory} onChange={(event) => setFiberCategory(event.target.value as typeof fiberCategory)} disabled={!fiberVisible} aria-label="Filter kategori kabel fiber">
+          <option value="all">Semua kategori</option>
+          <option value="feeder">Feeder</option>
+          <option value="distribution">Distribution</option>
+        </select>
+        <div className="noc-map-fiber-key"><span><i className="is-feeder" /> Feeder</span><span><i className="is-distribution" /> Distribution</span><span><i className="is-node" /> Simpul</span></div>
+      </div>
+      <NetworkMap devices={visibleDevices} filterKey={`${area}|${group}|fiber:${fiberVisible}|${fiberCategory}`} fiberLines={fiberVisible ? visibleFiberLines : []} fiberNodes={fiberVisible ? visibleFiberNodes : []} />
       <p className="noc-map-attribution" aria-label="Sumber data peta">
         © OpenStreetMap · © CARTO
       </p>

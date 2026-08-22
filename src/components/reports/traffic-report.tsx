@@ -2,6 +2,7 @@
 
 import useSWR from "swr";
 import ApiErrorNotice from "@/components/api-error-notice";
+import ReportSourceBanner, { type ReportSource } from "@/components/reports/report-source-banner";
 import {
   Table,
   TableBody,
@@ -27,6 +28,7 @@ interface TrafficRow {
 
 interface TrafficResponse {
   period: string;
+  source: ReportSource;
   rows: TrafficRow[];
   summary: { devices: number; totalDownloadGb: number; totalUploadGb: number };
 }
@@ -49,6 +51,9 @@ export default function TrafficReport({ period }: { period: string }) {
     );
   }
 
+  const source = data?.source;
+  const hasRows = Boolean(data && data.rows.length > 0);
+
   return (
     <div className="rounded-lg border bg-card">
       <div className="flex flex-wrap items-center justify-between gap-2 border-b px-4 py-3">
@@ -56,21 +61,24 @@ export default function TrafficReport({ period }: { period: string }) {
         <p className="text-xs text-muted-foreground">
           {data ? (
             <>
-              Total download{" "}
-              <span className="font-medium tabular-nums text-foreground">
-                {formatVolume(data.summary.totalDownloadGb)}
-              </span>{" "}
-              · upload{" "}
-              <span className="font-medium tabular-nums text-foreground">
-                {formatVolume(data.summary.totalUploadGb)}
-              </span>
+              {source === "belum-ada-data" ? "Belum ada rekap" : <>Total download{" "}
+                <span className="font-medium tabular-nums text-foreground">
+                  {formatVolume(data.summary.totalDownloadGb)}
+                </span>{" "}
+                · upload{" "}
+                <span className="font-medium tabular-nums text-foreground">
+                  {formatVolume(data.summary.totalUploadGb)}
+                </span></>}
             </>
           ) : (
             "Memuat laporan…"
           )}
         </p>
       </div>
-      <div className="divide-y md:hidden">
+      {source && <div className="px-4 pt-4"><ReportSourceBanner source={source} /></div>}
+      {!data && <div className="px-4 pb-4"><p className="text-center text-sm text-muted-foreground">Memuat laporan…</p></div>}
+      {data && !hasRows && <div className="px-4 pb-4"><p className="text-center text-sm text-muted-foreground">Tidak ada baris untuk ditampilkan pada periode ini.</p></div>}
+      {hasRows && <div className="divide-y md:hidden">
         {rows.map((row) => (
           <article key={row.deviceId} className="p-4">
             <h3 className="text-sm font-semibold">{row.deviceName}</h3>
@@ -85,8 +93,8 @@ export default function TrafficReport({ period }: { period: string }) {
             </div>
           </article>
         ))}
-      </div>
-      <div className="hidden md:block">
+      </div>}
+      {hasRows && <div className="hidden md:block">
       <Table>
         <TableHeader>
           <TableRow className="hover:bg-transparent">
@@ -127,7 +135,7 @@ export default function TrafficReport({ period }: { period: string }) {
           ))}
         </TableBody>
       </Table>
-      </div>
+      </div>}
     </div>
   );
 }

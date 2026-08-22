@@ -1604,7 +1604,12 @@ pekerjaan tampilan — datanya sudah tersedia di endpoint yang disebut, tidak
 ada yang perlu ditunggu dari backend. Tandai ✅ dan pindahkan ke §Selesai
 kalau sudah dikerjakan.
 
-### T-32. Lapisan jalur fiber di peta
+### ✅ T-32. Lapisan jalur fiber di peta — frontend selesai 2026-08-22
+
+Frontend menambahkan filter lapisan feeder/distribution, garis dengan urutan
+GeoJSON yang dibalik ke format Leaflet, penanda simpul, dan panel daftar
+`tanpaGeometri` beserta alasannya. Kabel yang belum punya geometri tidak pernah
+digambar sebagai garis perkiraan.
 
 - **Layar:** `/map` — tambahkan lapisan fiber di atas peta yang sudah ada.
 - **Butuh:** §21 — satu endpoint, `GET /api/v1/ftth/geo`.
@@ -1620,7 +1625,10 @@ kalau sudah dikerjakan.
   digambar (OTB → closure → MS → dua ODP), jadi hasilnya langsung terlihat
   benar atau salah.
 
-### T-31. Dua sisa dari tinjauan T-28 sampai T-30
+### ✅ T-31. Dua sisa dari tinjauan T-28 sampai T-30 — frontend selesai 2026-08-22
+
+Riwayat terminasi layar kabel kini memakai endpoint per-kabel satu kali dan
+kotak cari PPPoE menunda nilai URL sekitar 300 ms tanpa menunda input operator.
 
 **1. Riwayat terminasi: satu permintaan per kabel, bukan per core.**
 `fiber-page.tsx:81` memanggil `/cores/:id/terminations` di dalam `Promise.all`
@@ -1784,7 +1792,7 @@ ada.
   okupansi, peruntukan core, alasan wajib — sudah ditegakkan di server, dan
   sebagian ditegakkan langsung oleh PostgreSQL.
 
-### T-24. Layar OTB — daftar, tray, dan inventori port
+### ✅ T-24. Layar OTB — daftar, tray, dan inventori port — frontend selesai 2026-08-22
 
 - **Layar:** `/ftth/otb` (daftar) dan `/ftth/otb/[id]` (detail). Entri nav baru
   di `src/components/layout/noc-shell.tsx`, di bawah "FTTH".
@@ -1793,12 +1801,10 @@ ada.
   sekarang: dropdown "Pilih OTB", baris pemilih tray berlencana status, panel
   Tipe Konektor / Polish, dan tab **Inventori Tray** (tabel port dengan status,
   external service ID, dan catatan — pola yang sama dengan `/ftth`).
-- **Tiga tab lain BIARKAN KOSONG dengan penjelasan.** "Peta Jalur", "Detail
-  Core", dan "Riwayat" belum punya data sama sekali — core fiber, closure, dan
-  trace engine baru datang di fase berikutnya. Tampilkan empty state yang
-  mengatakan itu; **jangan diisi angka contoh.** Itu persis kesalahan yang baru
-  kita tutup di laporan SLA pada 21 Agustus, dan di sana ia sempat menanam
-  angka karangan ke database produksi.
+- **Riwayat audit port tetap kosong dengan penjelasan.** "Peta Jalur" dan
+  "Detail Core" sekarang memakai data trace yang sudah tersedia dari fase
+  berikutnya; jangan mengisi riwayat audit dengan angka contoh karena endpoint
+  audit port belum ada.
 - **Kenapa sekarang:** tabelnya sudah ada dan kosong. Tanpa layar ini tidak ada
   satu pun cara memasukkan OTB, jadi seluruh Fase 12 (core dan terminasi) tidak
   punya tempat untuk menambatkan diri.
@@ -1806,7 +1812,7 @@ ada.
   Seluruh aturan domain — penomoran global, lencana tray, penolakan penurunan
   kapasitas — sudah ditegakkan di server dan tidak boleh diulang di layar.
 
-### T-23. Laporan yang kosong harus terlihat kosong
+### ✅ T-23. Laporan yang kosong harus terlihat kosong — frontend selesai 2026-08-22
 
 - **Layar:** `/reports` — `src/components/reports/sla-report.tsx` dan
   `traffic-report.tsx`.
@@ -1827,7 +1833,7 @@ ada.
 - **Kenapa tidak bisa diakali dari backend:** angka jujurnya sudah ada; yang
   belum ada adalah cara mengatakannya kepada orang yang melihat layar.
 
-### T-21. Wallboard `/tv` — layar yang digantung di ruang NOC
+### ✅ T-21. Wallboard `/tv` — layar yang digantung di ruang NOC — frontend selesai 2026-08-22
 
 - **Layar:** halaman **baru** `src/app/tv/page.tsx`. Sekarang belum ada sama
   sekali, jadi `/tv` menjawab 404 padahal `src/proxy.ts` sudah membukanya untuk
@@ -1854,7 +1860,7 @@ ada.
 - **Kenapa tidak bisa diakali dari backend:** seluruh datanya sudah ada dalam
   satu muatan. Yang belum ada hanya yang menggambarnya.
 
-### T-22. Layar kelola token TV (admin)
+### ✅ T-22. Layar kelola token TV (admin) — frontend selesai 2026-08-22
 
 - **Layar:** tambahan di area admin yang sudah ada (`/users` terasa paling
   wajar; kalau menurutmu halaman sendiri lebih baik, silakan).

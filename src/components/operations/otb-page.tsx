@@ -239,6 +239,53 @@ function OtbPortRow({
   );
 }
 
+function TrayCapacityEditor({
+  otbId,
+  tray,
+  canManage,
+  onSaved,
+}: {
+  otbId: string;
+  tray: OtbTray;
+  canManage: boolean;
+  onSaved: () => Promise<void>;
+}) {
+  const [portCount, setPortCount] = useState(String(tray.portCount));
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function save(event: React.FormEvent) {
+    event.preventDefault();
+    const nextCount = Number(portCount);
+    if (!Number.isInteger(nextCount) || nextCount < 1 || nextCount > 256) {
+      setError("Jumlah port harus bilangan bulat antara 1 dan 256.");
+      return;
+    }
+    setSaving(true);
+    setError(null);
+    try {
+      await sendJson("PATCH", `/api/v1/ftth/otb/${encodeURIComponent(otbId)}/trays/${tray.trayNumber}`, { portCount: nextCount });
+      await onSaved();
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : "Kapasitas tray gagal disimpan.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <form className="noc-otb-capacity-editor" onSubmit={save}>
+      <div><strong>Kapasitas Tray {tray.trayNumber}</strong><span>Ubah bentuk akhir kapasitas, bukan selisih. Penurunan yang menyentuh port berisi akan ditolak server.</span></div>
+      <div className="noc-otb-capacity-control">
+        <Input type="number" min={1} max={256} value={portCount} onChange={(event) => setPortCount(event.target.value)} aria-label={`Jumlah port Tray ${tray.trayNumber}`} disabled={!canManage || saving} />
+        {canManage && <Button type="submit" size="sm" variant="outline" disabled={saving}>{saving ? "Menyimpan…" : "Simpan kapasitas"}</Button>}
+      </div>
+      {!canManage && <small>Perubahan kapasitas memerlukan peran admin atau NOC.</small>}
+      {error && <small className="noc-inline-error">{error}</small>}
+    </form>
+  );
+}
+
 function EmptyOtbTab({ tab }: { tab: "riwayat" }) {
   const messages: Record<"riwayat", string> = {
     riwayat: "Riwayat perubahan port belum tersedia pada kontrak endpoint OTB. Audit log tetap dikelola oleh backend.",
@@ -250,6 +297,7 @@ export function OtbDetailPage({ otbId }: { otbId: string }) {
   const router = useRouter();
   const { session } = useSession();
   const canManage = ["admin", "noc", "engineer"].includes(session?.user.role ?? "");
+  const canManageTray = session?.user.role === "admin" || session?.user.role === "noc";
   const canTerminate = session?.user.role === "admin" || session?.user.role === "noc";
   const encodedOtbId = encodeURIComponent(otbId);
   const { data: listData } = useSWR<OtbResponse>(
@@ -353,6 +401,7 @@ export function OtbDetailPage({ otbId }: { otbId: string }) {
           <div className="noc-otb-fact"><dt>Polish</dt><dd>{selectedTray?.polish ?? "—"}</dd></div>
           <div className="noc-otb-fact"><dt>Status Tray</dt><dd>{selectedTray ? <NocStatus label={trayStatusLabels[selectedTray.status]} tone={trayTone(selectedTray.status)} /> : "—"}</dd></div>
         </dl>
+        {selectedTray && <TrayCapacityEditor key={selectedTray.id} otbId={detail.id} tray={selectedTray} canManage={canManageTray} onSaved={refreshInventory} />}
       </section>
 
       <div className="noc-otb-info-strip" aria-label="Ringkasan connector">

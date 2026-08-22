@@ -225,6 +225,8 @@ export interface FiberTerminationTarget {
 
 export interface FiberTerminationHistory {
   id: string;
+  coreId: string;
+  coreNumber: number;
   coreEnd: "A" | "B";
   otbPortId: string | null;
   odpPortId: string | null;

@@ -75,10 +75,10 @@ function formatDate(value: string) {
   return new Intl.DateTimeFormat("id-ID", { day: "2-digit", month: "short", year: "numeric" }).format(date);
 }
 
-type FiberHistoryKey = readonly [string, ...string[]];
+type FiberHistoryKey = readonly [string, string];
 
-async function fetchTerminationHistories([, ...coreIds]: FiberHistoryKey) {
-  return Promise.all(coreIds.map((coreId) => getJson<FiberTerminationHistoryResponse>(`/api/v1/ftth/cores/${encodeURIComponent(coreId)}/terminations`)));
+async function fetchTerminationHistory([, cableId]: FiberHistoryKey) {
+  return getJson<FiberTerminationHistoryResponse>(`/api/v1/ftth/cables/${encodeURIComponent(cableId)}/terminations`);
 }
 
 interface FiberHistoryRow extends FiberTerminationHistory {
@@ -87,24 +87,15 @@ interface FiberHistoryRow extends FiberTerminationHistory {
 }
 
 function FiberTerminationHistoryList({ cable }: { cable: FiberCableDetail }) {
-  const coreIds = cable.cores.map((core) => core.id);
-  const historyKey = coreIds.length ? (["fiber-termination-history", ...coreIds] as const) : null;
-  const { data, error, isLoading } = useSWR<FiberTerminationHistoryResponse[]>(
+  const historyKey = ["fiber-termination-history", cable.id] as const;
+  const { data, error, isLoading } = useSWR<FiberTerminationHistoryResponse>(
     historyKey,
-    fetchTerminationHistories,
+    fetchTerminationHistory,
     { revalidateOnFocus: false },
   );
   const rows = useMemo<FiberHistoryRow[]>(
-    () => (data ?? []).flatMap((response, index) => {
-      const core = cable.cores[index];
-      if (!core) return [];
-      return response.terminations.map((termination) => ({
-        ...termination,
-        cableCode: cable.code,
-        coreNumber: core.coreNumber,
-      }));
-    }).sort((a, b) => Date.parse(a.createdAt) - Date.parse(b.createdAt)),
-    [cable.code, cable.cores, data],
+    () => (data?.terminations ?? []).map((termination) => ({ ...termination, cableCode: cable.code })),
+    [cable.code, data?.terminations],
   );
 
   if (isLoading) return <NocState kind="loading">Memuat riwayat terminasi seluruh core…</NocState>;

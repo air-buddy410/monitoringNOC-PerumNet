@@ -2,6 +2,7 @@
 
 import useSWR from "swr";
 import ApiErrorNotice from "@/components/api-error-notice";
+import ReportSourceBanner, { type ReportSource } from "@/components/reports/report-source-banner";
 import { CircleCheck, TriangleAlert } from "lucide-react";
 import {
   Table,
@@ -31,7 +32,7 @@ interface SlaResponse {
   targetPercent: number;
   rows: SlaRow[];
   /** `belum-ada-data` bukan nol — lihat §7 HANDOFF dan tugas T-23. */
-  source?: "terukur" | "fixture" | "belum-ada-data";
+  source: ReportSource;
   summary: { devices: number; averageUptime: number | null; belowTarget: number };
 }
 
@@ -53,6 +54,9 @@ export default function SlaReport({ period }: { period: string }) {
     );
   }
 
+  const source = data?.source;
+  const hasRows = Boolean(data && data.rows.length > 0);
+
   return (
     <div className="rounded-lg border bg-card">
       <div className="flex flex-wrap items-center justify-between gap-2 border-b px-4 py-3">
@@ -65,20 +69,21 @@ export default function SlaReport({ period }: { period: string }) {
         <p className="text-xs text-muted-foreground">
           {data ? (
             <>
-              Rata-rata uptime{" "}
-              <span className="font-medium tabular-nums text-foreground">
-                {data.summary.averageUptime === null
-                  ? "—"
-                  : `${data.summary.averageUptime}%`}
-              </span>{" "}
-              · {data.summary.belowTarget} perangkat di bawah target
+              {source === "belum-ada-data" ? "Belum ada rekap" : <>Rata-rata uptime{" "}
+                <span className="font-medium tabular-nums text-foreground">
+                  {data.summary.averageUptime === null ? "—" : `${data.summary.averageUptime}%`}
+                </span>{" "}
+                · {data.summary.belowTarget} perangkat di bawah target</>}
             </>
           ) : (
             "Memuat laporan…"
           )}
         </p>
       </div>
-      <div className="divide-y md:hidden">
+      {source && <div className="px-4 pt-4"><ReportSourceBanner source={source} /></div>}
+      {!data && <div className="px-4 pb-4"><p className="text-center text-sm text-muted-foreground">Memuat laporan…</p></div>}
+      {data && !hasRows && <div className="px-4 pb-4"><p className="text-center text-sm text-muted-foreground">Tidak ada baris untuk ditampilkan pada periode ini.</p></div>}
+      {hasRows && <div className="divide-y md:hidden">
         {rows.map((row) => (
           <article key={row.deviceId} className="p-4">
             <div className="flex items-start justify-between gap-3">
@@ -103,8 +108,8 @@ export default function SlaReport({ period }: { period: string }) {
             </div>
           </article>
         ))}
-      </div>
-      <div className="hidden md:block">
+      </div>}
+      {hasRows && <div className="hidden md:block">
       <Table>
         <TableHeader>
           <TableRow className="hover:bg-transparent">
@@ -159,7 +164,7 @@ export default function SlaReport({ period }: { period: string }) {
           ))}
         </TableBody>
       </Table>
-      </div>
+      </div>}
     </div>
   );
 }

@@ -130,6 +130,7 @@ export default function NocShell({ children }: { children: ReactNode }) {
   const isPublicPage =
     pathname === "/login" ||
     pathname === "/register" ||
+    pathname === "/tv" ||
     pathname.startsWith("/customer/") ||
     pathname === "/customer";
   const { session, isLoading: isSessionLoading } = useSession(!isPublicPage);
