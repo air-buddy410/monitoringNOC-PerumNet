@@ -175,6 +175,29 @@ describe("jalur tersimpan dipakai peta", () => {
     expect(peta.garis[0].sumberGeometri).toBe("tersurvei");
   });
 
+  it("kabel berjalur YANG JUGA berterminasi tetap menghitung core terpakai", async () => {
+    // Cabang berjalur punya perhitungan `coreTerpakai` sendiri. Tanpa kabel
+    // yang punya jalur DAN terminasi sekaligus, perhitungan itu tidak teruji —
+    // uji mutasi 23 Agustus 2026 membuktikannya lolos saat dinolkan.
+    await buatBackbone("kcc", "psg");
+    const id = await beriJangkar("BB-UJI-144");
+    await d().update(schema.fiberCableSegments)
+      .set({
+        route: [[115.5896, -8.4498], [115.60, -8.45], [115.6228, -8.4605]],
+        routeSource: "tersurvei",
+      })
+      .where(eq(schema.fiberCableSegments.id, id));
+    const peta = await petaFiber();
+    const g = peta.garis[0];
+    expect(g.sumberGeometri).toBe("tersurvei");
+    expect(g.koordinat).toHaveLength(3);
+    // `beriJangkar` menerminasi satu core di kedua ujungnya.
+    expect(g.coreTerpakai).toBe(2);
+    // Dan jangkarnya tetap terbaca walau geometrinya dari jalur.
+    expect(g.dari?.code).toBe("OTB-A");
+    expect(g.ke?.code).toBe("OTB-B");
+  });
+
   it("jalur tanpa route_source dianggap PERKIRAAN, bukan tersurvei", async () => {
     // Menganggapnya tersurvei berarti menaikkan kepercayaan atas dasar kolom
     // yang kosong.
@@ -199,6 +222,74 @@ describe("jalur tersimpan dipakai peta", () => {
     expect(peta.garis[0].sumberGeometri).toBe("garis-lurus");
     expect(peta.jalurRusak).toHaveLength(1);
     expect(peta.jalurRusak[0].pesan).toMatch(/tertukar/);
+  });
+});
+
+describe("jangkar diambil sekali untuk semua kabel — tanpa bocor", () => {
+  /**
+   * Dua kabel, masing-masing dengan OTB-nya sendiri di kedua ujung.
+   *
+   * Sejak jangkar diambil SEKALI untuk seluruh kabel (bukan sekali per kabel),
+   * risiko terbesarnya adalah jangkar satu kabel muncul di kabel lain. Uji
+   * mutasi 23 Agustus 2026 menunjukkan tes lama TIDAK menjaganya.
+   */
+  async function duaKabelBerjangkar() {
+    const otbStore = await import("@/server/otb-store");
+    const fiber = await import("@/server/fiber-store");
+    const otbId: Record<string, string> = {};
+    for (const [kode, lat, lon] of [
+      ["OTB-1", -8.44, 115.58], ["OTB-2", -8.45, 115.59],
+      ["OTB-3", -8.46, 115.60], ["OTB-4", -8.47, 115.61],
+    ] as const) {
+      const h = await otbStore.buatOtb(
+        { code: kode, name: kode, trayCount: 1, portsPerTray: 4, latitude: lat, longitude: lon },
+        null,
+      );
+      if (!h.ok) throw new Error(h.error);
+      otbId[kode] = h.data.id;
+    }
+
+    for (const [kodeKabel, otbA, otbB] of [
+      ["KBL-SATU", "OTB-1", "OTB-2"],
+      ["KBL-DUA", "OTB-3", "OTB-4"],
+    ] as const) {
+      const h = await fiber.buatKabel(
+        { code: kodeKabel, category: "distribution", coreCount: 4 },
+        null,
+      );
+      if (!h.ok) throw new Error(h.error);
+      const cores = await d().select().from(schema.fiberCores)
+        .where(eq(schema.fiberCores.segmentId, h.data.id));
+      for (const [i, [ujung, kodeOtb]] of ([["A", otbA], ["B", otbB]] as const).entries()) {
+        const [port] = await d().select().from(schema.otbPorts)
+          .where(eq(schema.otbPorts.otbId, otbId[kodeOtb])).limit(1);
+        const r = await fiber.terminasiCore(
+          { coreId: cores[i].id, coreEnd: ujung, otbPortId: port.id, reason: "uji" },
+          null,
+        );
+        if (!r.ok) throw new Error(r.error);
+      }
+    }
+  }
+
+  it("tiap kabel memakai jangkarnya SENDIRI", async () => {
+    await duaKabelBerjangkar();
+    const peta = await petaFiber();
+    const satu = peta.garis.find((g) => g.code === "KBL-SATU")!;
+    const dua = peta.garis.find((g) => g.code === "KBL-DUA")!;
+    expect([satu.dari?.code, satu.ke?.code].sort()).toEqual(["OTB-1", "OTB-2"]);
+    expect([dua.dari?.code, dua.ke?.code].sort()).toEqual(["OTB-3", "OTB-4"]);
+  });
+
+  it("coreTerpakai dihitung per kabel, bukan nol dan bukan total", async () => {
+    await duaKabelBerjangkar();
+    const peta = await petaFiber();
+    // Dua terminasi aktif per kabel — satu di tiap ujung.
+    for (const kode of ["KBL-SATU", "KBL-DUA"]) {
+      const g = peta.garis.find((x) => x.code === kode)!;
+      expect(g.coreTerpakai, kode).toBe(2);
+      expect(g.coreTotal, kode).toBe(4);
+    }
   });
 });
 
