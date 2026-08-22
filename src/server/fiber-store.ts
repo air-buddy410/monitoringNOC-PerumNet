@@ -162,10 +162,11 @@ export async function detailKabel(cableId: string) {
  * akan memanggil endpoint lain sekali per baris — dan riwayat panjang berubah
  * jadi puluhan permintaan untuk satu panel.
  */
-export async function riwayatTerminasiCore(coreId: string) {
-  const rows = await db
+function pilihRiwayat() {
+  return db
     .select({
       id: fiberCoreTerminations.id,
+      coreId: fiberCoreTerminations.coreId,
       coreEnd: fiberCoreTerminations.coreEnd,
       otbPortId: fiberCoreTerminations.otbPortId,
       odpPortId: fiberCoreTerminations.odpPortId,
@@ -180,18 +181,25 @@ export async function riwayatTerminasiCore(coreId: string) {
       odpCode: odps.code,
       odpRole: odps.role,
       odpPortNumber: odpPorts.portNumber,
+      coreNumber: fiberCores.coreNumber,
+      segmentId: fiberCores.segmentId,
     })
     .from(fiberCoreTerminations)
+    .innerJoin(fiberCores, eq(fiberCores.id, fiberCoreTerminations.coreId))
     .leftJoin(otbPorts, eq(otbPorts.id, fiberCoreTerminations.otbPortId))
     .leftJoin(otbTrays, eq(otbTrays.id, otbPorts.trayId))
     .leftJoin(otb, eq(otb.id, otbPorts.otbId))
     .leftJoin(odpPorts, eq(odpPorts.id, fiberCoreTerminations.odpPortId))
-    .leftJoin(odps, eq(odps.id, odpPorts.odpId))
-    .where(eq(fiberCoreTerminations.coreId, coreId))
-    .orderBy(asc(fiberCoreTerminations.createdAt));
+    .leftJoin(odps, eq(odps.id, odpPorts.odpId));
+}
 
+type BarisRiwayat = Awaited<ReturnType<ReturnType<typeof pilihRiwayat>["where"]>>[number];
+
+function rapikanRiwayat(rows: BarisRiwayat[]) {
   return rows.map((r) => ({
     id: r.id,
+    coreId: r.coreId,
+    coreNumber: r.coreNumber,
     coreEnd: r.coreEnd,
     otbPortId: r.otbPortId,
     odpPortId: r.odpPortId,
@@ -218,6 +226,33 @@ export async function riwayatTerminasiCore(coreId: string) {
           portNumber: r.odpPortNumber,
         },
   }));
+}
+
+/** Riwayat terminasi satu core. */
+export async function riwayatTerminasiCore(coreId: string) {
+  const rows = await pilihRiwayat()
+    .where(eq(fiberCoreTerminations.coreId, coreId))
+    .orderBy(asc(fiberCoreTerminations.createdAt));
+  return rapikanRiwayat(rows);
+}
+
+/**
+ * Riwayat terminasi SELURUH core dalam satu kabel — satu kueri.
+ *
+ * Ditambahkan setelah tinjauan kode: layar kabel memanggil endpoint per-core
+ * di dalam `Promise.all`, jadi kabel 24 core berarti 24 permintaan HTTP dan
+ * kabel 288 core berarti 288 — masing-masing dengan join lima tabel. Itu
+ * kesalahan rancangan API, bukan kesalahan layarnya: endpoint per-kabel
+ * memang belum ada, dan tidak ada jalan lain yang tersedia.
+ *
+ * Diurut per nomor core lalu waktu, supaya layar tidak perlu mengurut ulang
+ * hasil gabungan dari banyak permintaan.
+ */
+export async function riwayatTerminasiKabel(cableId: string) {
+  const rows = await pilihRiwayat()
+    .where(eq(fiberCores.segmentId, cableId))
+    .orderBy(asc(fiberCores.coreNumber), asc(fiberCoreTerminations.createdAt));
+  return rapikanRiwayat(rows);
 }
 
 // ---------------------------------------------------------------------------

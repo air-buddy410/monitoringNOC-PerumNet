@@ -33,6 +33,7 @@ import * as schema from "@/db/schema";
 import * as authSchema from "@/db/auth-schema";
 import { buatOtb, aturKapasitasTray } from "@/server/otb-store";
 import { GET as RIWAYAT } from "@/app/api/v1/ftth/cores/[coreId]/terminations/route";
+import { GET as RIWAYAT_KABEL } from "@/app/api/v1/ftth/cables/[cableId]/terminations/route";
 import {
   buatKabel,
   detailKabel,
@@ -450,6 +451,47 @@ describe("riwayat terminasi", () => {
     expect(terminations[0].sasaran.jenis).toBe("otbPort");
     expect(terminations[0].sasaran.label).toMatch(/Tray 1 port 1/);
     expect(terminations[1].sasaran.label).toMatch(/Tray 1 port 2/);
+  });
+
+  it("riwayat SELURUH kabel datang dalam satu permintaan, terurut per core", async () => {
+    // Layar kabel sempat memanggil endpoint per-core di dalam Promise.all —
+    // kabel 24 core jadi 24 permintaan HTTP, kabel 288 core jadi 288.
+    // Endpoint per-kabel ini yang menggantikannya.
+    const { cores } = await kabel("KBL-9", "feeder");
+    const a = await terminasiCore(
+      { coreId: cores[2].id, coreEnd: "A", otbPortId: portOtb[0].id, reason: "core 3" },
+      "u1",
+    );
+    if (!a.ok) throw new Error(a.error);
+    await lepasTerminasi(a.data.id, "dibongkar", "u1");
+    await terminasiCore(
+      { coreId: cores[0].id, coreEnd: "A", otbPortId: portOtb[1].id, reason: "core 1" },
+      "u1",
+    );
+
+    const res = await RIWAYAT_KABEL(new Request("http://localhost/x"), {
+      params: Promise.resolve({ cableId: (await d().select().from(schema.fiberCableSegments)
+        .where(eq(schema.fiberCableSegments.code, "KBL-9")))[0].id }),
+    });
+    expect(res.status).toBe(200);
+    const { terminations } = await res.json();
+
+    expect(terminations).toHaveLength(2);
+    // Terurut per NOMOR CORE lalu waktu — core 1 dulu, walaupun core 3
+    // diterminasi lebih awal. Layar tidak perlu mengurut ulang.
+    expect(terminations.map((t: { coreNumber: number }) => t.coreNumber)).toEqual([1, 3]);
+    expect(terminations[1]).toMatchObject({ aktif: false, deactivatedReason: "dibongkar" });
+    // `coreId` ikut, supaya baris bisa ditautkan kembali ke barisnya di tabel core.
+    expect(terminations[0].coreId).toBe(cores[0].id);
+  });
+
+  it("kabel tanpa riwayat mengembalikan daftar kosong", async () => {
+    const k = await buatKabel({ code: "KBL-KOSONG", category: "feeder", coreCount: 2 }, "u1");
+    if (!k.ok) throw new Error(k.error);
+    const res = await RIWAYAT_KABEL(new Request("http://localhost/x"), {
+      params: Promise.resolve({ cableId: k.data.id }),
+    });
+    expect((await res.json()).terminations).toEqual([]);
   });
 
   it("core tanpa riwayat mengembalikan daftar kosong, bukan galat", async () => {

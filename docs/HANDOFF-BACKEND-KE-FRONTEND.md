@@ -1066,6 +1066,15 @@ sini.
 Urut dari yang paling lama. `sasaran.label` sudah dirakit di server — jangan
 memanggil endpoint lain sekali per baris untuk mencari nama OTB-nya.
 
+#### GET /api/v1/ftth/cables/:cableId/terminations — cukup login
+
+Riwayat terminasi **seluruh core** dalam satu kabel, satu permintaan. Bentuk
+barisnya sama dengan endpoint per-core, ditambah `coreId` dan `coreNumber`,
+dan sudah terurut per nomor core lalu waktu.
+
+Pakai ini untuk panel riwayat di layar kabel. Memanggil endpoint per-core
+sekali untuk tiap core membuat kabel 288 core menjadi 288 permintaan HTTP.
+
 #### POST /api/v1/ftth/terminations/:id/release — admin/noc
 
 Body `{ reason }`. Melepas terminasi dan mengembalikan portnya jadi `kosong`.
@@ -2135,6 +2144,12 @@ orang mengetik.
 
 ## Riwayat
 
+- **2026-08-22** — **Riwayat terminasi punya endpoint per-KABEL (§17).**
+  Tinjauan kode menemukan layar kabel memanggil endpoint per-core di dalam
+  `Promise.all`: kabel 24 core jadi 24 permintaan HTTP, kabel 288 core jadi
+  288, masing-masing dengan join lima tabel. Kesalahan rancangan API, bukan
+  kesalahan layarnya — endpoint per-kabel memang belum ada. Tugas T-31, bersama
+  debounce kotak cari PPPoE yang belum terpasang.
 - **2026-08-21** — **`formatPanjang` masuk `noc-format.ts`,** setelah tinjauan
   kode menemukan konversi meter→kilometer tersalin di dua komponen. Aturan
   "jangan bikin pembagi sendiri" sudah saya tulis untuk satuan trafik, tapi
