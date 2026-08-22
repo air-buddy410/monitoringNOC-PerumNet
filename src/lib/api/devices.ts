@@ -24,7 +24,7 @@ export function fetchDevices(): Promise<DevicesResponse> {
 // Kontrak respons GET /api/devices/[id]/metrics.
 export interface DeviceMetricsResponse {
   usage: UsagePoint[];
-  temperature: TemperatureReading;
+  temperature: TemperatureReading | null;
   ports: PortBandwidth[];
   updatedAt: string;
 }
