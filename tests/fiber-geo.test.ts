@@ -110,7 +110,7 @@ describe("kabel yang letaknya diketahui", () => {
 
     const p = await petaFiber();
     const a = p.garis.find((g) => g.code === "KBL-A")!;
-    expect(a.dari.jenis).toBe("OTB");
+    expect(a.dari?.jenis).toBe("OTB");
     expect(a.ke).toMatchObject({ jenis: "CLOSURE", code: "CL-1" });
     // KBL-B baru satu ujungnya yang tersambung.
     expect(p.tanpaGeometri.map((t) => t.code)).toContain("KBL-B");

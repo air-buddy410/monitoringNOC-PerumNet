@@ -202,6 +202,48 @@ describe("jalur tersimpan dipakai peta", () => {
   });
 });
 
+describe("kabel berjalur digambar TANPA jangkar", () => {
+  it("jalur tersimpan cukup — tidak perlu satu terminasi pun", async () => {
+    // Ini yang membuat kabel distribusi ke ODP bisa tergambar tanpa menyentuh
+    // port ODP produksi. Di produksi 1.687 port membawa layanan pelanggan;
+    // memakainya untuk kabel turunan akan merusak angka okupansi yang dipakai
+    // orang menjual sambungan.
+    await buatBackbone("kcc", "psg");
+    const [k] = await d().select().from(schema.fiberCableSegments)
+      .where(eq(schema.fiberCableSegments.code, "BB-UJI-144"));
+    await d().update(schema.fiberCableSegments)
+      .set({
+        route: [[115.5896, -8.4498], [115.60, -8.45], [115.6228, -8.4605]],
+        routeSource: "perkiraan-jalan",
+      })
+      .where(eq(schema.fiberCableSegments.id, k.id));
+
+    const peta = await petaFiber();
+    expect(peta.garis).toHaveLength(1);
+    expect(peta.garis[0].koordinat).toHaveLength(3);
+    expect(peta.garis[0].sumberGeometri).toBe("perkiraan-jalan");
+    // Tanpa terminasi, kedua simpulnya memang tidak ada — dan itu `null`,
+    // bukan objek kosong yang menyamar jadi simpul.
+    expect(peta.garis[0].dari).toBeNull();
+    expect(peta.garis[0].ke).toBeNull();
+    expect(peta.garis[0].coreTerpakai).toBe(0);
+    expect(peta.tanpaGeometri).toHaveLength(0);
+  });
+
+  it("jalur CACAT tanpa jangkar tetap tidak digambar", async () => {
+    await buatBackbone("kcc", "psg");
+    const [k] = await d().select().from(schema.fiberCableSegments)
+      .where(eq(schema.fiberCableSegments.code, "BB-UJI-144"));
+    await d().update(schema.fiberCableSegments)
+      .set({ route: [[-8.4498, 115.5896], [-8.4605, 115.6228]], routeSource: "tersurvei" })
+      .where(eq(schema.fiberCableSegments.id, k.id));
+    const peta = await petaFiber();
+    expect(peta.garis).toHaveLength(0);
+    expect(peta.jalurRusak).toHaveLength(1);
+    expect(peta.tanpaGeometri).toHaveLength(1);
+  });
+});
+
 describe("peta tetap menolak menggambar garis antar-POP", () => {
   it("kabel tanpa terminasi TIDAK digambar walau kedua ujungnya tercatat", async () => {
     // Inti seluruh berkas ini. Kolom ujung ditambahkan untuk MENJELASKAN,
