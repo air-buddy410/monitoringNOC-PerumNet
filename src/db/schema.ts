@@ -1312,6 +1312,22 @@ export const fiberCores = pgTable(
     coreNumber: integer("core_number").notNull(),
     /** Tabung/loose tube tempat core ini berada. NULL untuk kabel tanpa tabung. */
     tubeNumber: integer("tube_number"),
+    /**
+     * Posisi core DI DALAM tabungnya — penomoran KEDUA, dan ia wajib ada
+     * karena catatan lapangan memang memakai dua sekaligus.
+     *
+     * Sheet `Alokasi Core 144` menomori tiap serat dua kali: FO ID berurut
+     * 1–144 se-kabel, DAN "TUBE 5 CORE 3" di dalam tabungnya. Model yang
+     * hanya menyimpan satu di antaranya tidak bisa menolak kesalahan yang
+     * sudah ada di sheet itu: `TUBE 5 - CORE 5` muncul dua kali (FO ID 52 dan
+     * 53), dan karena FO ID-nya berbeda, `core_number` yang unik per segmen
+     * meloloskannya.
+     *
+     * Catatan CRM sendiri menyebut nomor core ganda dalam satu tabung
+     * "seharusnya ditolak constraint database". Kolom ini yang membuatnya
+     * bisa. NULL untuk kabel yang memang tidak bertabung.
+     */
+    coreInTube: integer("core_in_tube"),
     /** Diisi dari WARNA_CORE saat kabel dibuat; boleh ditimpa. */
     color: text("color"),
     purpose: text("purpose", { enum: ["feeder", "distribution"] }).notNull(),
@@ -1333,6 +1349,11 @@ export const fiberCores = pgTable(
       table.segmentId,
       table.coreNumber,
     ),
+    // Satu posisi dalam satu tabung, satu core. Parsial supaya kabel tanpa
+    // tabung — dropcore, patch — tetap sah tanpa mengarang nomor tabung.
+    uniqueIndex("fiber_cores_tube_pos_idx")
+      .on(table.segmentId, table.tubeNumber, table.coreInTube)
+      .where(sql`${table.tubeNumber} is not null and ${table.coreInTube} is not null`),
     index("fiber_cores_purpose_idx").on(table.purpose),
   ],
 );

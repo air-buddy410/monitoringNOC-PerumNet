@@ -42,8 +42,11 @@ export const OTB = {
  * yang diuji bentuk jalurnya, bukan volumenya.
  */
 export const KABEL: RencanaKabel[] = [
-  { code: `${AWALAN}KBL-FDR-01`, category: "feeder", coreCount: 24, lengthM: 850, tubeSize: 12 },
-  { code: `${AWALAN}KBL-FDR-02`, category: "feeder", coreCount: 24, lengthM: 1100, tubeSize: 12 },
+  // Bentuk ADSS 144 core yang sebenarnya dipakai backbone: 12 tabung × 12
+  // serat (lihat docs/referensi/kabel-adss-144.json). Dipakai di sini supaya
+  // model diuji pada ukuran nyata, bukan pada kabel mainan.
+  { code: `${AWALAN}KBL-FDR-01`, category: "feeder", coreCount: 144, lengthM: 850, tubeSize: 12 },
+  { code: `${AWALAN}KBL-FDR-02`, category: "feeder", coreCount: 144, lengthM: 1100, tubeSize: 12 },
   { code: `${AWALAN}KBL-DST-01`, category: "distribution", coreCount: 8, lengthM: 350, tubeSize: 8 },
 ];
 

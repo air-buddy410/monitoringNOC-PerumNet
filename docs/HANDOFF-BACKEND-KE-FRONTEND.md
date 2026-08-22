@@ -1008,9 +1008,16 @@ Latar domainnya di `docs/PRD-OTB-CORE-ROUTE-MASTER-SPLITTER.md` §3.
 
 #### POST /api/v1/ftth/cables — admin/noc
 
-Body: `{ code, category, coreCount, name?, fiberType?, lengthM?, purpose?, notes? }`.
+Body: `{ code, category, coreCount, name?, fiberType?, lengthM?, purpose?, tubeSize?, notes? }`.
 Core dibuat sekaligus sebanyak `coreCount`, dalam satu transaksi, lengkap
-dengan warnanya. `purpose` mengisi seluruh core; kalau tidak disebut ia
+dengan warnanya.
+
+**`tubeSize` mengisi penomoran kedua.** Catatan lapangan memakai DUA
+penomoran: nomor serat se-kabel, dan posisinya di dalam tabung ("TUBE 5 CORE
+3"). Kalau `tubeSize` diisi, `tubeNumber` dan `coreInTube` ikut terisi dan
+keduanya dijaga constraint. ADSS 144 core lazimnya `tubeSize: 12`
+(12 tabung × 12 serat) — lihat `docs/referensi/kabel-adss-144.json`.
+Kosongkan untuk kabel yang memang tidak bertabung (dropcore, patch). `purpose` mengisi seluruh core; kalau tidak disebut ia
 mengikuti `category`. Jawaban `201 { id, code, coreCount }`.
 
 `400` body/kategori/serat/`coreCount` tidak sah (1–288). `409` kode sudah dipakai.
@@ -1021,7 +1028,8 @@ mengikuti `category`. Jawaban `201 { id, code, coreCount }`.
 {
   "id": "…", "code": "KBL-FDR-01", "category": "feeder", "lengthM": 3250,
   "cores": [{
-    "id": "…", "coreNumber": 1, "tubeNumber": null,
+    "id": "…", "coreNumber": 1,
+    "tubeNumber": 1, "coreInTube": 1,   // null untuk kabel tanpa tabung
     "color": "biru",            // dari server — jangan dihitung sendiri
     "purpose": "feeder",        // feeder | distribution
     "label": null, "status": "baik", "notes": null,
@@ -1091,7 +1099,7 @@ Lubang yang tertinggal sejak Fase 11, sekarang tertutup. Body:
 punya jalurnya sendiri di `PATCH …/trays/:n`. `400` juga kalau OTB jadi tanpa
 situs **dan** tanpa koordinat.
 
-#### Tujuh hal yang WAJIB benar
+#### Delapan hal yang WAJIB benar
 
 1. **`lengthM` boleh `null`, dan `null` bukan nol.** `null` berarti belum
    diukur. Tampilkan `—`, jangan `0 m`. Ini pelajaran yang sama persis dengan
@@ -1116,11 +1124,18 @@ situs **dan** tanpa koordinat.
    dan tampilkan keadaan terbaru — jangan mencoba ulang otomatis. Dua operator
    yang menekan simpan bersamaan memang harus melihat bahwa yang satu kalah.
 
-6. **Warna core datang dari server.** Jangan menghitungnya dari nomor core.
-   Standarnya berulang tiap 12 dan sebagian vendor memakai urutan sendiri;
-   yang tercetak di kabel selalu lebih benar, dan itu bisa ditimpa di database.
+6. **Warna core datang dari server.** Jangan menghitungnya dari nomor core —
+   dan khususnya jangan dari nomor se-kabel. Warna serat mengikuti POSISINYA
+   DI DALAM TABUNG: serat ke-13 adalah serat pertama tabung 2, jadi ia biru
+   lagi, bukan warna ke-13. Sebagian vendor juga memakai urutan sendiri; yang
+   tercetak di kabel selalu lebih benar, dan itu bisa ditimpa di database.
 
-7. **Core feeder tidak boleh berakhir di port ODP.** Jangan cukup menyembunyi-
+7. **Tampilkan `tubeNumber` dan `coreInTube` berdampingan dengan
+   `coreNumber`.** Teknisi di lapangan menyebut serat sebagai "tabung 5 core
+   3", bukan "core 53". Layar yang cuma menampilkan satu dari dua penomoran
+   memaksa orang menghitung di kepala, sambil berdiri di tiang.
+
+8. **Core feeder tidak boleh berakhir di port ODP.** Jangan cukup menyembunyi-
    kan pilihannya di layar — kirim saja, biarkan server menolak, lalu tampilkan
    pesannya apa adanya. Menyembunyikan opsi membuat operator mengira datanya
    yang salah, bukan aturannya.

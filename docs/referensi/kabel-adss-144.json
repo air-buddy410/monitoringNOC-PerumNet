@@ -1,0 +1,37 @@
+{
+  "_baca": "Spesifikasi kabel ADSS 144 core, dikumpulkan 22 Agustus 2026 untuk mengisi model fiber portal NOC. TIAP ANGKA DIBERI TINGKAT KEYAKINANNYA — jangan memakai yang bertanda `belum-terverifikasi` untuk keputusan teknis tanpa memeriksa datasheet aslinya lebih dulu.",
+  "_kenapa": "Backbone Kecicang–Pesagi memakai kabel ini, dan sheet `Alokasi Core 144` menomori seratnya menurut konstruksi di bawah. Model `fiber_cores` mengikuti bentuk ini, bukan sebaliknya.",
+
+  "konstruksi": {
+    "_keyakinan": "TINGGI — 12 tabung × 12 serat adalah konstruksi baku 144 core loose-tube, dan cocok dengan catatan CRM yang menyebut sheet-nya berisi '144 core, 12 tube'.",
+    "totalSerat": 144,
+    "jumlahTabung": 12,
+    "seratPerTabung": 12,
+    "jenisSerat": "G.652.D",
+    "_catatanJenisSerat": "CCSI menyebut jenis serat opsional mengikuti permintaan pelanggan; G.652.D yang dipakai di jaringan ini."
+  },
+
+  "warna": {
+    "_keyakinan": "TINGGI — urutan 12 warna baku, dipakai untuk tabung MAUPUN serat di dalamnya.",
+    "_penting": "Warna serat mengikuti POSISINYA DI DALAM TABUNG, bukan nomor urut se-kabel. Serat ke-13 adalah serat pertama tabung 2, jadi ia biru lagi.",
+    "urutan": ["biru", "jingga", "hijau", "coklat", "abu-abu", "putih", "merah", "hitam", "kuning", "ungu", "merah muda", "tosca"]
+  },
+
+  "mekanis": {
+    "_keyakinan": "BELUM TERVERIFIKASI. Angka di bawah muncul di ringkasan pencarian web untuk ADSS 144 core, tapi halaman CCSI sendiri menolak diambil (Access Denied), jadi tidak bisa dipastikan angka ini milik CCSI dan bukan vendor lain. TIDAK dipakai model portal; disimpan hanya sebagai titik awal kalau kelak ada yang membandingkan dengan datasheet asli.",
+    "diameterTabung_mm": 2.1,
+    "diameterKabel_mm": 14.3,
+    "beratPerKm_kg": 147,
+    "teganganPasangMaks_N": 1900,
+    "teganganOperasiMaks_N": 3000,
+    "bentangMaks_m": 100
+  },
+
+  "sumber": [
+    "https://www.ccsi.co.id/en/product/ccsi-standard-design-cables-3/  (halaman produk CCSI — menolak diambil otomatis, 22 Agustus 2026)",
+    "https://www.corning.com/catalog/coc/documents/product-family-specifications/0056_NAFTA_AEN.pdf  (Corning SOLO ADSS 12-144, pembanding konstruksi)",
+    "https://americantechsupply.com/product/standard-adss-fiber-optic-cable-144-fiber-count-fiber-optic-cables-afl/  (AFL ADSS 144, pembanding konstruksi)"
+  ],
+
+  "_yangMasihDicari": "Datasheet PDF CCSI yang asli. Kalau ada, ganti blok `mekanis` dengan angkanya dan ubah keyakinannya."
+}

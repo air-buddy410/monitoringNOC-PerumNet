@@ -1,0 +1,2 @@
+ALTER TABLE "fiber_cores" ADD COLUMN "core_in_tube" integer;--> statement-breakpoint
+CREATE UNIQUE INDEX "fiber_cores_tube_pos_idx" ON "fiber_cores" USING btree ("segment_id","tube_number","core_in_tube") WHERE "fiber_cores"."tube_number" is not null and "fiber_cores"."core_in_tube" is not null;
