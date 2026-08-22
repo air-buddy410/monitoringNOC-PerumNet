@@ -1702,6 +1702,56 @@ pekerjaan tampilan — datanya sudah tersedia di endpoint yang disebut, tidak
 ada yang perlu ditunggu dari backend. Tandai ✅ dan pindahkan ke §Selesai
 kalau sudah dikerjakan.
 
+### T-36. Grid optik OLT: sebutkan sumbernya, dan tangani daya pancar kosong
+
+- **Layar:** `/devices/[id]` — `src/components/devices/optical-health.tsx`.
+- **Butuh:** `GET /api/devices/:id/olt-optics` dan `GET /api/devices/:id/live`,
+  keduanya sekarang mengirim dua field baru.
+
+**Apa yang berubah di backend (22 Agustus 2026).**
+
+1. **`OltOpticsResponse.sumber`** bernilai `terukur` · `fixture` ·
+   `belum-ada-data`, dan **`catatan`** terisi saat `belum-ada-data` — sudah
+   berupa kalimat siap tampil. Persis pola `sumber`/`catatan` yang sudah kamu
+   pakai di T-34, jadi `ReportSourceBanner` bisa langsung dipakai ulang.
+
+2. **`PonPortHealth.txPower` sekarang `number | null`.** `null` berarti
+   sensornya tidak menjawab.
+
+**Kenapa ini penting, bukan sekadar rapi.**
+
+Sampai kemarin setiap OLT yang tidak terpetakan ke LibreNMS diisi
+`generateOpticalHealth()` — deret tiruan, tanpa apa pun di payload yang
+mengatakannya. Di produksi itu berarti **`HSGQ-100-Kecicang` menampilkan 4
+port PON dengan daya pancar karangan** (+3,7 dBm dan seterusnya). Perangkat
+itu justru yang diputuskan dibaca lewat konsol CLI dan memang tidak akan
+pernah punya data LibreNMS, jadi karangannya permanen. Sekarang ia mengirim
+`ports: []` dengan `sumber: "belum-ada-data"` dan alasannya.
+
+Keadaan hari ini: **keenam OLT menjawab `belum-ada-data`** — lima karena
+LibreNMS belum melaporkan sensor kelas `dbm` sama sekali, satu karena tidak
+terdaftar di sana. Jadi gridnya memang kosong, dan itu benar.
+
+**Yang diminta:**
+
+1. Tampilkan penanda `sumber` + `catatan` di kepala kartu, seperti T-34.
+   Blok `ports.length === 0` yang sudah ada sekarang punya kalimat yang bisa
+   dipakai — ambil dari `catatan`, jangan tulis sendiri.
+2. **`txPower` null jangan dirender sebagai angka.** Baris ini di
+   `optical-health.tsx` akan menulis `+null`:
+
+   ```tsx
+   +{pon.txPower}
+   ```
+
+   Tampilkan `—` atau "tidak terbaca". **Jangan `?? 0`-kan.** Nol dBm adalah
+   1 mW — pembacaan optik yang sangat kuat. "Tidak diketahui" yang digambar 0
+   tidak sekadar meleset, ia tampil sebagai kondisi terbaik yang mungkin,
+   tepat pada layar yang dipakai orang untuk mencari redaman.
+3. Awalan `+` yang di-hardcode itu juga keliru untuk dBm negatif — daya pancar
+   PON yang sehat justru bernilai negatif (mis. −18,4 dBm). Biarkan tandanya
+   ikut angkanya.
+
 ### T-35. Kartu suhu: bedakan "tidak punya sensor" dari "memuat"
 
 - **Layar:** `/devices/[id]` — `src/components/devices/temperature-card.tsx`.

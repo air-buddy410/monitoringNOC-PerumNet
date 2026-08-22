@@ -178,32 +178,75 @@ export async function getDeviceMetrics(
 
 export interface OltOpticsSnapshot {
   ports: PonPortHealth[];
+  /**
+   * Dari mana angka ini berasal. Aturan yang sama dengan riwayat metrik dan
+   * laporan SLA: yang belum punya sumber MENGAKU belum punya, tidak diganti
+   * angka yang terlihat masuk akal.
+   */
+  sumber: "terukur" | "fixture" | "belum-ada-data";
+  /** Kalimat penjelas siap tampil; terisi hanya saat `belum-ada-data`. */
+  catatan?: string;
   updatedAt: string;
 }
 
 /**
  * Grid kesehatan optik OLT ber-cache. Mode terhubung memetakan sensor kelas
  * `dbm`; daftar ONU per port memerlukan integrasi vendor OLT sehingga
- * kosong dulu. Mode fixture memakai generator berlabel.
+ * kosong dulu.
+ *
+ * **OLT yang tidak terpetakan ke LibreNMS tidak lagi diisi deret tiruan.**
+ * Sampai 22 Agustus 2026 cabang itu jatuh ke `generateOpticalHealth()` dan
+ * `HSGQ-100-Kecicang` menampilkan 4 port PON dengan daya pancar karangan
+ * (+3,7 dBm dan seterusnya), tanpa apa pun di payload yang mengatakannya.
+ * Perangkat itu justru yang diputuskan dibaca lewat konsol CLI dan memang
+ * tidak akan pernah punya data LibreNMS — jadi karangannya permanen.
+ *
+ * Deret tiruan sekarang hanya keluar saat LibreNMS memang belum
+ * dikonfigurasi (pengembangan), dan ia mengaku `fixture`.
  */
 export async function getOltOptics(deviceId: string): Promise<OltOpticsSnapshot> {
   const key = `olt-optics:${deviceId}`;
   const cached = await cache.get<OltOpticsSnapshot>(key);
   if (cached) return cached;
 
-  let ports: PonPortHealth[] | null = null;
-  if (isLibrenmsConfigured()) {
-    const librenmsDeviceId = await resolveLibrenmsDeviceId(deviceId);
-    if (librenmsDeviceId !== null) {
-      const sensors = await getHealthSensors(librenmsDeviceId, "device_dbm");
-      ports = dbmSensorsToOptics(sensors);
-    }
-  }
-
-  const snapshot: OltOpticsSnapshot = {
-    ports: ports ?? generateOpticalHealth(deviceId),
-    updatedAt: new Date().toISOString(),
-  };
+  const snapshot = await bangunOptik(deviceId);
   await cache.set(key, snapshot, METRICS_TTL_SECONDS);
   return snapshot;
+}
+
+async function bangunOptik(deviceId: string): Promise<OltOpticsSnapshot> {
+  const updatedAt = new Date().toISOString();
+
+  if (!isLibrenmsConfigured()) {
+    return {
+      ports: generateOpticalHealth(deviceId),
+      sumber: "fixture",
+      updatedAt,
+    };
+  }
+
+  const librenmsDeviceId = await resolveLibrenmsDeviceId(deviceId);
+  if (librenmsDeviceId === null) {
+    return {
+      ports: [],
+      sumber: "belum-ada-data",
+      catatan:
+        "Perangkat ini tidak terdaftar di LibreNMS, jadi sensor optiknya tidak terbaca. Sebagian OLT memang dibaca lewat konsol CLI, bukan SNMP.",
+      updatedAt,
+    };
+  }
+
+  const ports = dbmSensorsToOptics(
+    await getHealthSensors(librenmsDeviceId, "device_dbm"),
+  );
+  if (ports.length === 0) {
+    return {
+      ports: [],
+      sumber: "belum-ada-data",
+      catatan:
+        "LibreNMS belum melaporkan satu pun sensor optik (kelas dbm) untuk perangkat ini.",
+      updatedAt,
+    };
+  }
+  return { ports, sumber: "terukur", updatedAt };
 }
