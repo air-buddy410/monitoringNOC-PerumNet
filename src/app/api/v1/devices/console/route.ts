@@ -1,14 +1,14 @@
 import { NextResponse } from "next/server";
-import { randomUUID } from "node:crypto";
 import { eq } from "drizzle-orm";
 import { db } from "@/db";
-import { auditLogs, oltDevices } from "@/db/schema";
+import { oltDevices } from "@/db/schema";
 import {
   OltCliError,
   PerintahDitolak,
   jalankanPerintahBaca,
   periksaPerintahBaca,
 } from "@/server/olt-cli";
+import { catatKonsol, terlaluSering } from "@/server/konsol-olt";
 import { withRole } from "@/server/rbac";
 
 export const dynamic = "force-dynamic";
@@ -32,41 +32,6 @@ export const dynamic = "force-dynamic";
  *    lengkap dengan siapa dan perintah apa. Konsol tanpa jejak adalah konsol
  *    yang tidak bisa dipertanggungjawabkan.
  */
-
-const WINDOW_MS = 60_000;
-const MAX_PER_WINDOW = 20;
-const percobaan = new Map<string, { n: number; mulai: number }>();
-
-function terlaluSering(userId: string): boolean {
-  const now = Date.now();
-  const e = percobaan.get(userId);
-  if (!e || now - e.mulai >= WINDOW_MS) {
-    percobaan.set(userId, { n: 1, mulai: now });
-    return false;
-  }
-  e.n += 1;
-  return e.n > MAX_PER_WINDOW;
-}
-
-async function catat(
-  userId: string,
-  userName: string,
-  oltId: string,
-  perintah: string,
-  hasil: "dijalankan" | "ditolak" | "gagal",
-  detail?: string,
-) {
-  await db.insert(auditLogs).values({
-    id: randomUUID(),
-    actorUserId: userId,
-    actorLabel: userName,
-    action: `console.${hasil}`,
-    entityType: "olt_device",
-    entityId: oltId,
-    detail: { perintah, ...(detail ? { detail } : {}) },
-    createdAt: new Date(),
-  });
-}
 
 export const POST = withRole(["admin", "noc"], async (request, user) => {
   let body: { oltId?: string; command?: string };
@@ -95,7 +60,7 @@ export const POST = withRole(["admin", "noc"], async (request, user) => {
     periksaPerintahBaca(command);
   } catch (e) {
     if (e instanceof PerintahDitolak) {
-      await catat(user.id, user.name, oltId, command, "ditolak", e.message);
+      await catatKonsol(user.id, user.name, oltId, command, "ditolak", e.message);
       return NextResponse.json({ error: e.message }, { status: 403 });
     }
     throw e;
@@ -122,14 +87,14 @@ export const POST = withRole(["admin", "noc"], async (request, user) => {
       },
       [command],
     );
-    await catat(user.id, user.name, oltId, command, "dijalankan");
+    await catatKonsol(user.id, user.name, oltId, command, "dijalankan");
     return NextResponse.json(
       { olt: { id: olt.id, name: olt.name }, command, output },
       { headers: { "Cache-Control": "no-store" } },
     );
   } catch (e) {
     const pesan = e instanceof Error ? e.message : String(e);
-    await catat(user.id, user.name, oltId, command, "gagal", pesan);
+    await catatKonsol(user.id, user.name, oltId, command, "gagal", pesan);
     // Kredensial yang belum diisi adalah masalah konfigurasi, bukan galat
     // server — bedanya penting bagi yang membaca layar.
     const status = e instanceof OltCliError && /env var/i.test(pesan) ? 409 : 502;

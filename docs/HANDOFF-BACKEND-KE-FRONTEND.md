@@ -1702,6 +1702,110 @@ pekerjaan tampilan — datanya sudah tersedia di endpoint yang disebut, tidak
 ada yang perlu ditunggu dari backend. Tandai ✅ dan pindahkan ke §Selesai
 kalau sudah dikerjakan.
 
+### T-38. Output konsol mentah: jangan tumpahkan ratusan baris sekaligus
+
+- **Layar:** `/console` — `src/components/operations/console-page.tsx`.
+- **Butuh:** tidak ada endpoint baru. Murni tampilan.
+
+**Masalahnya terukur.** Satu perintah `show gpon onu state` di
+ZTE-C300-102-Pesagi menjawab **21.589 karakter / 356 baris**, dan `<pre>` di
+layar itu menumpahkan semuanya sekaligus.
+
+**Yang diminta:**
+
+1. Beri `<pre>`-nya tinggi tetap dengan gulir sendiri, jangan biarkan halaman
+   ikut memanjang.
+2. Sebutkan ukurannya di kepala panel — mis. "356 baris · 21 KB". Orang perlu
+   tahu apa yang dia hadapi sebelum menggulir.
+3. Kotak **cari di dalam output**, dengan penanda jumlah kecocokan.
+4. Kalau lebih dari ±50 baris, tampilkan sebagian dulu + tombol "Tampilkan
+   semua". Jangan memotong diam-diam — sebutkan berapa yang disembunyikan.
+
+**Yang TIDAK boleh diubah: isinya.** Panel itu sengaja menampilkan jawaban
+perangkat apa adanya supaya bisa ditelusuri — jangan mengurai, merapikan
+kolom, atau membuang baris yang terlihat tidak penting. Yang berubah cuma
+cara menampungnya di layar.
+
+Kalau butuh daftar ONU terurai yang bisa disaring, itu T-37 di bawah — layar
+terpisah, bukan pengganti panel ini.
+
+### T-37. Layar daftar ONU per OLT
+
+- **Layar:** baru. Saran tempat: tab di `/console`, atau di `/devices/[id]`
+  untuk perangkat ber-grup OLT. Pilihanmu.
+- **Butuh:** `POST /api/v1/devices/onu` (baru).
+
+**Kenapa POST dan bukan GET:** endpoint ini MEMBUKA SESI TELNET ke perangkat
+produksi. GET bisa terpicu prefetch peramban atau pratayang tautan, dan itu
+membuka sesi tanpa ada yang memintanya. Panggil dengan `sendJson("POST", …)`,
+jangan `useSWR` bergaya GET.
+
+**Permintaan:**
+
+```jsonc
+{
+  "oltId": "…",            // wajib — dari GET /api/v1/ftth/olts
+  "q": "1/2/3",            // opsional — cocok pada indeks atau port PON
+  "status": "tidak-sehat", // opsional — "tidak-sehat" | "LOS" | "DyingGasp" | "working" | "syncMib"
+  "halaman": 1,
+  "ukuran": 50             // 20 · 50 · 100; di luar itu jatuh ke 50
+}
+```
+
+**Jawaban:**
+
+```jsonc
+{
+  "olt": { "id": "…", "name": "ZTE-C300-102-Pesagi", "vendor": "ZTE" },
+  "perintah": "show gpon onu state",   // tampilkan — orang berhak tahu apa yang dijalankan
+  "ringkas": { "working": 324, "DyingGasp": 15, "LOS": 2 },
+  "total": 341,            // seluruh ONU pada OLT ini
+  "totalTersaring": 17,    // sesudah q + status
+  "halaman": 1,
+  "ukuran": 50,
+  "halamanTerakhir": 1,
+  "baris": [
+    {
+      "indeks": "1/2/3:7",     // apa adanya dari perangkat
+      "ponPort": "1/2/3",
+      "onuId": 7,
+      "adminState": "enable",
+      "omccState": "disable",
+      "phaseState": "LOS",     // working · DyingGasp · LOS · syncMib
+      "keterangan": "1(GPON)",
+      "sehat": false           // hanya `working` yang sehat
+    }
+  ],
+  "takTerurai": []
+}
+```
+
+**Aturan yang mahal kalau dilanggar:**
+
+1. **`ringkas` dihitung dari SELURUH ONU, bukan dari halaman yang tampil.**
+   "2 LOS" harus tetap 2 walau halaman ini tidak memuat satu pun. Jangan
+   hitung ulang dari `baris`.
+2. **`takTerurai` WAJIB ditampilkan kalau terisi** — mis. peringatan "3 baris
+   tidak terbaca". Isinya baris yang jelas-jelas baris ONU tapi gagal diurai.
+   Menyembunyikannya membuat daftar yang kehilangan isi terlihat persis
+   seperti daftar yang utuh. Ini bukan hipotetis: sebelum sisa `--More--`
+   dibersihkan, **15 dari 356 ONU raib tanpa satu galat pun**.
+3. **`keterangan` jangan diberi judul yang menyatakan artinya.** C300
+   menuliskannya `Channel` (`1(GPON)`), C600 menuliskannya `Speed mode`. Beri
+   judul netral seperti "Keterangan".
+4. **HSGQ menjawab 501, dan itu jawaban yang benar — bukan galat kita.**
+   Bodinya memuat `alasan`; tampilkan kalimat itu. HSGQ-G008 tidak punya
+   daftar ONU di vty-nya sama sekali — ditanyakan langsung ke perangkatnya,
+   `show ?` hanya menjawab history, memory, startup-config, version. **Jangan
+   tampilkan daftar kosong**: itu terbaca sebagai "OLT ini tidak punya ONU",
+   yang keliru.
+5. **429 berarti batas laju, dan anggarannya DIBAGI dengan layar konsol** —
+   20 sesi telnet per pengguna per menit untuk keduanya bersama-sama. Jangan
+   memanggil ulang otomatis saat kena 429.
+
+**Skala nyatanya hari ini:** 341 ONU (C300 Pesagi), 369 (C600 Kecicang), 198
+(C600 Abang) — 908 di tiga OLT. Halaman bawaan 50.
+
 ### T-36. Grid optik OLT: sebutkan sumbernya, dan tangani daya pancar kosong
 
 - **Layar:** `/devices/[id]` — `src/components/devices/optical-health.tsx`.
