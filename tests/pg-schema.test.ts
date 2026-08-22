@@ -31,6 +31,8 @@ const REQUIRED_TABLES = [
   "sla_reports",
   "sla_monthly",
   "traffic_monthly",
+  // Riwayat CPU/RAM/suhu
+  "device_metric_samples",
   // OTB (Fase 11)
   "otb",
   "otb_trays",

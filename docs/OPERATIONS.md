@@ -405,6 +405,61 @@ Kedua angka harus sama. Kalau yang pertama > 0 dan yang kedua 0, masalahnya
 dengan menyisipkan baris ke tabel `api_tokens` (`user_id`, `token_hash`,
 `description`, `disabled=0`).
 
+## 11.5b. Riwayat CPU, RAM, dan suhu
+
+Dua tugas berjadwal di `src/server/device-metrics-poll.ts`:
+
+| Kode | Tiap | Kerja |
+|---|---|---|
+| `metrics.poll` | **5 menit** (kolom `scheduled_tasks.interval_sec`) | mencuplik CPU, RAM, dan suhu tiap aset yang punya `librenms_device_id`, ke `device_metric_samples` |
+| `metrics.prune` | 24 jam | membuang cuplikan > 30 hari |
+
+**Kenapa ada.** Portal ini menampilkan grafik riwayat perangkat sejak awal,
+tapi tidak pernah menyimpan riwayatnya — tabel telemetry era SQLite
+dipensiunkan pada Fase 2 dan tidak pernah diganti. Sampai 22 Agustus 2026
+grafiknya diisi `generateHistorySeries()`: bentuknya meyakinkan, angkanya
+tidak pernah diukur. LibreNMS memuat nilai SEKARANG, bukan deretnya; kalau
+tidak dicuplik, ia hilang.
+
+**Kenapa 5 menit, bukan 30 detik seperti trafik.** CPU, RAM, dan suhu berubah
+jauh lebih lambat daripada counter interface. Pada 5 menit, jendela 24 jam
+berisi ~288 cuplikan untuk 96 titik grafik — sudah lebih rapat daripada yang
+bisa dibaca orang. Lebih rapat dari itu hanya menambah baris.
+
+**Yang TIDAK dicuplik, dan itu benar:**
+
+- Aset tanpa `librenms_device_id` — mis. `HSGQ-100-Kecicang`, yang memang
+  tidak mendukung SNMP dan dibaca lewat konsol CLI. Dihitung sebagai
+  `dilewati`, bukan kegagalan.
+- Perangkat yang ketiga metriknya tidak terbaca. Baris yang seluruhnya `NULL`
+  tidak menambah satu pun fakta.
+
+**Metrik yang tidak terbaca disimpan `NULL`, bukan `0`.** Ini bukan detail
+gaya. Garis datar 0% terbaca sebagai "perangkat ini hemat"; yang sebenarnya
+terjadi adalah sensornya tidak menjawab. Aturan yang sama berlaku pada jeda
+trafik dan `averageUptime` di laporan SLA. Perangkat yang MEMANG menganggur
+tetap melaporkan `0` — dan itu tersimpan sebagai `0`.
+
+**Kalau grafik kosong padahal perangkatnya hidup**, urutan periksanya:
+
+```
+# 1. Tugasnya terdaftar dan jalan?
+docker exec perumnet-postgres psql -U perumnet -d perumnet -c \
+  "select code, interval_sec, last_run_at, last_status, run_count, fail_count
+     from scheduled_tasks where code like 'metrics.%';"
+
+# 2. Ada cuplikannya?
+docker exec perumnet-postgres psql -U perumnet -d perumnet -c \
+  "select asset_id, count(*), max(sampled_at)
+     from device_metric_samples group by 1 order by 2 desc limit 10;"
+
+# 3. Kalau kosong semua: asetnya punya librenms_device_id?
+docker exec perumnet-postgres psql -U perumnet -d perumnet -c \
+  "select asset_id, hostname, librenms_device_id from assets order by 1;"
+```
+
+Perangkat yang baru didaftarkan wajar kosong selama 5–10 menit pertama.
+
 ## 11.6. Trafik: pengambilan, privasi, dan batas presisi
 
 Tiga tugas berjadwal di `src/server/traffic.ts`:
