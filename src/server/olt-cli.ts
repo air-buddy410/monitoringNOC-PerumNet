@@ -139,10 +139,23 @@ export const TANDA_MORE = /[ \t]*--More--[ \t]*/g;
  *
  * Semua opsi DITOLAK: perangkat ini tidak butuh echo maupun terminal-type dari
  * kita, dan menjawab dengan benar lebih sederhana daripada mengabaikannya.
- * Mengabaikannya BUKAN pilihan yang aman — terbukti 19 Agustus 2026: tanpa
- * jawaban, HSGQ menerima "show gpon onu detail-info" sebagai
- * "show gpononudetail-info" (spasinya hilang) lalu menolaknya. Perintahnya
- * benar, salurannya yang belum siap.
+ *
+ * **Catatan 22 Agustus 2026 — diagnosis lama di sini KELIRU.** Komentar ini
+ * dulu berbunyi: tanpa jawaban IAC, HSGQ menerima "show gpon onu detail-info"
+ * sebagai "show gpononudetail-info" (spasinya hilang), jadi "perintahnya
+ * benar, salurannya yang belum siap".
+ *
+ * Diuji ulang langsung ke HSGQ-100-Kecicang: `show version` dan `show system`
+ * sampai dengan spasi utuh, jadi salurannya memang sudah beres. Yang tidak
+ * ada adalah perintahnya. `show ?` menjawab hanya `history` dan `version`;
+ * sesudah `enable`, hanya `history`, `memory`, `startup-config`, `version`.
+ * **HSGQ-G008 tidak punya daftar ONU di vty-nya sama sekali** — bukan di mode
+ * biasa, bukan di mode istimewa.
+ *
+ * Spasi yang "hilang" itu ulah pelengkap-otomatis perangkat saat bertemu
+ * token yang tidak dikenalnya, bukan gejala saluran. Jangan pakai gejala itu
+ * lagi sebagai bukti negosiasi telnet gagal — jawaban IAC di bawah tetap
+ * benar, alasannya saja yang perlu diluruskan.
  */
 export function pisahkanIac(bytes: Uint8Array): { teks: Buffer; balas: Buffer } {
   const balas: number[] = [];

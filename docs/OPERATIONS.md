@@ -405,6 +405,63 @@ Kedua angka harus sama. Kalau yang pertama > 0 dan yang kedua 0, masalahnya
 dengan menyisipkan baris ke tabel `api_tokens` (`user_id`, `token_hash`,
 `description`, `disabled=0`).
 
+## 11.4b. Konsol OLT: perintah apa yang benar-benar ada
+
+Diuji langsung ke perangkat 22 Agustus 2026. **Kedua vendor sangat berbeda,
+dan salah satunya tidak bisa apa-apa soal ONU.**
+
+### ZTE (C300 / C600) — 3 perangkat
+
+`show gpon onu state` bekerja dan mengembalikan tabel yang bisa diurai:
+
+```
+OnuIndex   Admin State  OMCC State  Phase State  Channel
+--------------------------------------------------------------
+1/2/1:1     enable       enable      working      1(GPON)
+1/2/3:7     enable       disable     LOS          1(GPON)
+```
+
+Ukurannya nyata: ZTE-C300-102-Pesagi menjawab **377 baris / 21.589 karakter**
+dalam satu perintah. Itu sebabnya layar konsol terasa membanjir.
+
+Dua hal yang harus diingat penguraiannya:
+
+- **Sisa `--More--`.** Penanda halamannya sudah dibuang `TANDA_MORE`, tapi
+  spasi perata yang dikirim perangkat untuk menghapusnya tetap tertinggal —
+  sebagian baris jadi berawalan spasi. Pangkas tiap baris sebelum diurai.
+- `Phase State` bernilai `working` atau `LOS`; `LOS` berarti ONU-nya kehilangan
+  sinyal, dan itu yang dicari orang saat membuka layar ini.
+
+### HSGQ-G008 — 3 perangkat
+
+**Tidak punya daftar ONU di vty sama sekali.** Ditanyakan langsung ke
+perangkatnya:
+
+```
+OLT> show ?
+  history  Display the session command history
+  version  System Version infomation.
+
+OLT> enable
+OLT# show ?
+  history         Display the session command history
+  memory          Memory statistics
+  startup-config  Contentes of startup configuration
+  version         System Version infomation.
+```
+
+Empat perintah, dan tidak satu pun soal ONU — baik di mode biasa maupun
+sesudah `enable`.
+
+**Jangan ulangi diagnosis lama yang keliru.** Sampai 22 Agustus 2026
+`src/server/olt-cli.ts` mencatat bahwa `show gpon onu detail-info` gagal
+karena spasinya hilang di saluran telnet, jadi "perintahnya benar, salurannya
+yang belum siap". Itu salah: `show version` sampai dengan spasi utuh di
+perangkat yang sama. Spasi yang hilang itu ulah pelengkap-otomatis perangkat
+saat bertemu token asing — gejala, bukan sebab. Perintahnya memang tidak ada.
+
+Kalau daftar ONU HSGQ kelak dibutuhkan, jalannya bukan vty ini.
+
 ## 11.5b. Riwayat CPU, RAM, dan suhu
 
 Dua tugas berjadwal di `src/server/device-metrics-poll.ts`:
