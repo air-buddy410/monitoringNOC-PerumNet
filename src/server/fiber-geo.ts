@@ -15,7 +15,7 @@
 // mengirim teknisi ke tempat yang salah dengan keyakinan penuh. Peta yang
 // jujur mengaku tidak tahu jauh lebih berguna daripada peta yang lengkap.
 
-import { and, asc, eq, isNull } from "drizzle-orm";
+import { asc, eq, isNull } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
 import { periksaJalur } from "@/server/jalur-kabel";
 import { db } from "@/db";
@@ -120,7 +120,7 @@ function berkoordinat(j: Jangkar): j is Jangkar & { latitude: number; longitude:
  * tidak pernah keduanya — itu dijaga `closure-store.ts`. Kalau ternyata
  * keduanya ada, trace melaporkannya AMBIGU dan peta ikut menolak menggambar.
  */
-async function jangkarPerUjung(segmentId: string) {
+async function ambilSemuaJangkar(): Promise<Map<string, Record<"A" | "B", Map<string, Jangkar>>>> {
   const terminasi = await db
     .select({
       coreEnd: fiberCoreTerminations.coreEnd,
@@ -137,6 +137,7 @@ async function jangkarPerUjung(segmentId: string) {
       odpRole: odps.role,
       odpLat: odps.latitude,
       odpLon: odps.longitude,
+      segmentId: fiberCores.segmentId,
     })
     .from(fiberCoreTerminations)
     .innerJoin(fiberCores, eq(fiberCores.id, fiberCoreTerminations.coreId))
@@ -145,12 +146,10 @@ async function jangkarPerUjung(segmentId: string) {
     .leftJoin(networkSites, eq(networkSites.id, otb.siteId))
     .leftJoin(odpPorts, eq(odpPorts.id, fiberCoreTerminations.odpPortId))
     .leftJoin(odps, eq(odps.id, odpPorts.odpId))
-    .where(
-      and(
-        eq(fiberCores.segmentId, segmentId),
-        isNull(fiberCoreTerminations.deactivatedAt),
-      ),
-    );
+    // TANPA penyaring segmen: seluruh terminasi diambil sekali, lalu
+    // dikelompokkan di memori. Versi sebelumnya menjalankan kueri ini SEKALI
+    // PER KABEL — pada 497 kabel itu ~1.500 kueri dan 3,7 detik.
+    .where(isNull(fiberCoreTerminations.deactivatedAt));
 
   const silangan = await db
     .select({
@@ -171,23 +170,31 @@ async function jangkarPerUjung(segmentId: string) {
     .where(isNull(fiberCoreSplices.deactivatedAt));
 
   const coreSegmen = await db
-    .select({ id: fiberCores.id })
-    .from(fiberCores)
-    .where(eq(fiberCores.segmentId, segmentId));
-  const milikKita = new Set(coreSegmen.map((c) => c.id));
+    .select({ id: fiberCores.id, segmentId: fiberCores.segmentId })
+    .from(fiberCores);
+  const segmenDariCore = new Map(coreSegmen.map((c) => [c.id, c.segmentId]));
 
-  const per: Record<"A" | "B", Map<string, Jangkar>> = { A: new Map(), B: new Map() };
+  const hasil = new Map<string, Record<"A" | "B", Map<string, Jangkar>>>();
+  const per = (segmentId: string) => {
+    let x = hasil.get(segmentId);
+    if (!x) {
+      x = { A: new Map(), B: new Map() };
+      hasil.set(segmentId, x);
+    }
+    return x;
+  };
 
   for (const t of terminasi) {
     const ujung = t.coreEnd as "A" | "B";
+    const p = per(t.segmentId);
     if (t.otbId) {
       // OTB di dalam situs memakai koordinat situsnya; OTB tiang punya sendiri.
-      per[ujung].set(`OTB:${t.otbId}`, {
+      p[ujung].set(`OTB:${t.otbId}`, {
         jenis: "OTB", id: t.otbId, code: t.otbCode!, name: t.otbName,
         latitude: t.otbLat ?? t.siteLat, longitude: t.otbLon ?? t.siteLon,
       });
     } else if (t.odpId) {
-      per[ujung].set(`ODP:${t.odpId}`, {
+      p[ujung].set(`ODP:${t.odpId}`, {
         jenis: t.odpRole === "MS" ? "MS" : "ODP",
         id: t.odpId, code: t.odpCode!, name: t.odpName,
         latitude: t.odpLat, longitude: t.odpLon,
@@ -200,16 +207,19 @@ async function jangkarPerUjung(segmentId: string) {
       [s.inputCoreId, s.inputCoreEnd],
       [s.outputCoreId, s.outputCoreEnd],
     ] as const) {
-      if (!milikKita.has(coreId)) continue;
-      per[ujung as "A" | "B"].set(`CL:${s.closureId}`, {
+      const segmentId = segmenDariCore.get(coreId);
+      if (!segmentId) continue;
+      per(segmentId)[ujung as "A" | "B"].set(`CL:${s.closureId}`, {
         jenis: "CLOSURE", id: s.closureId, code: s.closureCode,
         name: s.closureName, latitude: s.closureLat, longitude: s.closureLon,
       });
     }
   }
 
-  return per;
+  return hasil;
 }
+
+const JANGKAR_KOSONG: Record<"A" | "B", Map<string, Jangkar>> = { A: new Map(), B: new Map() };
 
 export async function petaFiber() {
   // Dua alias ke tabel yang sama — satu kabel menunjuk DUA situs sekaligus,
@@ -243,8 +253,21 @@ export async function petaFiber() {
     jalurRusak.push({ code, pesan });
   const simpul = new Map<string, Simpul>();
 
+  // Diambil SEKALI untuk seluruh kabel. Sebelum ini tiap kabel memicu tiga
+  // kueri sendiri; pada 497 kabel produksi itu ~1.500 kueri dan 3,7 detik
+  // untuk satu pembukaan peta.
+  const semuaJangkar = await ambilSemuaJangkar();
+  const jumlahTerpasang = new Map<string, number>();
+  for (const row of await db
+    .select({ segmentId: fiberCores.segmentId, id: fiberCoreTerminations.id })
+    .from(fiberCoreTerminations)
+    .innerJoin(fiberCores, eq(fiberCores.id, fiberCoreTerminations.coreId))
+    .where(isNull(fiberCoreTerminations.deactivatedAt))) {
+    jumlahTerpasang.set(row.segmentId, (jumlahTerpasang.get(row.segmentId) ?? 0) + 1);
+  }
+
   for (const k of kabel) {
-    const per = await jangkarPerUjung(k.id);
+    const per = semuaJangkar.get(k.id) ?? JANGKAR_KOSONG;
     const a = [...per.A.values()];
     const b = [...per.B.values()];
 
@@ -295,16 +318,6 @@ export async function petaFiber() {
           });
         }
       }
-      const terpasangJalur = await db
-        .select({ id: fiberCoreTerminations.id })
-        .from(fiberCoreTerminations)
-        .innerJoin(fiberCores, eq(fiberCores.id, fiberCoreTerminations.coreId))
-        .where(
-          and(
-            eq(fiberCores.segmentId, k.id),
-            isNull(fiberCoreTerminations.deactivatedAt),
-          ),
-        );
       garis.push({
         id: k.id,
         code: k.code,
@@ -314,7 +327,7 @@ export async function petaFiber() {
         sumberGeometri: k.routeSource ?? "perkiraan-jalan",
         dari: simpulAtau(a),
         ke: simpulAtau(b),
-        coreTerpakai: terpasangJalur.length,
+        coreTerpakai: jumlahTerpasang.get(k.id) ?? 0,
         coreTotal: k.coreCount,
       });
       continue;
@@ -347,17 +360,6 @@ export async function petaFiber() {
       continue;
     }
 
-    const terpasang = await db
-      .select({ id: fiberCoreTerminations.id })
-      .from(fiberCoreTerminations)
-      .innerJoin(fiberCores, eq(fiberCores.id, fiberCoreTerminations.coreId))
-      .where(
-        and(
-          eq(fiberCores.segmentId, k.id),
-          isNull(fiberCoreTerminations.deactivatedAt),
-        ),
-      );
-
     for (const j of [ja, jb]) {
       simpul.set(`${j.jenis}:${j.id}`, {
         jenis: j.jenis, id: j.id, code: j.code, name: j.name,
@@ -381,7 +383,7 @@ export async function petaFiber() {
       sumberGeometri: "garis-lurus" as const,
       dari: { jenis: ja.jenis, code: ja.code },
       ke: { jenis: jb.jenis, code: jb.code },
-      coreTerpakai: terpasang.length,
+      coreTerpakai: jumlahTerpasang.get(k.id) ?? 0,
       coreTotal: k.coreCount,
     });
   }
