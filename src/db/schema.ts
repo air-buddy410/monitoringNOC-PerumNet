@@ -1556,3 +1556,43 @@ export const fiberCoreSplices = pgTable(
     ),
   ],
 );
+
+/**
+ * Cuplikan CPU, RAM, dan suhu per perangkat.
+ *
+ * Ada karena portal ini menampilkan grafik riwayat tapi tidak pernah
+ * menyimpan riwayatnya: tabel telemetry era SQLite dipensiunkan pada Fase 2
+ * dan tidak pernah diganti, sehingga `/api/devices/:id/metrics-history`
+ * mengarang deretnya sampai 22 Agustus 2026. LibreNMS memuat nilai SEKARANG,
+ * bukan deretnya — jadi kalau tidak dicuplik, ia hilang.
+ *
+ * Bentuknya sengaja meniru `traffic_samples`, yang sudah terbukti: kunci
+ * gabungan (perangkat, waktu), pemangkasan berjadwal, dan tanpa kolom
+ * turunan.
+ *
+ * **Ketiga nilainya boleh NULL, dan itu intinya.** Sebagian perangkat hanya
+ * melaporkan salah satu — LibreNMS bisa memberi CPU tanpa memori. Menyimpan
+ * yang tidak terbaca sebagai 0 menghasilkan garis datar 0% yang terbaca
+ * sebagai "hemat", bukan "tidak terbaca". Baris yang KETIGA nilainya null
+ * tidak ditulis sama sekali.
+ */
+export const deviceMetricSamples = pgTable(
+  "device_metric_samples",
+  {
+    assetId: text("asset_id")
+      .notNull()
+      .references(() => assets.assetId, { onDelete: "cascade" }),
+    sampledAt: timestamp("sampled_at", { withTimezone: true }).notNull(),
+    cpuPercent: doublePrecision("cpu_percent"),
+    ramPercent: doublePrecision("ram_percent"),
+    tempCelsius: doublePrecision("temp_celsius"),
+  },
+  (table) => [
+    primaryKey({ columns: [table.assetId, table.sampledAt] }),
+    // Deret satu perangkat, terbaru dulu — bentuk baca satu-satunya.
+    index("device_metric_samples_asset_idx").on(
+      table.assetId,
+      table.sampledAt.desc(),
+    ),
+  ],
+);

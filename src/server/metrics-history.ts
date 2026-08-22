@@ -15,9 +15,14 @@
 // Yang belum punya sumber mengaku belum punya sumber — tidak diganti angka
 // yang terlihat masuk akal.
 
-import { and, eq, gte, sql } from "drizzle-orm";
+import { and, eq, gte, isNotNull, sql } from "drizzle-orm";
 import { db } from "@/db";
-import { assets, trafficInterfaces, trafficSamples } from "@/db/schema";
+import {
+  assets,
+  deviceMetricSamples,
+  trafficInterfaces,
+  trafficSamples,
+} from "@/db/schema";
 import { isLibrenmsConfigured } from "@/server/librenms/client";
 import { generateHistorySeries, type HistoryMetric } from "@/lib/mock-metrics";
 
@@ -49,17 +54,27 @@ export interface HasilRiwayat {
 const JUMLAH_TITIK = 96;
 
 /**
- * Metrik yang BELUM punya sumber tersimpan, beserta alasannya.
+ * Kolom `device_metric_samples` untuk tiap metrik non-bandwidth.
  *
- * LibreNMS adalah sumber langsung untuk ketiganya, tapi portal ini tidak
- * menyimpan riwayatnya — tabel telemetry era SQLite dipensiunkan pada Fase 2
- * dan tidak pernah diganti. Menyebutnya di sini supaya layar bisa menjelaskan
- * kekosongannya, bukan menampilkan grafik datar yang tak bisa dijelaskan.
+ * Sampai 22 Agustus 2026 ketiganya menjawab "belum ada sumber": LibreNMS
+ * memuat nilai sekarang, dan portal ini tidak pernah menyimpan deretnya.
+ * Sejak `metrics.poll` berjalan, sumbernya ada — dan peta ini yang
+ * menghubungkan nama metrik di URL ke kolom yang menyimpannya.
  */
-const TANPA_SUMBER: Partial<Record<HistoryMetric, string>> = {
-  cpu: "Riwayat CPU belum disimpan portal ini. LibreNMS memuat nilai sekarang, bukan deretnya.",
-  ram: "Riwayat RAM belum disimpan portal ini. LibreNMS memuat nilai sekarang, bukan deretnya.",
-  suhu: "Riwayat suhu belum disimpan portal ini. LibreNMS memuat nilai sekarang, bukan deretnya.",
+const KOLOM_METRIK = {
+  cpu: deviceMetricSamples.cpuPercent,
+  ram: deviceMetricSamples.ramPercent,
+  suhu: deviceMetricSamples.tempCelsius,
+} as const;
+
+/**
+ * Kalimat saat cuplikannya memang belum ada — perangkat baru, atau worker
+ * belum sempat satu putaran pun pada rentang yang diminta.
+ */
+const BELUM_TERCUPLIK: Record<keyof typeof KOLOM_METRIK, string> = {
+  cpu: "Belum ada cuplikan CPU pada rentang ini.",
+  ram: "Belum ada cuplikan RAM pada rentang ini.",
+  suhu: "Belum ada cuplikan suhu pada rentang ini. Sebagian perangkat memang tidak punya sensor suhu.",
 };
 
 function fixture(metric: HistoryMetric, hours: number, deviceId: string): HasilRiwayat {
@@ -171,6 +186,78 @@ async function bandwidthTerukur(
   return { points, terukur };
 }
 
+/**
+ * Deret CPU/RAM/suhu dari `device_metric_samples`.
+ *
+ * Rata-rata per ember, bukan nilai terakhir: pada rentang 24 jam satu ember
+ * memuat belasan cuplikan, dan memilih salah satunya membuat lonjakan
+ * sesaat menentukan seluruh ember — atau hilang sama sekali, tergantung
+ * cuplikan mana yang kebetulan terpilih.
+ *
+ * Ember tanpa baris bernilai `null`, bukan 0. Perangkat yang mati selama
+ * enam jam harus menggambar enam jam kosong; garis 0% akan terbaca sebagai
+ * "menganggur", yaitu kebalikan dari yang sebenarnya terjadi.
+ */
+async function cuplikanTerukur(
+  assetId: string,
+  metric: keyof typeof KOLOM_METRIK,
+  hours: number,
+  now: Date,
+): Promise<{ points: TitikRiwayat[]; terukur: number }> {
+  const kolom = KOLOM_METRIK[metric];
+  const lebarDetik = Math.max(60, Math.round((hours * 3600) / JUMLAH_TITIK));
+  const sejak = new Date(now.getTime() - hours * 3_600_000);
+
+  const rows = await db
+    .select({
+      ember: sql<string>`date_bin(make_interval(secs => ${lebarDetik}), ${deviceMetricSamples.sampledAt}, ${sejak})`,
+      nilai: sql<number>`avg(${kolom})`,
+    })
+    .from(deviceMetricSamples)
+    .where(
+      and(
+        eq(deviceMetricSamples.assetId, assetId),
+        // Mempersempit pindaian. Kebenarannya TIDAK bergantung pada baris
+        // ini: cuplikan yang lebih tua dari `sejak` di-bin ke ember sebelum
+        // `sejak`, dan gelung di bawah tidak pernah menanyakannya.
+        gte(deviceMetricSamples.sampledAt, sejak),
+        // Baris yang metrik INI-nya null tetap ada — perangkat itu melaporkan
+        // metrik lain. Ini dan penjaga `r.nilai !== null` di bawah sengaja
+        // rangkap: uji mutasi 22 Agustus 2026 menunjukkan MASING-MASING bisa
+        // dibuang tanpa satu tes pun gagal, karena yang satu menutupi yang
+        // lain — tapi membuang KEDUANYA membuat RAM yang tak terbaca digambar
+        // 0%. Jangan menghapus salah satunya sambil menganggap tes menjaga.
+        isNotNull(kolom),
+      ),
+    )
+    .groupBy(sql`1`);
+
+  const perEmber = new Map<number, number>();
+  for (const r of rows) {
+    const t = new Date(r.ember).getTime();
+    // `Number(null)` adalah 0 — itulah sebabnya null disaring, bukan dipetakan.
+    if (!Number.isNaN(t) && r.nilai !== null) perEmber.set(t, Number(r.nilai));
+  }
+
+  const lebarMs = lebarDetik * 1000;
+  const points: TitikRiwayat[] = [];
+  let terukur = 0;
+  for (let i = 0; i < JUMLAH_TITIK; i += 1) {
+    const t = sejak.getTime() + i * lebarMs;
+    const nilai = perEmber.get(t);
+    if (nilai === undefined) {
+      points.push({ time: new Date(t).toISOString(), value: null });
+    } else {
+      points.push({
+        time: new Date(t).toISOString(),
+        value: Math.round(nilai * 10) / 10,
+      });
+      terukur += 1;
+    }
+  }
+  return { points, terukur };
+}
+
 export async function riwayatMetrik(opsi: {
   assetId: string;
   metric: HistoryMetric;
@@ -181,11 +268,25 @@ export async function riwayatMetrik(opsi: {
   const now = opsi.now ?? new Date();
 
   if (metric !== "bandwidth") {
+    const cuplikan = await cuplikanTerukur(assetId, metric, hours, now);
+    // Sama seperti bandwidth: "terukur" hanya sah kalau ada yang terukur.
+    // Perangkat yang terdaftar tapi belum pernah tercuplik menghasilkan deret
+    // yang seluruhnya null — menyebutnya terukur berarti mengaku mengukur
+    // sesuatu yang tidak pernah diukur.
+    if (cuplikan.terukur > 0) {
+      return {
+        metric,
+        hours,
+        sumber: "terukur",
+        points: cuplikan.points,
+        titikTerukur: cuplikan.terukur,
+      };
+    }
     // Di pengembangan tanpa LibreNMS, deret tiruan tetap dikirim supaya layar
     // grafik bisa dikerjakan — dan ia MENGAKU `fixture`. Aturan yang sama
     // dengan laporan SLA.
     if (!isLibrenmsConfigured()) return fixture(metric, hours, assetId);
-    return kosong(metric, hours, TANPA_SUMBER[metric]!, now);
+    return kosong(metric, hours, BELUM_TERCUPLIK[metric], now);
   }
 
   const [aset] = await db

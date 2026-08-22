@@ -1702,6 +1702,48 @@ pekerjaan tampilan — datanya sudah tersedia di endpoint yang disebut, tidak
 ada yang perlu ditunggu dari backend. Tandai ✅ dan pindahkan ke §Selesai
 kalau sudah dikerjakan.
 
+### T-35. Kartu suhu: bedakan "tidak punya sensor" dari "memuat"
+
+- **Layar:** `/devices/[id]` — `src/components/devices/temperature-card.tsx`.
+- **Butuh:** tidak ada endpoint baru. Yang berubah cuma tipenya.
+
+**Apa yang berubah di backend (22 Agustus 2026).**
+`DeviceMetricsResponse.temperature` sekarang `TemperatureReading | null`.
+Sebelumnya perangkat tanpa sensor suhu dikirim sebagai
+`{ celsius: 0, status: "normal" }` — nol derajat, berlencana hijau "Normal".
+Itu bukan pembacaan yang meleset; itu pembacaan yang **tidak pernah ada**,
+ditampilkan sebagai kabar baik. Banyak switch akses memang tidak punya sensor
+suhu sama sekali.
+
+**Kenapa ini tugasmu.** Kartunya sudah menjaga nilai kosong:
+
+```tsx
+if (!reading) {
+  return <div …>Memuat metrik…</div>;
+}
+```
+
+Jadi tidak ada yang pecah — tapi sekarang kalimatnya salah. Perangkat tanpa
+sensor akan berbunyi **"Memuat metrik…" selamanya**, dan orang akan menunggu
+sesuatu yang tidak akan pernah datang. "Sedang dimuat" dan "tidak ada
+sensornya" adalah dua keadaan berbeda dan harus terbaca berbeda.
+
+**Yang diminta:**
+
+1. Pisahkan dua keadaan itu. Selama `metrics` belum ada → "Memuat metrik…".
+   Kalau `metrics` sudah ada tapi `metrics.temperature === null` → kalimat
+   yang menjelaskan, mis. *"Perangkat ini tidak melaporkan sensor suhu."*
+2. **Jangan menampilkan angka apa pun** pada keadaan kedua — tidak `0`, tidak
+   `—°C` yang terlihat seperti bacaan. Tidak ada lencana status: `normal` /
+   `tinggi` / `kritis` semuanya adalah klaim tentang suhu yang tidak diketahui.
+3. Ambang `Tinggi ≥ … · Kritis ≥ …` di kaki kartu boleh tetap ditampilkan
+   atau disembunyikan — pilihanmu, asal tidak terbaca sebagai penilaian atas
+   perangkat ini.
+
+**Jangan** menutupnya dengan `?? 0` di frontend. Itu persis kesalahan yang
+baru saja dicabut dari backend, dan memindahkannya satu lapis ke atas membuat
+ia lebih sulit ditemukan, bukan hilang.
+
 ### ✅ T-34. Grafik riwayat perangkat mengaku sumbernya — frontend selesai 2026-08-22
 
 - **Layar:** `/devices/[id]` — `src/components/devices/history-chart.tsx`.
@@ -1738,11 +1780,29 @@ kalau sudah dikerjakan.
 |---|---|---|
 | `bandwidth` | router distribusi | **terukur** — dari `traffic_samples` |
 | `bandwidth` | 6 OLT | `belum-ada-data` — belum punya interface uplink terdaftar |
-| `cpu`, `ram`, `suhu` | semua | `belum-ada-data` — portal ini tidak menyimpan riwayatnya |
+| `cpu`, `ram`, `suhu` | yang ada di LibreNMS | **terukur** — dari `device_metric_samples`, sejak 22 Agustus 2026 |
+| `cpu`, `ram`, `suhu` | HSGQ-100-Kecicang | `belum-ada-data` — tidak mendukung SNMP, dibaca lewat konsol CLI |
+| `suhu` | perangkat tanpa sensor suhu | `belum-ada-data` — memang tidak punya sensornya |
 
-Jadi sebagian besar grafik akan **kosong dengan penjelasan**. Itu benar, dan
-lebih baik daripada sebelumnya: sampai 22 Agustus semuanya berisi angka yang
-tidak pernah diukur, tanpa ada yang bisa membedakan.
+**Yang berubah 22 Agustus:** CPU, RAM, dan suhu sekarang punya sumber
+tersimpan. Pekerjaan berjadwal `metrics.poll` mencuplik ketiganya tiap 5 menit
+ke tabel `device_metric_samples`, dan `metrics.prune` membuang yang lebih tua
+dari 30 hari. Sebelum ini ketiganya selalu menjawab `belum-ada-data`.
+
+Konsekuensi untuk layar: **grafik baru terisi setelah worker berjalan
+beberapa putaran.** Perangkat yang baru didaftarkan akan kosong selama
+5–10 menit pertama, dan itu benar — bukan bug. Rentang 24 jam baru penuh
+setelah sehari.
+
+Sisanya tetap **kosong dengan penjelasan**. Itu benar, dan lebih baik daripada
+sebelumnya: sampai 22 Agustus semuanya berisi angka yang tidak pernah diukur,
+tanpa ada yang bisa membedakan.
+
+**Satu jebakan yang khusus mengenai suhu:** kartu suhu di layar perangkat
+(bukan grafik ini) masih memakai `sensorsToTemperature(sensors) ?? { celsius:
+0, status: "normal" }` — perangkat tanpa sensor suhu ditampilkan **0 °C
+"normal"**. Itu kesalahan yang sama dengan `?? 0` di atas, dan sudah dicatat
+untuk diperbaiki di sisi backend; jangan menirunya di grafik.
 
 **Implementasi frontend selesai:** `history-chart.tsx` menampilkan banner
 sumber, jumlah titik terukur, dan `catatan` dari server. Nilai `null` tetap

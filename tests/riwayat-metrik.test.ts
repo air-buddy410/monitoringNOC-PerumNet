@@ -124,13 +124,90 @@ describe("bandwidth dari pengukuran", () => {
   });
 });
 
-describe("metrik yang belum punya sumber", () => {
+/** Cuplikan CPU/RAM/suhu tiap 5 menit selama `menit` terakhir. */
+async function isiCuplikan(
+  assetId: string,
+  menit: number,
+  nilai: { cpu?: number | null; ram?: number | null; suhu?: number | null },
+) {
+  const baris = [];
+  for (let m = menit; m >= 0; m -= 5) {
+    baris.push({
+      assetId,
+      sampledAt: new Date(SEKARANG.getTime() - m * 60_000),
+      cpuPercent: nilai.cpu ?? null,
+      ramPercent: nilai.ram ?? null,
+      tempCelsius: nilai.suhu ?? null,
+    });
+  }
+  await d().insert(schema.deviceMetricSamples).values(baris);
+}
+
+describe("cpu, ram, dan suhu dari cuplikan tersimpan", () => {
+  it("membaca device_metric_samples dan mengaku terukur", async () => {
+    await isiCuplikan("rtr", 120, { cpu: 42, ram: 71, suhu: 38 });
+    const harap = { cpu: 42, ram: 71, suhu: 38 };
+    for (const metric of ["cpu", "ram", "suhu"] as const) {
+      const h = await riwayatMetrik({ assetId: "rtr", metric, hours: 24, now: SEKARANG });
+      expect(h.sumber, metric).toBe("terukur");
+      expect(h.titikTerukur, metric).toBeGreaterThan(0);
+      const terisi = h.points.filter((p) => p.value !== null);
+      expect(terisi[0].value, metric).toBeCloseTo(harap[metric], 1);
+    }
+  });
+
+  it("jeda cuplikan jadi null, BUKAN nol", async () => {
+    // Dua jam terakhir saja; sisa jendela 24 jam kosong. Perangkat yang mati
+    // enam jam harus menggambar enam jam kosong — garis 0% terbaca sebagai
+    // "menganggur", kebalikan dari yang terjadi.
+    await isiCuplikan("rtr", 120, { cpu: 55 });
+    const h = await riwayatMetrik({ assetId: "rtr", metric: "cpu", hours: 24, now: SEKARANG });
+    expect(h.points.filter((p) => p.value === null).length).toBeGreaterThan(0);
+    expect(h.points.some((p) => p.value === 0)).toBe(false);
+  });
+
+  it("metrik yang null tidak ikut dirata-rata sebagai nol", async () => {
+    // Perangkat ini melaporkan CPU tapi tidak RAM — barisnya ada, kolom RAM-nya
+    // null. Kalau null ikut agregasi sebagai 0, rata-ratanya jatuh ke bawah.
+    await isiCuplikan("rtr", 120, { cpu: 80, ram: null });
+    const cpu = await riwayatMetrik({ assetId: "rtr", metric: "cpu", hours: 24, now: SEKARANG });
+    expect(cpu.sumber).toBe("terukur");
+    expect(cpu.points.filter((p) => p.value !== null)[0].value).toBeCloseTo(80, 1);
+    // RAM-nya harus mengaku belum ada, bukan menggambar 0%.
+    const ram = await riwayatMetrik({ assetId: "rtr", metric: "ram", hours: 24, now: SEKARANG });
+    expect(ram.sumber).toBe("belum-ada-data");
+    expect(ram.points.every((p) => p.value === null)).toBe(true);
+  });
+
+  it("cuplikan perangkat lain tidak bocor ke perangkat ini", async () => {
+    await isiCuplikan("olt", 120, { cpu: 90 });
+    const h = await riwayatMetrik({ assetId: "rtr", metric: "cpu", hours: 24, now: SEKARANG });
+    expect(h.sumber).toBe("belum-ada-data");
+    expect(h.points.every((p) => p.value === null)).toBe(true);
+  });
+
+  it("cuplikan di luar rentang jam yang diminta tidak ikut", async () => {
+    // Hanya cuplikan berumur 20–24 jam; permintaan 6 jam harus kosong.
+    await d().insert(schema.deviceMetricSamples).values({
+      assetId: "rtr",
+      sampledAt: new Date(SEKARANG.getTime() - 22 * 3_600_000),
+      cpuPercent: 65, ramPercent: null, tempCelsius: null,
+    });
+    const enam = await riwayatMetrik({ assetId: "rtr", metric: "cpu", hours: 6, now: SEKARANG });
+    expect(enam.sumber).toBe("belum-ada-data");
+    const duaEmpat = await riwayatMetrik({ assetId: "rtr", metric: "cpu", hours: 24, now: SEKARANG });
+    expect(duaEmpat.sumber).toBe("terukur");
+    expect(duaEmpat.titikTerukur).toBe(1);
+  });
+});
+
+describe("metrik yang belum punya cuplikan", () => {
   it("cpu, ram, dan suhu mengaku belum ada data — bukan angka karangan", async () => {
     for (const metric of ["cpu", "ram", "suhu"] as const) {
       const h = await riwayatMetrik({ assetId: "rtr", metric, hours: 24, now: SEKARANG });
       expect(h.sumber, metric).toBe("belum-ada-data");
       expect(h.points.every((p) => p.value === null), metric).toBe(true);
-      expect(h.catatan, metric).toMatch(/LibreNMS/);
+      expect(h.catatan, metric).toMatch(/[Bb]elum ada cuplikan/);
     }
   });
 

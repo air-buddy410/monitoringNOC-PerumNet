@@ -38,7 +38,7 @@ const SERIES_MAX_POINTS = 30;
 
 export interface DeviceMetricsSnapshot {
   usage: UsagePoint[];
-  temperature: TemperatureReading;
+  temperature: TemperatureReading | null;
   ports: PortBandwidth[];
   updatedAt: string;
 }
@@ -125,10 +125,11 @@ async function buildLibrenmsMetrics(
 
   return {
     usage,
-    temperature: sensorsToTemperature(sensors) ?? {
-      celsius: 0,
-      status: "normal",
-    },
+    // `null`, bukan 0 °C "normal". Perangkat tanpa sensor suhu — dan banyak
+    // switch akses memang tidak punya — akan ditampilkan seolah terukur 0
+    // derajat dan sehat. Itu bukan pembacaan yang meleset, itu pembacaan yang
+    // tidak pernah ada. Aturan yang sama dengan CPU/RAM dan jeda trafik.
+    temperature: sensorsToTemperature(sensors),
     ports: portBandwidth,
     updatedAt: new Date().toISOString(),
   };
