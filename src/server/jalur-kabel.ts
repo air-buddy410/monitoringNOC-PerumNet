@@ -158,3 +158,41 @@ export function duplikatBerurutan(titik: Titik[]): number {
   }
   return n;
 }
+
+/**
+ * Sambungkan jalur hasil mesin rute ke koordinat jangkar yang sebenarnya.
+ *
+ * Mesin rute MENEMPELKAN titik awal dan akhir ke jalan terdekat. Untuk
+ * Kecicang–Pesagi pergeserannya belasan meter; untuk perangkat yang berdiri
+ * jauh dari jalan bisa jauh lebih besar. Kalau dibiarkan, garis di peta
+ * berhenti di pinggir jalan dan tidak menyentuh penanda perangkatnya — dan
+ * orang akan mengira ada yang salah dengan datanya.
+ *
+ * Yang dilakukan di sini bukan mengarang: ruas pendek dari perangkat ke jalan
+ * memang ada di lapangan (drop dari rak ke tiang pertama). Ia ditambahkan
+ * hanya kalau jaraknya berarti — menambah titik yang berimpit justru membuat
+ * deretnya kotor.
+ */
+export function sambungKeJangkar(
+  awal: Titik,
+  rute: Titik[],
+  akhir: Titik,
+  ambangMeter = 5,
+): Titik[] {
+  const keluar = [...rute];
+  if (keluar.length === 0) return [awal, akhir];
+  if (jarakMeter(awal, keluar[0]) > ambangMeter) keluar.unshift(awal);
+  if (jarakMeter(akhir, keluar[keluar.length - 1]) > ambangMeter) keluar.push(akhir);
+  return keluar;
+}
+
+/**
+ * Seberapa jauh mesin rute menggeser sebuah titik ke jalan terdekat.
+ *
+ * Dilaporkan, bukan disembunyikan: pergeseran besar berarti perangkatnya jauh
+ * dari jalan mana pun, dan jalur yang dihitung untuknya patut lebih diragukan.
+ */
+export function pergeseranTempel(jangkar: Titik, rute: Titik[]): number {
+  if (rute.length === 0) return 0;
+  return Math.round(jarakMeter(jangkar, rute[0]));
+}

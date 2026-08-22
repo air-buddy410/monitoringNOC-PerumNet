@@ -10,6 +10,8 @@
 import { describe, expect, it } from "vitest";
 import {
   JalurTidakSah,
+  pergeseranTempel,
+  sambungKeJangkar,
   dariGeoJSON,
   dariGpx,
   duplikatBerurutan,
@@ -138,5 +140,48 @@ describe("duplikatBerurutan", () => {
   it("menghitung titik berurutan yang identik", () => {
     expect(duplikatBerurutan([KCC, KCC, PSG])).toBe(1);
     expect(duplikatBerurutan([KCC, PSG])).toBe(0);
+  });
+});
+
+describe("sambungKeJangkar", () => {
+  // Mesin rute MENEMPELKAN ujung ke jalan terdekat. Kalau dibiarkan, garis di
+  // peta berhenti di pinggir jalan dan tidak menyentuh penanda perangkatnya.
+  const jalanDekatKcc: [number, number] = [115.589759, -8.449934];
+  const jalanDekatPsg: [number, number] = [115.62291, -8.460334];
+
+  it("menyambungkan ujung yang tergeser ke koordinat perangkat", () => {
+    const hasil = sambungKeJangkar(KCC, [jalanDekatKcc, jalanDekatPsg], PSG);
+    expect(hasil).toHaveLength(4);
+    expect(hasil[0]).toEqual(KCC);
+    expect(hasil[hasil.length - 1]).toEqual(PSG);
+  });
+
+  it("TIDAK menambah titik yang praktis berimpit", () => {
+    // Menambah titik berjarak sentimeter cuma mengotori deret tanpa mengubah
+    // apa pun yang terlihat.
+    const hasil = sambungKeJangkar(KCC, [KCC, PSG], PSG);
+    expect(hasil).toHaveLength(2);
+  });
+
+  it("rute kosong jatuh ke dua jangkar, bukan deret kosong", () => {
+    expect(sambungKeJangkar(KCC, [], PSG)).toEqual([KCC, PSG]);
+  });
+
+  it("hasilnya lolos periksaJalur", () => {
+    const hasil = sambungKeJangkar(KCC, [jalanDekatKcc, jalanDekatPsg], PSG);
+    expect(() => periksaJalur(hasil)).not.toThrow();
+  });
+});
+
+describe("pergeseranTempel", () => {
+  it("mengukur seberapa jauh ujung digeser ke jalan", () => {
+    const geser = pergeseranTempel(KCC, [[115.589759, -8.449934], PSG]);
+    // Pergeseran Kecicang pada rute nyata belasan meter.
+    expect(geser).toBeGreaterThan(0);
+    expect(geser).toBeLessThan(100);
+  });
+
+  it("rute kosong berarti nol, bukan NaN", () => {
+    expect(pergeseranTempel(KCC, [])).toBe(0);
   });
 });
