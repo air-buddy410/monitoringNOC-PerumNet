@@ -94,9 +94,12 @@ async function buildLibrenmsMetrics(
 
   let usage = liveUsageSeries.get(assetId) ?? [];
   if (cpu !== null || ram !== null) {
+    // Nilai yang tidak terbaca disimpan apa adanya sebagai `null`, bukan 0.
+    // Perangkat yang melaporkan CPU tapi tidak memori akan menggambar garis
+    // RAM yang putus — bukan garis datar 0% yang terbaca sebagai "hemat".
     usage = [
       ...usage.slice(-(SERIES_MAX_POINTS - 1)),
-      { time: now, cpu: cpu ?? 0, ram: ram ?? 0 },
+      { time: now, cpu, ram },
     ];
     liveUsageSeries.set(assetId, usage);
   }

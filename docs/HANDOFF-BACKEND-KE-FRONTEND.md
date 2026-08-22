@@ -1724,6 +1724,14 @@ kalau sudah dikerjakan.
 3. **`titikTerukur`** menyebut berapa titik yang benar-benar punya
    pengukuran. Berguna untuk "12 dari 96 titik terukur".
 
+4. **Grafik CPU/RAM juga ikut**, di `src/components/devices/cpu-ram-chart.tsx`.
+   `UsagePoint.cpu` dan `.ram` kini `number | null` — sebelumnya nilai yang
+   tidak terbaca disimpan sebagai `0`, dan garis datar 0% terbaca sebagai
+   "perangkat ini nyaris tidak memakai memori" alih-alih "sensornya tidak
+   menjawab". Recharts sudah menggambar putus garis dengan benar; yang perlu
+   diperbaiki cuma `formatter={(value) => [\`${value}%\`]}` yang akan menulis
+   `null%` kalau tooltip-nya sampai terpanggil pada titik kosong.
+
 **Keadaan hari ini, supaya tidak dikira bug:**
 
 | Metrik | Perangkat | Sumber |
