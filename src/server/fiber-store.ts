@@ -9,6 +9,7 @@
 
 import { randomUUID } from "node:crypto";
 import { and, asc, eq, isNull, sql } from "drizzle-orm";
+import { alias } from "drizzle-orm/pg-core";
 import { db } from "@/db";
 import {
   WARNA_CORE,
@@ -16,6 +17,7 @@ import {
   fiberCableSegments,
   fiberCoreTerminations,
   fiberCores,
+  networkSites,
   odpPorts,
   odps,
   otb,
@@ -93,6 +95,13 @@ async function catat(
 // Baca
 // ---------------------------------------------------------------------------
 
+/**
+ * Dua alias ke `network_sites` — satu kabel menunjuk DUA situs sekaligus,
+ * jadi satu join tidak cukup.
+ */
+const situsA = alias(networkSites, "situs_a");
+const situsB = alias(networkSites, "situs_b");
+
 export async function daftarKabel() {
   return db
     .select({
@@ -104,6 +113,10 @@ export async function daftarKabel() {
       coreCount: fiberCableSegments.coreCount,
       lengthM: fiberCableSegments.lengthM,
       status: fiberCableSegments.status,
+      // Ujung kabel sebagai situs. Kode DAN nama dikirim: kode yang dipakai
+      // teknisi, nama yang bisa dibaca orang yang belum hafal kodenya.
+      siteA: { id: situsA.id, code: situsA.code, name: situsA.name },
+      siteB: { id: situsB.id, code: situsB.code, name: situsB.name },
       coreTerpasang: sql<number>`count(distinct ${fiberCores.id})::int`,
       coreFeeder: sql<number>`count(distinct ${fiberCores.id}) filter (where ${fiberCores.purpose} = 'feeder')::int`,
       coreDistribution: sql<number>`count(distinct ${fiberCores.id}) filter (where ${fiberCores.purpose} = 'distribution')::int`,
@@ -111,14 +124,22 @@ export async function daftarKabel() {
     })
     .from(fiberCableSegments)
     .leftJoin(fiberCores, eq(fiberCores.segmentId, fiberCableSegments.id))
-    .groupBy(fiberCableSegments.id)
+    .leftJoin(situsA, eq(situsA.id, fiberCableSegments.siteAId))
+    .leftJoin(situsB, eq(situsB.id, fiberCableSegments.siteBId))
+    .groupBy(fiberCableSegments.id, situsA.id, situsB.id)
     .orderBy(asc(fiberCableSegments.code));
 }
 
 export async function detailKabel(cableId: string) {
   const [kabel] = await db
-    .select()
+    .select({
+      kabel: fiberCableSegments,
+      siteA: { id: situsA.id, code: situsA.code, name: situsA.name },
+      siteB: { id: situsB.id, code: situsB.code, name: situsB.name },
+    })
     .from(fiberCableSegments)
+    .leftJoin(situsA, eq(situsA.id, fiberCableSegments.siteAId))
+    .leftJoin(situsB, eq(situsB.id, fiberCableSegments.siteBId))
     .where(eq(fiberCableSegments.id, cableId))
     .limit(1);
   if (!kabel) return null;
@@ -148,7 +169,11 @@ export async function detailKabel(cableId: string) {
     .groupBy(fiberCores.id)
     .orderBy(asc(fiberCores.coreNumber));
 
-  return { ...kabel, cores };
+  // Bentuknya dipertahankan DATAR: layar kabel sudah membaca `code`, `name`,
+  // `coreCount`, dan seterusnya di tingkat atas. Membungkusnya jadi
+  // `{ kabel: … }` akan memecah kontrak yang sudah dipakai demi dua kolom
+  // baru.
+  return { ...kabel.kabel, siteA: kabel.siteA, siteB: kabel.siteB, cores };
 }
 
 /**

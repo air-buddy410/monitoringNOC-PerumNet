@@ -1702,6 +1702,76 @@ pekerjaan tampilan — datanya sudah tersedia di endpoint yang disebut, tidak
 ada yang perlu ditunggu dari backend. Tandai ✅ dan pindahkan ke §Selesai
 kalau sudah dikerjakan.
 
+### T-41. Ujung POP sebuah kabel — tampilkan, tapi JANGAN gambar garisnya
+
+- **Layar:** `/ftth/cables` dan `/ftth/cables/[id]`, plus lapisan peta di
+  layar peta (`GET /api/v1/ftth/geo`).
+- **Butuh:** `GET /api/v1/ftth/cables` dan `/[cableId]` (dua field baru), dan
+  `/api/v1/ftth/geo` (satu field baru pada `tanpaGeometri`).
+
+**Apa yang berubah di backend (22 Agustus 2026).**
+
+Sebuah kabel sekarang bisa mencatat DUA UJUNGNYA sebagai situs:
+
+```jsonc
+// GET /api/v1/ftth/cables  — tiap baris, dan juga di detail
+{
+  "code": "BB-KECICANG-PESAGI-144",
+  "category": "backbone",
+  "coreCount": 144,
+  "siteA": { "id": "…", "code": "KCC", "name": "Kecicang" },
+  "siteB": { "id": "…", "code": "PSG", "name": "Pesagi" },
+  // … sisanya seperti dulu
+}
+```
+
+`siteA`/`siteB` bernilai **`null`** kalau kabelnya tidak membentang antar
+situs — dropcore dan patch memang begitu. Bentuk detail kabel **tidak
+berubah** selain dua field ini; yang sudah kamu baca tetap di tingkat atas.
+
+**Kenapa kolomnya ada.** Letak kabel selama ini hanya bisa DITURUNKAN dari
+tempat core-nya menempel. Kabel backbone `BB-KECICANG-PESAGI-144` masuk
+produksi hari ini dengan **144 serat dan nol terminasi** — jadi menurut model
+ia tidak membentang ke mana pun, padahal sheet lapangannya menulis "Segment:
+Kecicang- Pesagi" di barisnya yang pertama.
+
+**Yang diminta:**
+
+1. Tampilkan ujungnya di daftar dan detail kabel, mis. `KCC → PSG` dengan
+   nama lengkap sebagai judul bantu. Kalau `null`, jangan tulis apa pun —
+   **bukan** "—" yang terlihat seperti bidang kosong yang lupa diisi, dan
+   bukan tebakan dari nama kabelnya.
+2. Di lapisan peta, entri `tanpaGeometri` sekarang bisa membawa field baru:
+
+   ```jsonc
+   {
+     "code": "BB-KECICANG-PESAGI-144",
+     "alasan": "Belum ada core yang diterminasi atau disambung — kedua ujungnya belum diketahui. Ujungnya tercatat: KCC → PSG; jalurnya belum tersurvei, jadi tidak digambar.",
+     "ujungTercatat": { "a": "KCC", "b": "PSG" }   // opsional
+   }
+   ```
+
+   Pakai `ujungTercatat` untuk membedakan **"tidak tahu apa-apa"** dari
+   **"tahu ujungnya, belum tahu jalurnya"** — dua keadaan yang sangat berbeda
+   bagi orang yang sedang mencari kabel putus. `alasan` sudah berupa kalimat
+   siap tampil.
+
+**ATURAN YANG PALING PENTING DI TUGAS INI — jangan menggambar garis antara
+`ujungTercatat.a` dan `ujungTercatat.b`.**
+
+Godaannya jelas: kedua situs punya koordinat, tinggal tarik garis. **Jangan.**
+Jalur nyatanya mengikuti jalan sepanjang kilometer. Garis lurus antara dua POP
+akan terbaca sebagai rute, dan mengirim teknisi ke tempat yang salah persis
+saat kabel putus. Itu aturan yang jadi dasar seluruh lapisan peta sejak Fase
+15, dan backend sengaja TIDAK mengirim koordinat situsnya di `tanpaGeometri`
+supaya godaan itu tidak bisa dituruti tanpa usaha ekstra.
+
+Kalau kamu ingin menandai POP-nya di peta, tandai **titiknya** (dua penanda),
+bukan garis di antaranya — dan pastikan bentuknya tidak bisa dikira jalur.
+
+**Kabel akan mulai digambar sendiri** begitu core-nya diterminasi ke OTB di
+kedua ujung. Tidak ada yang perlu kamu ubah untuk itu.
+
 ### ✅ T-40. Layar `/ftth`: cari, saring, dan halaman untuk 580 ODP — frontend selesai 2026-08-22
 
 - **Layar:** `/ftth` — `src/components/operations/ftth-page.tsx`.
