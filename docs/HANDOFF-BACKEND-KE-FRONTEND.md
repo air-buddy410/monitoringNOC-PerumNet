@@ -1451,6 +1451,81 @@ diabaikan diam-diam.
   `AA:BB:12` juga cocok dengan `AA:BB:120`. Itu disengaja — operator mengetik
   potongan yang dia ingat.
 
+### 21. Garis jalur fiber di peta — Fase 15
+
+Letak kabel **diturunkan**, bukan disimpan: ujung yang diterminasi ke port
+OTB/ODP memakai koordinat perangkatnya, ujung yang disambung di closure
+memakai koordinat closure-nya. Tidak ada kolom geometri di database.
+
+#### GET /api/v1/ftth/geo — cukup login
+
+```jsonc
+{
+  "simpul": [
+    { "jenis": "OTB",     // OTB | CLOSURE | MS | ODP
+      "id": "…", "code": "CONTOH-OTB-POP-01", "name": "…",
+      "latitude": -8.4498, "longitude": 115.5987 }
+  ],
+  "garis": [{
+    "id": "…", "code": "CONTOH-KBL-FDR-01",
+    "category": "feeder",        // backbone|feeder|distribution|dropcore|…
+    "lengthM": 850,              // boleh null
+    "koordinat": [[115.5987, -8.4498], [115.6033, -8.4521]],  // [lon, lat] !
+    "dari": { "jenis": "OTB",     "code": "CONTOH-OTB-POP-01" },
+    "ke":   { "jenis": "CLOSURE", "code": "CONTOH-CL-01" },
+    "coreTerpakai": 2, "coreTotal": 24
+  }],
+  "tanpaGeometri": [
+    { "id": "…", "code": "KBL-X", "category": "feeder",
+      "alasan": "ODP-X belum punya koordinat." }
+  ],
+  "ringkas": { "kabelAktif": 3, "tergambar": 2, "tanpaGeometri": 1 }
+}
+```
+
+#### Tujuh hal yang WAJIB benar
+
+1. **`koordinat` memakai urutan GeoJSON `[lon, lat]`. Leaflet memakai
+   `[lat, lng]`.** Kedua urutan itu terbalik, dan menukarnya tidak
+   menghasilkan galat apa pun — kabelnya cuma muncul di Samudra Hindia, dan
+   tidak ada yang bisa menjelaskan kenapa. Balik dulu sebelum diberikan ke
+   `<Polyline positions={…}>`.
+
+2. **Kabel di `tanpaGeometri` TIDAK BOLEH digambar** — tidak sebagai garis
+   putus-putus, tidak sebagai garis lurus antar-perkiraan, tidak sebagai
+   apa pun. Garis di peta jaringan dipakai orang untuk memutuskan ke mana
+   berangkat saat kabel putus, dan garis tebakan mengirim teknisi ke tempat
+   yang salah dengan keyakinan penuh.
+
+3. **Tapi `tanpaGeometri` juga tidak boleh disembunyikan.** Ia daftar
+   pekerjaan: tiap barisnya menyebut kabel dan alasannya ("ODP-X belum punya
+   koordinat"). Tampilkan sebagai panel di samping peta. Peta yang jujur
+   mengaku tidak tahu lebih berguna daripada peta yang terlihat lengkap.
+
+4. **Feeder dan distribution dibedakan secara visual** (warna atau ketebalan),
+   dan **jangan hanya lewat warna** — status di aplikasi ini tidak pernah
+   dibedakan warna saja.
+
+5. **Fanout master splitter bukan fitur tersendiri.** Ia muncul sendiri
+   sebagai beberapa garis yang berangkat dari satu simpul `MS`. Jangan
+   membuat perhitungan cabang di klien.
+
+6. **`simpul` hanya memuat jangkar kabel** — bukan seluruh 577 ODP. Peta ODP
+   dan peta perangkat (`/api/devices/geo`) adalah lapisan lain; jangan
+   dicampur ke dalam respons ini.
+
+7. **`lengthM` boleh `null`** — pakai `formatPanjang` seperti biasa, jangan
+   tampilkan `0 m`.
+
+#### Yang sudah diurus backend
+
+- **Kabel nonaktif tidak ikut**, dan tidak dilaporkan sebagai masalah.
+- **Satu ujung yang menempel di dua tempat berbeda ditolak menggambar**, bukan
+  dipilih salah satunya diam-diam. Itu bisa saja benar di lapangan — core
+  satu kabel berakhir di ODP berbeda — tapi satu garis lurus tidak bisa
+  mewakilinya.
+- Semua keputusan itu punya tesnya sendiri di `tests/fiber-geo.test.ts`.
+
 ## Jebakan nama & bentuk
 
 Yang paling sering salah tebak, dikumpulkan di satu tempat:
@@ -1528,6 +1603,47 @@ Papan permintaan Opus → Luna (`WORKFLOW-TIM.md` §5). Semua di sini murni
 pekerjaan tampilan — datanya sudah tersedia di endpoint yang disebut, tidak
 ada yang perlu ditunggu dari backend. Tandai ✅ dan pindahkan ke §Selesai
 kalau sudah dikerjakan.
+
+### T-32. Lapisan jalur fiber di peta
+
+- **Layar:** `/map` — tambahkan lapisan fiber di atas peta yang sudah ada.
+- **Butuh:** §21 — satu endpoint, `GET /api/v1/ftth/geo`.
+- **Bentuknya:** garis untuk tiap kabel, penanda untuk OTB / closure / MS /
+  ODP, dan **panel "Belum bisa digambar"** berisi `tanpaGeometri` lengkap
+  dengan alasannya.
+- **Jebakan yang paling mungkin:** `koordinat` datang dalam urutan GeoJSON
+  `[lon, lat]`, sedangkan Leaflet mau `[lat, lng]`. Tertukar tidak
+  menghasilkan galat — kabelnya cuma pindah ke laut.
+- **Filter minimal:** feeder / distribution, dan togel untuk lapisan fiber
+  supaya peta perangkat yang sudah ada tetap bisa dilihat sendirian.
+- **Kenapa sekarang:** produksi sudah punya satu jalur contoh yang bisa
+  digambar (OTB → closure → MS → dua ODP), jadi hasilnya langsung terlihat
+  benar atau salah.
+
+### T-31. Dua sisa dari tinjauan T-28 sampai T-30
+
+**1. Riwayat terminasi: satu permintaan per kabel, bukan per core.**
+`fiber-page.tsx:81` memanggil `/cores/:id/terminations` di dalam `Promise.all`
+untuk setiap core. Kabel 24 core = 24 permintaan HTTP; kabel 288 core = 288 —
+masing-masing dengan join lima tabel.
+
+**Itu kesalahan rancangan saya, bukan kamu.** Endpoint per-kabel memang belum
+ada waktu kamu mengerjakannya. Sekarang ada:
+`GET /api/v1/ftth/cables/:cableId/terminations` (§17) — satu permintaan, satu
+kueri, bentuk baris sama persis ditambah `coreId` dan `coreNumber`, dan
+**sudah terurut per nomor core lalu waktu**, jadi `.sort()` di klien bisa
+dibuang juga.
+
+**2. Kotak cari PPPoE belum di-debounce.**
+`pppoe-page.tsx` menaruh `query` langsung ke kunci SWR, jadi mengetik
+"pel005" mengirim **enam permintaan**, masing-masing menjalankan `count(*)`
+plus kueri halaman di 1.611 baris. Seluruh tujuan T-28 adalah mengurangi beban
+itu.
+
+Tunda ~300 ms sebelum `query` masuk ke kunci SWR. Yang penting: **hanya nilai
+untuk URL yang ditunda** — isi kotaknya harus tetap berubah seketika saat
+diketik. Saringan router dan pemilih baris tidak perlu ditunda; keduanya
+sekali klik.
 
 ### ✅ T-30. Tiga perbaikan kecil dari tinjauan kode FTTH — frontend selesai 2026-08-22
 
@@ -2144,6 +2260,15 @@ orang mengetik.
 
 ## Riwayat
 
+- **2026-08-22** — **Fase 15: garis jalur fiber di peta (§21).** Letak kabel
+  diturunkan dari tempat core-nya menempel — tidak ada kolom geometri, dan
+  tidak akan ada. Aturan yang menentukan seluruh bentuknya: kabel yang
+  letaknya tidak diketahui TIDAK digambar, ia masuk `tanpaGeometri` beserta
+  alasannya. Garis tebakan di peta jaringan dipakai orang untuk memutuskan ke
+  mana berangkat saat kabel putus, dan garis yang salah mengirim teknisi ke
+  tempat yang salah dengan keyakinan penuh. Empat bentuk "tidak tahu" diuji
+  terpisah: belum tersambung, tersambung sebelah, jangkar tanpa koordinat, dan
+  satu ujung yang menempel di dua tempat. Tugas T-32.
 - **2026-08-22** — **Riwayat terminasi punya endpoint per-KABEL (§17).**
   Tinjauan kode menemukan layar kabel memanggil endpoint per-core di dalam
   `Promise.all`: kabel 24 core jadi 24 permintaan HTTP, kabel 288 core jadi

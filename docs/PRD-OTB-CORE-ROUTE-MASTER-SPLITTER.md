@@ -5,7 +5,7 @@
 | Produk | Portal NOC PerumNet (`monitoring-noc`) |
 | Stack | Next.js + **Drizzle ORM** + better-auth + PostgreSQL |
 | Versi | 2.0 — disesuaikan ke portal NOC, 21 Agustus 2026 |
-| Status | **Fase 11–14 selesai.** Fase 15–16 belum. |
+| Status | **Fase 11–15 selesai.** Fase 16 belum. |
 | Sifat perubahan | Aditif; tidak ada tabel existing yang diubah bentuknya |
 
 > **Asal dokumen.** Kebutuhan di sini datang dari sebuah PRD yang ditulis untuk
@@ -152,8 +152,8 @@ Alasan lengkapnya tertulis di komentar tabel `odps` pada `src/db/schema.ts`.
 
 ### 4.3 Belum ada, dan memang harus dibangun
 
-Garis jalur di peta dan layar riwayat topologi. Fase 15–16. Mesin trace tidak
-menambah tabel apa pun — ia menurunkan jalur dari yang sudah dicatat.
+Layar riwayat topologi (Fase 16). Mesin trace dan peta tidak menambah tabel
+apa pun — keduanya menurunkan hasilnya dari yang sudah dicatat.
 
 ### 4.4 Tidak ada di portal ini, dan tidak direncanakan
 
@@ -259,16 +259,16 @@ Semua di bawah `/api/v1/ftth/`, mengikuti keluarga yang sudah ada
 | `POST …/closures/:id/splices` | `admin`, `noc` | Pasang batch, atomik |
 | `POST /api/v1/ftth/splices/:id/release` | `admin`, `noc` | Lepas silangan |
 | `GET /api/v1/ftth/trace` | `[]` | Telusur jalur dua arah + diagnosis |
+| `GET /api/v1/ftth/geo` | `[]` | Simpul & garis jalur untuk peta |
 
 Kontrak lengkapnya — bentuk respons, kode galat, dan larangan untuk frontend —
-ada di `docs/HANDOFF-BACKEND-KE-FRONTEND.md` §16 (OTB), §17 (kabel/core), §18 (closure), dan §19 (trace). Dokumen itu yang mengikat;
+ada di `docs/HANDOFF-BACKEND-KE-FRONTEND.md` §16 (OTB), §17 (kabel/core), §18 (closure), §19 (trace), dan §21 (peta). Dokumen itu yang mengikat;
 tabel di atas hanya ringkasan.
 
 ### 6.2 Direncanakan
 
 | Endpoint | Fase | Untuk |
 |---|---|---|
-| `GET /api/v1/ftth/geo` | 15 | GeoJSON jalur untuk peta |
 
 **Tidak ada `DELETE` untuk OTB, dan itu disengaja.** FK-nya cascade, jadi satu
 DELETE memusnahkan seluruh tray, port, dan membuat setiap `entity_id` di
@@ -318,7 +318,7 @@ tersendiri yang menyentuh better-auth dan seluruh endpoint yang ada.
 | 12 | Kabel, core, terminasi core→port, okupansi | ✅ **Selesai 21 Agustus 2026** |
 | 13 | Closure dan silangan core; larangan pembagian | ✅ **Selesai 21 Agustus 2026** |
 | 14 | Mesin trace feeder/distribution + diagnosis | ✅ **Selesai 21 Agustus 2026** |
-| 15 | Garis jalur di peta + fanout MS→ODP | Belum |
+| 15 | Garis jalur di peta + fanout MS→ODP | ✅ **Selesai 22 Agustus 2026** |
 | 16 | Riwayat topologi di atas `audit_logs` | Belum |
 
 ### 8.1 Fase 11 — apa yang benar-benar ada
@@ -458,11 +458,20 @@ mana".
   tidak pernah sampai ke ringkasan. `segmenBerulang` tetap dilaporkan supaya
   lintasan bolak-balik terlihat, bukan tersembunyi di dalam satu angka.
 
-### Fase 15 — peta
+### Fase 15 — peta ✅ (backend)
 
-- [ ] Feeder dan distribution dibedakan secara visual
-- [ ] Fanout satu MS ke beberapa ODP tergambar
-- [ ] **Geometri yang hilang jadi peringatan, bukan garis asumsi**
+- [x] **Geometri yang hilang jadi peringatan, bukan garis asumsi** — empat
+      bentuk "tidak tahu" diuji terpisah: belum tersambung, tersambung
+      sebelah, jangkar tanpa koordinat, dan satu ujung yang menempel di dua
+      tempat berbeda
+- [x] Fanout satu MS ke beberapa ODP muncul sendiri sebagai beberapa garis
+      dari satu simpul — tanpa perhitungan cabang tersendiri
+- [x] `category` kabel dikirim supaya feeder dan distribution bisa dibedakan
+- [ ] Dibedakan **secara visual** di layar — itu T-32, wilayah frontend
+
+Letak kabel diturunkan dari tempat core-nya menempel; tidak ada kolom
+geometri, dan sengaja tidak akan ada. Kabel yang belum punya kedua jangkar
+tidak digambar sama sekali.
 
 ---
 
