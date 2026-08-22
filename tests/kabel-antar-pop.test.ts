@@ -24,7 +24,7 @@ const mocks = vi.hoisted(() => ({ db: undefined as unknown }));
 vi.mock("@/db", () => ({ get db() { return mocks.db; } }));
 
 import * as schema from "@/db/schema";
-import { buatKabel } from "@/server/fiber-store";
+import { buatKabel, daftarKabel, detailKabel } from "@/server/fiber-store";
 import { petaFiber } from "@/server/fiber-geo";
 
 const DIR = path.resolve(__dirname, "..", "drizzle", "pg");
@@ -91,6 +91,36 @@ describe("ujung kabel sebagai situs", () => {
     expect(k).toBeDefined();
     expect(k.siteAId).toBeNull();
     expect(k.siteBId).toBe("psg");
+  });
+});
+
+describe("ujung terbaca lewat API kabel", () => {
+  it("daftarKabel mengirim kode DAN nama kedua ujungnya", async () => {
+    await buatBackbone("kcc", "psg");
+    const [k] = await daftarKabel();
+    expect(k.siteA).toMatchObject({ code: "KCC", name: "Kecicang" });
+    expect(k.siteB).toMatchObject({ code: "PSG", name: "Pesagi" });
+  });
+
+  it("detailKabel tetap DATAR — kontrak lama tidak pecah", async () => {
+    // Layar kabel sudah membaca `code`, `coreCount`, dan seterusnya di
+    // tingkat atas. Membungkusnya jadi `{ kabel: … }` demi dua kolom baru
+    // akan memecah kontrak yang sudah dipakai.
+    await buatBackbone("kcc", "psg");
+    const [k] = await daftarKabel();
+    const d = await detailKabel(k.id);
+    expect(d?.code).toBe("BB-UJI-144");
+    expect(d?.coreCount).toBe(12);
+    expect(d?.cores).toHaveLength(12);
+    expect(d?.siteA).toMatchObject({ code: "KCC" });
+    expect(d?.siteB).toMatchObject({ code: "PSG" });
+  });
+
+  it("kabel tanpa ujung mengirim null, bukan objek berisi null", async () => {
+    await buatBackbone(null, null);
+    const [k] = await daftarKabel();
+    expect(k.siteA).toBeNull();
+    expect(k.siteB).toBeNull();
   });
 });
 
