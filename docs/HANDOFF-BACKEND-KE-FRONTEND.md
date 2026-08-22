@@ -1702,6 +1702,57 @@ pekerjaan tampilan — datanya sudah tersedia di endpoint yang disebut, tidak
 ada yang perlu ditunggu dari backend. Tandai ✅ dan pindahkan ke §Selesai
 kalau sudah dikerjakan.
 
+### T-42. Peta: bedakan jalur tersurvei dari perkiraan dan garis lurus
+
+- **Layar:** `src/components/map/network-map.tsx` dan
+  `src/components/map/fiber-geo-panel.tsx`.
+- **Butuh:** `GET /api/v1/ftth/geo`, dua perubahan.
+
+**Kabel mengikuti jalan.** Sampai sekarang peta menarik garis LURUS antara dua
+jangkar, dan pada bentangan antar-POP selisihnya bisa berkilo-kilometer.
+Backend sekarang bisa menyimpan jalur sungguhannya.
+
+**Yang berubah:**
+
+1. **`koordinat` bukan lagi selalu dua titik.** Tipenya sekarang
+   `Array<[lon, lat]>` dengan panjang **dua atau lebih** — dua kalau jalurnya
+   belum ada, sepanjang jalurnya kalau sudah. `Polyline` sudah menerima
+   berapa pun titik, jadi kemungkinan besar tidak ada yang perlu diubah untuk
+   ini. Yang penting: **jangan** berasumsi `koordinat[1]` adalah ujung akhir.
+
+2. **`sumberGeometri` baru pada tiap garis**, bernilai salah satu dari:
+
+   | Nilai | Artinya |
+   |---|---|
+   | `tersurvei` | deret dari GPS/KMZ lapangan — ada yang benar-benar menyusurinya |
+   | `perkiraan-jalan` | hasil mesin rute: menempel di jalan, **tapi tidak ada yang pernah menyusurinya** |
+   | `garis-lurus` | dua jangkar dihubungkan langsung; jelas-jelas skematik |
+
+3. **`jalurRusak`** — daftar `{ code, pesan }` untuk kabel yang punya jalur
+   tersimpan tapi deretnya cacat (mis. lat/lon tertukar). Kabelnya jatuh ke
+   garis lurus; tampilkan daftarnya di panel, karena jalur yang gagal dibaca
+   terlihat persis seperti kabel yang belum pernah disurvei.
+
+**Yang diminta:**
+
+1. **Bedakan ketiganya secara visual, dan beri keterangannya.** Saran:
+   `tersurvei` garis penuh, `perkiraan-jalan` garis putus-putus, `garis-lurus`
+   putus-putus renggang dan lebih pucat. Bentuk persisnya pilihanmu — yang
+   wajib, ketiganya **tidak boleh terlihat sama**.
+2. **Sebutkan artinya di legenda**, bukan hanya bedakan warnanya. Orang yang
+   baru membuka peta tidak akan menebak arti garis putus-putus.
+
+**KENAPA INI YANG PALING PENTING DI TUGAS INI.** Garis lurus jelas-jelas
+skematik — orang tidak akan menyusurinya. Garis yang **mengikuti jalan**
+terlihat seperti hasil survei, dan akan diikuti teknisi dengan percaya penuh.
+Jadi justru `perkiraan-jalan` yang paling berbahaya kalau tampil sama dengan
+`tersurvei`: ia menempel di jalan yang benar-benar ada, tapi belum tentu jalan
+tempat kabelnya digantung. Kalau hanya satu hal yang sempat kamu kerjakan dari
+tugas ini, kerjakan pembedaan itu.
+
+**Jangan** menyembunyikan `garis-lurus` demi peta yang lebih rapi. Kabel yang
+belum punya jalur tetap perlu terlihat ada.
+
 ### T-41. Ujung POP sebuah kabel — tampilkan, tapi JANGAN gambar garisnya
 
 - **Layar:** `/ftth/cables` dan `/ftth/cables/[id]`, plus lapisan peta di
