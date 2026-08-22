@@ -7,7 +7,9 @@ import {
   fetchDeviceCpuUsage,
   fetchDeviceEventlog,
   fetchDeviceGraphPng,
-  fetchDeviceHealth,
+  fetchDeviceHealthClasses,
+  fetchDeviceMemUsage,
+  fetchHealthSensors,
   fetchDeviceLinks,
   fetchDevicePorts,
   fetchDevices,
@@ -94,16 +96,25 @@ describe("fetchDevicePorts", () => {
 });
 
 describe("fetchDeviceCpuUsage (health device_processor)", () => {
-  it("dua langkah: daftar sensor lalu nilai per sensor, hasil dirata-rata", async () => {
+  // Payload di bawah disalin dari LibreNMS produksi 22 Agustus 2026,
+  // `/devices/2/health/device_processor/36`. Bentuk sebelumnya di tes ini
+  // memakai `sensor_current` — field yang TIDAK ADA pada kelas processor.
+  // Tesnya lolos, kodenya salah, dan keduanya sepakat: CPU selalu null sejak
+  // LibreNMS tersambung. Jangan ganti payload ini dengan yang "lebih rapi".
+  it("membaca processor_usage, bukan sensor_current", async () => {
     stubRoutes({
       "/devices/5/health/device_processor": {
         graphs: [{ sensor_id: 11 }, { sensor_id: 12 }],
       },
       "/devices/5/health/device_processor/11": {
-        graphs: [{ sensor_id: 11, sensor_current: "30" }],
+        graphs: [
+          { processor_id: 11, processor_descr: "Processor", processor_usage: 30 },
+        ],
       },
       "/devices/5/health/device_processor/12": {
-        graphs: [{ sensor_id: 12, sensor_current: 50 }],
+        graphs: [
+          { processor_id: 12, processor_descr: "Processor", processor_usage: 50 },
+        ],
       },
     });
     expect(await fetchDeviceCpuUsage(5)).toBe(40);
@@ -112,6 +123,38 @@ describe("fetchDeviceCpuUsage (health device_processor)", () => {
   it("device tanpa sensor processor → null (bukan angka palsu)", async () => {
     stubRoutes({ "/devices/5/health/device_processor": { graphs: [] } });
     expect(await fetchDeviceCpuUsage(5)).toBeNull();
+  });
+
+  it("sensor_current tetap dipakai sebagai cadangan bila field khususnya absen", async () => {
+    stubRoutes({
+      "/devices/5/health/device_processor": { graphs: [{ sensor_id: 11 }] },
+      "/devices/5/health/device_processor/11": {
+        graphs: [{ sensor_id: 11, sensor_current: 62 }],
+      },
+    });
+    expect(await fetchDeviceCpuUsage(5)).toBe(62);
+  });
+});
+
+describe("fetchDeviceMemUsage (health device_mempool)", () => {
+  it("membaca mempool_perc, bukan sensor_current", async () => {
+    // `/devices/2/health/device_mempool/9` di produksi: mempool_perc 13,
+    // dan tidak ada `sensor_current` sama sekali di baris itu.
+    stubRoutes({
+      "/devices/5/health/device_mempool": { graphs: [{ sensor_id: 9 }] },
+      "/devices/5/health/device_mempool/9": {
+        graphs: [
+          {
+            mempool_id: 9,
+            mempool_descr: "main memory",
+            mempool_perc: 13,
+            mempool_used: 2182414336,
+            mempool_total: 17079205888,
+          },
+        ],
+      },
+    });
+    expect(await fetchDeviceMemUsage(5)).toBe(13);
   });
 });
 
@@ -129,23 +172,74 @@ describe("fetchDeviceEventlog", () => {
   });
 });
 
-describe("fetchDeviceHealth", () => {
-  it("membaca /devices/{id}/health dan membaca kunci graphs", async () => {
-    const mock = stubRoutes({
+describe("fetchDeviceHealthClasses", () => {
+  it("/devices/{id}/health adalah KATALOG kelas, bukan daftar sensor", async () => {
+    // Ini yang benar-benar dikirim LibreNMS. Tidak ada `sensor_class`, tidak
+    // ada `sensor_current`. Tes lama di sini menstub sensor lengkap di path
+    // ini — payload yang tidak pernah ada — sehingga penyaring
+    // `sensor_class === "temperature"` di `sensorsToTemperature()` terlihat
+    // benar padahal tidak pernah cocok sekali pun terhadap server sungguhan.
+    stubRoutes({
       "/devices/7/health": {
         graphs: [
-          { sensor_id: 21, sensor_class: "temperature", sensor_current: 41 },
+          { desc: "Temperature", name: "device_temperature" },
+          { desc: "Processors", name: "device_processor" },
         ],
       },
     });
-    const sensors = await fetchDeviceHealth(7);
-    expect(sensors[0].sensor_class).toBe("temperature");
-    expect(String(mock.mock.calls[0][0])).toContain("/devices/7/health");
+    const kelas = await fetchDeviceHealthClasses(7);
+    expect(kelas.map((k) => k.name)).toEqual([
+      "device_temperature",
+      "device_processor",
+    ]);
+    expect(kelas[0]).not.toHaveProperty("sensor_current");
+  });
+});
+
+describe("fetchHealthSensors", () => {
+  it("dua langkah: daftar sensor_id lalu barisnya, lengkap dengan sensor_current", async () => {
+    const mock = stubRoutes({
+      "/devices/7/health/device_temperature": {
+        graphs: [{ sensor_id: 76 }, { sensor_id: 77 }],
+      },
+      "/devices/7/health/device_temperature/76": {
+        graphs: [{ sensor_id: 76, sensor_class: "temperature", sensor_descr: "temperature", sensor_current: 45 }],
+      },
+      "/devices/7/health/device_temperature/77": {
+        graphs: [{ sensor_id: 77, sensor_class: "temperature", sensor_descr: "cpu-temperature", sensor_current: 53 }],
+      },
+    });
+    const sensors = await fetchHealthSensors(7, "device_temperature");
+    expect(sensors.map((s) => s.sensor_current)).toEqual([45, 53]);
+    expect(sensors.every((s) => s.sensor_class === "temperature")).toBe(true);
+    // 1 permintaan daftar + 1 per sensor.
+    expect(mock.mock.calls).toHaveLength(3);
   });
 
-  it("instalasi tanpa sensor → array kosong (bukan crash)", async () => {
-    stubRoutes({ "/devices/7/health": { graphs: [] } });
-    expect(await fetchDeviceHealth(7)).toEqual([]);
+  it("device tanpa sensor kelas itu → array kosong, tanpa permintaan susulan", async () => {
+    const mock = stubRoutes({
+      "/devices/7/health/device_temperature": { graphs: [] },
+    });
+    expect(await fetchHealthSensors(7, "device_temperature")).toEqual([]);
+    expect(mock.mock.calls).toHaveLength(1);
+  });
+
+  it("maksSensor membatasi jumlah permintaan susulan", async () => {
+    // Satu router produksi punya 8 sensor suhu; sebuah OLT bisa jauh lebih
+    // banyak sensor dbm. Batas ini yang menjaga API tidak dibanjiri.
+    const mock = stubRoutes({
+      "/devices/7/health/device_temperature": {
+        graphs: [{ sensor_id: 1 }, { sensor_id: 2 }, { sensor_id: 3 }],
+      },
+      "/devices/7/health/device_temperature/1": {
+        graphs: [{ sensor_id: 1, sensor_class: "temperature", sensor_current: 40 }],
+      },
+      "/devices/7/health/device_temperature/2": {
+        graphs: [{ sensor_id: 2, sensor_class: "temperature", sensor_current: 41 }],
+      },
+    });
+    expect(await fetchHealthSensors(7, "device_temperature", 2)).toHaveLength(2);
+    expect(mock.mock.calls).toHaveLength(3);
   });
 });
 

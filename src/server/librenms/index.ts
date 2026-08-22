@@ -66,18 +66,66 @@ export async function fetchDevicePorts(
 }
 
 /**
- * Sensor/health milik satu device — `/devices/{id}/health` mengembalikan
- * seluruh kelas (temperature, dbm, voltage, …) sekaligus. Endpoint agregat
- * `/resources/sensors` tidak ada pada semua versi LibreNMS, jadi pemanggilan
- * dilakukan per device dan di-cache per device oleh store pemakai.
+ * DAFTAR KELAS health yang dipunyai satu device — bukan pembacaannya.
+ *
+ * `/devices/{id}/health` mengembalikan katalog: `[{desc: "Temperature", name:
+ * "device_temperature"}, …]`. Tidak ada `sensor_class` maupun
+ * `sensor_current` di dalamnya.
+ *
+ * Sampai 22 Agustus 2026 hasil endpoint ini diperlakukan sebagai
+ * `LibrenmsSensor[]` dan diserahkan ke `sensorsToTemperature()` yang menyaring
+ * `sensor_class === "temperature"`. Penyaring itu tidak pernah cocok sekali
+ * pun, jadi suhu SELALU null — dan di layar tertutup `?? { celsius: 0,
+ * status: "normal" }`, yaitu 0 °C berlencana hijau untuk setiap perangkat.
+ * Kesalahannya tidak pernah terlihat karena bentuk keluarannya tetap sah.
+ *
+ * Untuk pembacaan sungguhan pakai `fetchHealthSensors()` di bawah.
  */
-export async function fetchDeviceHealth(
+export async function fetchDeviceHealthClasses(
   deviceId: number,
-): Promise<LibrenmsSensor[]> {
-  const body = await librenmsFetch<{ graphs?: LibrenmsSensor[] }>(
+): Promise<Array<{ name: string; desc: string }>> {
+  const body = await librenmsFetch<{ graphs?: Array<{ name: string; desc: string }> }>(
     `/devices/${deviceId}/health`,
   );
   return body.graphs ?? [];
+}
+
+/**
+ * Pembacaan sensor sungguhan untuk satu kelas health.
+ *
+ * LibreNMS mengharuskan dua langkah: `/health/{kelas}` memberi daftar
+ * `sensor_id`, lalu `/health/{kelas}/{sensor_id}` memberi barisnya lengkap
+ * dengan `sensor_class` dan `sensor_current`. Langkah kedua inilah yang
+ * selama ini tidak pernah dijalankan untuk suhu dan dbm.
+ *
+ * `maksSensor` membatasi jumlah permintaan susulan: satu router bisa punya
+ * 8 sensor suhu dan sebuah OLT jauh lebih banyak sensor dbm.
+ */
+export async function fetchHealthSensors(
+  deviceId: number,
+  kelas: string,
+  maksSensor = 16,
+): Promise<LibrenmsSensor[]> {
+  const list = await librenmsFetch<{ graphs?: HealthListEntry[] }>(
+    `/devices/${deviceId}/health/${kelas}`,
+  );
+  const entries = (list.graphs ?? []).slice(0, maksSensor);
+  if (entries.length === 0) return [];
+
+  const baris = await Promise.all(
+    entries.map(async (entry) => {
+      try {
+        const body = await librenmsFetch<{ graphs?: LibrenmsSensor[] }>(
+          `/devices/${deviceId}/health/${kelas}/${entry.sensor_id}`,
+        );
+        return body.graphs?.[0] ?? null;
+      } catch {
+        // Satu sensor yang gagal tidak boleh menghapus pembacaan lainnya.
+        return null;
+      }
+    }),
+  );
+  return baris.filter((b): b is LibrenmsSensor => b !== null);
 }
 
 interface HealthListEntry {
@@ -85,10 +133,32 @@ interface HealthListEntry {
   desc: string;
 }
 
+/**
+ * Baris pembacaan untuk kelas processor/mempool.
+ *
+ * **Nama fieldnya BUKAN `sensor_current`.** Processor dan mempool disimpan
+ * LibreNMS di tabelnya sendiri, bukan di tabel `sensors`, dan memakai nama
+ * kolomnya sendiri:
+ *
+ * - `device_processor` → `processor_usage` (persen)
+ * - `device_mempool`   → `mempool_perc` (persen)
+ *
+ * Sampai 22 Agustus 2026 kode ini membaca `sensor_current` untuk keduanya.
+ * Field itu tidak ada di sana, jadi CPU dan RAM SELALU null sejak LibreNMS
+ * tersambung — grafiknya kosong, dan tidak ada yang melapor karena kosong
+ * terlihat seperti "belum ada trafik".
+ */
 interface HealthSensorRecord {
-  sensor_id: number | string;
-  sensor_current: number | string | null;
+  sensor_id?: number | string;
+  sensor_current?: number | string | null;
+  processor_usage?: number | string | null;
+  mempool_perc?: number | string | null;
 }
+
+const FIELD_NILAI = {
+  device_processor: "processor_usage",
+  device_mempool: "mempool_perc",
+} as const;
 
 /**
  * Nilai health kelas `device_processor` / `device_mempool` (persen).
@@ -111,7 +181,10 @@ async function fetchHealthAverage(
       const body = await librenmsFetch<{ graphs?: HealthSensorRecord[] }>(
         `/devices/${deviceId}/health/${type}/${entry.sensor_id}`,
       );
-      const current = body.graphs?.[0]?.sensor_current;
+      const record = body.graphs?.[0];
+      // Field khusus kelasnya dulu; `sensor_current` disisakan sebagai
+      // cadangan kalau kelak ada versi LibreNMS yang memakainya.
+      const current = record?.[FIELD_NILAI[type]] ?? record?.sensor_current;
       const value = current == null ? NaN : Number(current);
       return Number.isFinite(value) ? value : null;
     }),

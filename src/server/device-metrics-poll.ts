@@ -16,7 +16,7 @@ import { assets, deviceMetricSamples } from "@/db/schema";
 import type { TaskDefinition } from "@/server/scheduler";
 import {
   fetchDeviceCpuUsage,
-  fetchDeviceHealth,
+  fetchHealthSensors,
   fetchDeviceMemUsage,
   isLibrenmsConfigured,
   sensorsToTemperature,
@@ -67,7 +67,7 @@ export async function cuplikMetrikPerangkat(now = new Date()): Promise<HasilCupl
     const [cpu, ram, sensors] = await Promise.all([
       fetchDeviceCpuUsage(a.librenmsDeviceId),
       fetchDeviceMemUsage(a.librenmsDeviceId),
-      fetchDeviceHealth(a.librenmsDeviceId),
+      fetchHealthSensors(a.librenmsDeviceId, "device_temperature"),
     ]);
     // `sensorsToTemperature` sudah dipakai layar perangkat; memakai ulang
     // fungsi yang sama menjaga angka di grafik riwayat identik dengan angka

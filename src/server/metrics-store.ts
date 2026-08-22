@@ -23,7 +23,7 @@ import { getAssetsWithStatus } from "@/server/device-store";
 import {
   dbmSensorsToOptics,
   fetchDeviceCpuUsage,
-  fetchDeviceHealth,
+  fetchHealthSensors,
   fetchDeviceMemUsage,
   fetchDevicePorts,
   isLibrenmsConfigured,
@@ -66,16 +66,24 @@ async function resolveLibrenmsDeviceId(
 }
 
 /**
- * Sensor/health device — satu panggilan `/devices/{id}/health` per TTL.
- * Bila suatu instalasi tidak punya sensor, hasil kosong (bukan error).
+ * Pembacaan sensor satu KELAS health, ber-cache per (device, kelas).
+ *
+ * Dulu ini memanggil `/devices/{id}/health` sekali dan menganggap hasilnya
+ * daftar sensor. Bukan: itu katalog nama kelas, tanpa `sensor_class` maupun
+ * `sensor_current`. Akibatnya suhu dan optik tidak pernah terbaca sekali pun.
+ * Sekarang kelasnya disebut eksplisit dan pembacaannya diambil per sensor.
+ *
+ * Bila suatu instalasi tidak punya sensor kelas itu, hasil kosong (bukan
+ * error) — banyak switch akses memang tidak punya sensor suhu.
  */
-async function getDeviceSensors(
+async function getHealthSensors(
   librenmsDeviceId: number,
+  kelas: "device_temperature" | "device_dbm",
 ): Promise<LibrenmsSensor[]> {
-  const key = `librenms:health:${librenmsDeviceId}`;
+  const key = `librenms:health:${kelas}:${librenmsDeviceId}`;
   const cached = await cache.get<LibrenmsSensor[]>(key);
   if (cached) return cached;
-  const sensors = await fetchDeviceHealth(librenmsDeviceId);
+  const sensors = await fetchHealthSensors(librenmsDeviceId, kelas);
   await cache.set(key, sensors, METRICS_TTL_SECONDS);
   return sensors;
 }
@@ -86,7 +94,7 @@ async function buildLibrenmsMetrics(
 ): Promise<DeviceMetricsSnapshot> {
   const [ports, sensors, cpu, ram] = await Promise.all([
     fetchDevicePorts(librenmsDeviceId),
-    getDeviceSensors(librenmsDeviceId),
+    getHealthSensors(librenmsDeviceId, "device_temperature"),
     fetchDeviceCpuUsage(librenmsDeviceId),
     fetchDeviceMemUsage(librenmsDeviceId),
   ]);
@@ -187,7 +195,7 @@ export async function getOltOptics(deviceId: string): Promise<OltOpticsSnapshot>
   if (isLibrenmsConfigured()) {
     const librenmsDeviceId = await resolveLibrenmsDeviceId(deviceId);
     if (librenmsDeviceId !== null) {
-      const sensors = await getDeviceSensors(librenmsDeviceId);
+      const sensors = await getHealthSensors(librenmsDeviceId, "device_dbm");
       ports = dbmSensorsToOptics(sensors);
     }
   }
