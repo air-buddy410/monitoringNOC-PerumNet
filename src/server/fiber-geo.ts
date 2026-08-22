@@ -16,6 +16,7 @@
 // jujur mengaku tidak tahu jauh lebih berguna daripada peta yang lengkap.
 
 import { and, asc, eq, isNull } from "drizzle-orm";
+import { alias } from "drizzle-orm/pg-core";
 import { db } from "@/db";
 import {
   fiberCableSegments,
@@ -59,6 +60,16 @@ export interface KabelTanpaGeometri {
   code: string;
   category: string;
   alasan: string;
+  /**
+   * Ujung kabel yang TERCATAT (bukan diturunkan), kalau ada.
+   *
+   * Sengaja TIDAK dipakai menggambar garis. Jalur nyata mengikuti jalan
+   * sepanjang kilometer; garis lurus antara dua POP akan terbaca sebagai
+   * rute dan mengirim teknisi ke tempat yang salah — persis yang dilarang
+   * aturan di kepala berkas ini. Yang ditambahkannya cuma penjelasan: bukan
+   * "tidak tahu sama sekali", melainkan "ujungnya tahu, jalurnya belum".
+   */
+  ujungTercatat?: { a: string | null; b: string | null };
 }
 
 interface Jangkar {
@@ -173,6 +184,11 @@ async function jangkarPerUjung(segmentId: string) {
 }
 
 export async function petaFiber() {
+  // Dua alias ke tabel yang sama — satu kabel menunjuk DUA situs sekaligus,
+  // jadi satu join tidak cukup.
+  const situsA = alias(networkSites, "situs_a");
+  const situsB = alias(networkSites, "situs_b");
+
   const kabel = await db
     .select({
       id: fiberCableSegments.id,
@@ -181,8 +197,12 @@ export async function petaFiber() {
       lengthM: fiberCableSegments.lengthM,
       coreCount: fiberCableSegments.coreCount,
       status: fiberCableSegments.status,
+      siteACode: situsA.code,
+      siteBCode: situsB.code,
     })
     .from(fiberCableSegments)
+    .leftJoin(situsA, eq(situsA.id, fiberCableSegments.siteAId))
+    .leftJoin(situsB, eq(situsB.id, fiberCableSegments.siteBId))
     .where(eq(fiberCableSegments.status, "aktif"))
     .orderBy(asc(fiberCableSegments.code));
 
@@ -195,8 +215,19 @@ export async function petaFiber() {
     const a = [...per.A.values()];
     const b = [...per.B.values()];
 
+    const punyaUjung = k.siteACode !== null || k.siteBCode !== null;
     const catat = (alasan: string) =>
-      tanpaGeometri.push({ id: k.id, code: k.code, category: k.category, alasan });
+      tanpaGeometri.push({
+        id: k.id,
+        code: k.code,
+        category: k.category,
+        alasan: punyaUjung
+          ? `${alasan} Ujungnya tercatat: ${k.siteACode ?? "?"} → ${k.siteBCode ?? "?"}; jalurnya belum tersurvei, jadi tidak digambar.`
+          : alasan,
+        ...(punyaUjung
+          ? { ujungTercatat: { a: k.siteACode, b: k.siteBCode } }
+          : {}),
+      });
 
     if (a.length === 0 || b.length === 0) {
       catat(
