@@ -17,6 +17,7 @@
 
 import { and, asc, eq, isNull } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
+import { periksaJalur } from "@/server/jalur-kabel";
 import { db } from "@/db";
 import {
   fiberCableSegments,
@@ -47,8 +48,26 @@ export interface GarisKabel {
   code: string;
   category: string;
   lengthM: number | null;
-  /** Dua ujung, masing-masing [lon, lat] — urutan GeoJSON. */
-  koordinat: [[number, number], [number, number]];
+  /**
+   * Deret titik `[lon, lat]` — urutan GeoJSON.
+   *
+   * Dua titik kalau jalurnya belum ada (garis lurus antar-jangkar), atau
+   * seluruh titik jalur kalau `route` sudah terisi. Selalu minimal dua.
+   */
+  koordinat: Array<[number, number]>;
+  /**
+   * Dari mana bentuk garis ini berasal — WAJIB ditampilkan layar.
+   *
+   * - `tersurvei` — deret dari GPS/KMZ lapangan. Boleh dipercaya.
+   * - `perkiraan-jalan` — hasil mesin rute: menempel di jalan, tapi tidak ada
+   *   yang pernah menyusurinya.
+   * - `garis-lurus` — dua jangkar dihubungkan langsung. Jelas-jelas skematik,
+   *   dan justru kejelasannya yang membuatnya aman.
+   *
+   * Yang paling berbahaya `perkiraan-jalan` kalau dikira `tersurvei`: garis
+   * yang menyusur jalan akan diikuti dengan percaya penuh.
+   */
+  sumberGeometri: "tersurvei" | "perkiraan-jalan" | "garis-lurus";
   dari: { jenis: JenisSimpul; code: string };
   ke: { jenis: JenisSimpul; code: string };
   coreTerpakai: number;
@@ -197,6 +216,8 @@ export async function petaFiber() {
       lengthM: fiberCableSegments.lengthM,
       coreCount: fiberCableSegments.coreCount,
       status: fiberCableSegments.status,
+      route: fiberCableSegments.route,
+      routeSource: fiberCableSegments.routeSource,
       siteACode: situsA.code,
       siteBCode: situsB.code,
     })
@@ -208,6 +229,9 @@ export async function petaFiber() {
 
   const garis: GarisKabel[] = [];
   const tanpaGeometri: KabelTanpaGeometri[] = [];
+  const jalurRusak: Array<{ code: string; pesan: string }> = [];
+  const catatJalurRusak = (code: string, pesan: string) =>
+    jalurRusak.push({ code, pesan });
   const simpul = new Map<string, Simpul>();
 
   for (const k of kabel) {
@@ -267,6 +291,19 @@ export async function petaFiber() {
         ),
       );
 
+    // Jalur cacat TIDAK dipakai diam-diam: kalau tersimpan tapi tidak lolos
+    // pemeriksaan, kabelnya jatuh ke garis lurus dan alasannya dicatat.
+    // Menggambar deret yang rusak lebih buruk daripada tidak menggambar.
+    let jalur: Array<[number, number]> | null = null;
+    if (k.route) {
+      try {
+        jalur = periksaJalur(k.route).titik;
+      } catch (e) {
+        jalur = null;
+        catatJalurRusak(k.code, (e as Error).message);
+      }
+    }
+
     for (const j of [ja, jb]) {
       simpul.set(`${j.jenis}:${j.id}`, {
         jenis: j.jenis, id: j.id, code: j.code, name: j.name,
@@ -279,10 +316,22 @@ export async function petaFiber() {
       code: k.code,
       category: k.category,
       lengthM: k.lengthM,
-      koordinat: [
-        [ja.longitude, ja.latitude],
-        [jb.longitude, jb.latitude],
-      ],
+      // Jalur tersimpan dipakai apa adanya kalau ada; kalau tidak, dua
+      // jangkar dihubungkan langsung — dan `sumberGeometri` di bawah yang
+      // mengatakan mana yang terjadi. Peta TIDAK boleh menyembunyikan
+      // bedanya.
+      koordinat:
+        jalur ??
+        ([
+          [ja.longitude, ja.latitude],
+          [jb.longitude, jb.latitude],
+        ] as Array<[number, number]>),
+      sumberGeometri: jalur
+        ? // Jalur tersimpan tanpa `route_source` diperlakukan sebagai
+          // perkiraan, bukan tersurvei. Menganggapnya tersurvei berarti
+          // menaikkan kepercayaan atas dasar kolom yang kosong.
+          (k.routeSource ?? "perkiraan-jalan")
+        : ("garis-lurus" as const),
       dari: { jenis: ja.jenis, code: ja.code },
       ke: { jenis: jb.jenis, code: jb.code },
       coreTerpakai: terpasang.length,
@@ -294,6 +343,12 @@ export async function petaFiber() {
     simpul: [...simpul.values()].sort((x, y) => x.code.localeCompare(y.code)),
     garis,
     tanpaGeometri,
+    /**
+     * Kabel yang punya `route` tersimpan tapi deretnya cacat. Dilaporkan,
+     * bukan dibuang: jalur yang gagal dibaca terlihat persis seperti kabel
+     * yang belum pernah disurvei, dan bedanya penting.
+     */
+    jalurRusak,
     ringkas: {
       kabelAktif: kabel.length,
       tergambar: garis.length,

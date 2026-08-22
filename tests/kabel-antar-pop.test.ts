@@ -124,6 +124,84 @@ describe("ujung terbaca lewat API kabel", () => {
   });
 });
 
+describe("jalur tersimpan dipakai peta", () => {
+  /** Terminasi dua ujung supaya kabelnya punya jangkar dan bisa digambar. */
+  async function beriJangkar(kode: string) {
+    const otbStore = await import("@/server/otb-store");
+    const fiber = await import("@/server/fiber-store");
+    const [k] = await d().select().from(schema.fiberCableSegments)
+      .where(eq(schema.fiberCableSegments.code, kode));
+    for (const [ujung, kodeOtb, lat, lon] of [
+      ["A", "OTB-A", -8.4498, 115.5896],
+      ["B", "OTB-B", -8.4605, 115.6228],
+    ] as const) {
+      const h = await otbStore.buatOtb(
+        { code: kodeOtb, name: kodeOtb, trayCount: 1, portsPerTray: 4, latitude: lat, longitude: lon },
+        null,
+      );
+      if (!h.ok) throw new Error(h.error);
+      const [port] = await d().select().from(schema.otbPorts)
+        .where(eq(schema.otbPorts.otbId, h.data.id)).limit(1);
+      const [core] = await d().select().from(schema.fiberCores)
+        .where(eq(schema.fiberCores.segmentId, k.id)).limit(1);
+      const r = await fiber.terminasiCore(
+        { coreId: core.id, coreEnd: ujung, otbPortId: port.id, reason: "uji" },
+        null,
+      );
+      if (!r.ok) throw new Error(r.error);
+    }
+    return k.id;
+  }
+
+  it("tanpa jalur → garis lurus, dan MENGAKU begitu", async () => {
+    await buatBackbone("kcc", "psg");
+    await beriJangkar("BB-UJI-144");
+    const peta = await petaFiber();
+    expect(peta.garis[0].koordinat).toHaveLength(2);
+    expect(peta.garis[0].sumberGeometri).toBe("garis-lurus");
+  });
+
+  it("dengan jalur → deret penuh dipakai, sumbernya disebut", async () => {
+    await buatBackbone("kcc", "psg");
+    const id = await beriJangkar("BB-UJI-144");
+    await d().update(schema.fiberCableSegments)
+      .set({
+        route: [[115.5896, -8.4498], [115.60, -8.44], [115.61, -8.47], [115.6228, -8.4605]],
+        routeSource: "tersurvei",
+      })
+      .where(eq(schema.fiberCableSegments.id, id));
+    const peta = await petaFiber();
+    expect(peta.garis[0].koordinat).toHaveLength(4);
+    expect(peta.garis[0].sumberGeometri).toBe("tersurvei");
+  });
+
+  it("jalur tanpa route_source dianggap PERKIRAAN, bukan tersurvei", async () => {
+    // Menganggapnya tersurvei berarti menaikkan kepercayaan atas dasar kolom
+    // yang kosong.
+    await buatBackbone("kcc", "psg");
+    const id = await beriJangkar("BB-UJI-144");
+    await d().update(schema.fiberCableSegments)
+      .set({ route: [[115.5896, -8.4498], [115.6228, -8.4605]] })
+      .where(eq(schema.fiberCableSegments.id, id));
+    const peta = await petaFiber();
+    expect(peta.garis[0].sumberGeometri).toBe("perkiraan-jalan");
+  });
+
+  it("jalur CACAT tidak dipakai diam-diam — jatuh ke garis lurus dan dilaporkan", async () => {
+    // Lat/lon tertukar. Menggambarnya akan menaruh kabel di Samudra Hindia.
+    await buatBackbone("kcc", "psg");
+    const id = await beriJangkar("BB-UJI-144");
+    await d().update(schema.fiberCableSegments)
+      .set({ route: [[-8.4498, 115.5896], [-8.4605, 115.6228]], routeSource: "tersurvei" })
+      .where(eq(schema.fiberCableSegments.id, id));
+    const peta = await petaFiber();
+    expect(peta.garis[0].koordinat).toHaveLength(2);
+    expect(peta.garis[0].sumberGeometri).toBe("garis-lurus");
+    expect(peta.jalurRusak).toHaveLength(1);
+    expect(peta.jalurRusak[0].pesan).toMatch(/tertukar/);
+  });
+});
+
 describe("peta tetap menolak menggambar garis antar-POP", () => {
   it("kabel tanpa terminasi TIDAK digambar walau kedua ujungnya tercatat", async () => {
     // Inti seluruh berkas ini. Kolom ujung ditambahkan untuk MENJELASKAN,

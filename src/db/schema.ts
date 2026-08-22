@@ -1299,6 +1299,35 @@ export const fiberCableSegments = pgTable(
     siteBId: text("site_b_id").references(() => networkSites.id, {
       onDelete: "set null",
     }),
+    /**
+     * Jalur kabel sebagai deret titik `[lon, lat]` — urutan GeoJSON.
+     *
+     * Kabel MENGIKUTI JALAN. Garis lurus antara dua ujung bukan jalurnya, dan
+     * pada bentangan antar-POP selisihnya bisa berkilo-kilometer. Kolom ini
+     * tempat jalur yang sebenarnya disimpan.
+     *
+     * NULL = belum ada jalur. Peta lalu jatuh ke garis lurus antar-jangkar,
+     * DAN mengaku begitu lewat `sumberGeometri` — bukan diam-diam.
+     */
+    route: jsonb("route").$type<Array<[number, number]>>(),
+    /**
+     * Dari mana jalur itu berasal. Ini yang paling penting di antara dua kolom
+     * ini, dan bukan sekadar metadata.
+     *
+     * - `tersurvei` — dari GPS/KMZ/GPX lapangan. Boleh dipercaya.
+     * - `perkiraan-jalan` — hasil hitungan mesin rute: menempel di jalan, tapi
+     *   TIDAK ADA yang pernah menyusurinya. Kabel bisa saja lewat jalan lain,
+     *   menyeberang kebun, atau menggantung di jalur yang berbeda sama sekali.
+     *
+     * Garis yang mengikuti jalan terlihat jauh lebih meyakinkan daripada garis
+     * lurus — dan justru karena itu ia lebih berbahaya kalau salah dipercaya.
+     * Garis lurus jelas-jelas skematik; garis yang menyusur jalan akan diikuti
+     * teknisi dengan percaya penuh. Kolom ini yang membuat perbedaannya bisa
+     * ditampilkan, dan layar WAJIB menampilkannya.
+     */
+    routeSource: text("route_source", {
+      enum: ["tersurvei", "perkiraan-jalan"],
+    }),
     /** Meter. NULL = belum diukur — bukan nol. */
     lengthM: integer("length_m"),
     status: text("status", { enum: ["aktif", "nonaktif"] })
