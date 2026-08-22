@@ -148,21 +148,37 @@ export const incidents = pgTable(
 // ---------------------------------------------------------------------------
 // Audit log umum untuk aksi yang mengubah keadaan.
 // ---------------------------------------------------------------------------
-export const auditLogs = pgTable("audit_logs", {
-  id: text("id").primaryKey(),
-  /** null = aksi sistem (webhook/worker). */
-  actorUserId: text("actor_user_id").references(() => user.id, {
-    onDelete: "set null",
-  }),
-  actorLabel: text("actor_label").notNull(),
-  action: text("action").notNull(),
-  entityType: text("entity_type").notNull(),
-  entityId: text("entity_id").notNull(),
-  detail: jsonb("detail").$type<Record<string, unknown>>(),
-  createdAt: timestamp("created_at", { withTimezone: true })
-    .notNull()
-    .defaultNow(),
-});
+export const auditLogs = pgTable(
+  "audit_logs",
+  {
+    id: text("id").primaryKey(),
+    /** null = aksi sistem (webhook/worker). */
+    actorUserId: text("actor_user_id").references(() => user.id, {
+      onDelete: "set null",
+    }),
+    actorLabel: text("actor_label").notNull(),
+    action: text("action").notNull(),
+    entityType: text("entity_type").notNull(),
+    entityId: text("entity_id").notNull(),
+    detail: jsonb("detail").$type<Record<string, unknown>>(),
+    createdAt: timestamp("created_at", { withTimezone: true })
+      .notNull()
+      .defaultNow(),
+  },
+  (table) => [
+    // Riwayat sebuah entitas selalu dibaca sebagai "peristiwa X, terbaru
+    // dulu". Tanpa index ini, layar riwayat memindai seluruh tabel — dan
+    // tabel append-only tidak pernah mengecil, jadi ia melambat terus tanpa
+    // ada yang tahu kenapa.
+    index("audit_logs_entity_idx").on(
+      table.entityType,
+      table.entityId,
+      table.createdAt.desc(),
+    ),
+    // Riwayat seluruh jaringan, terbaru dulu.
+    index("audit_logs_created_idx").on(table.createdAt.desc()),
+  ],
+);
 
 // ---------------------------------------------------------------------------
 // Log pengiriman notifikasi per channel (menggantikan peran audit kirim pada
