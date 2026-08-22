@@ -630,11 +630,27 @@ export const networkAlarms = pgTable(
 /**
  * Lokasi fisik: POP, kantor, tower.
  *
- * `code` sengaja dibuat cocok dengan kolom teks `assets.site` yang sudah ada,
- * dan `assets` TIDAK diberi kolom `site_id`. Menambahkan FK berarti dua
+ * **Yang cocok dengan `assets.site` adalah `name`, BUKAN `code`.** Komentar di
+ * sini sempat menulis `code` sampai 22 Agustus 2026; diperiksa ke produksi,
+ * ketujuh aset menaut lewat `name` dan nol lewat `code`. Penting karena
+ * tautannya lunak — salah kolom berarti join yang diam-diam kosong, bukan
+ * galat.
+ *
+ * `assets` TIDAK diberi kolom `site_id`. Menambahkan FK berarti dua
  * representasi situs pada baris yang sama, dan cepat atau lambat keduanya akan
  * berbeda isinya tanpa ada yang tahu mana yang benar. Tautannya lunak dengan
  * sengaja: tabel ini memperkaya nama situs, bukan menggantikannya.
+ *
+ * **Satu POP selalu punya OLT, dan boleh punya lebih dari satu.** Kecicang
+ * menampung dua (`ZTE-C600-100-Kecicang` dan `HSGQ-100-Kecicang`), dan boleh
+ * pula ada router di lokasi yang sama. Yang TIDAK ada adalah POP tanpa OLT:
+ * sebuah baris di sini yang tidak punya satu pun `olt_devices` hampir pasti
+ * bukan POP — ia perangkat yang salah didaftarkan sebagai lokasi.
+ *
+ * Itu persis yang terjadi pada `NGB Nagabasukih`: nol OLT, satu router, dan
+ * koordinat yang identik dengan Kecicang sampai 15 desimal. Ia dihapus 22
+ * Agustus 2026 dan routernya dipindah ke situs Kecicang — bukan cacat
+ * koordinat, melainkan satu lokasi yang tercatat dua kali.
  */
 export const networkSites = pgTable("network_sites", {
   id: text("id").primaryKey(),

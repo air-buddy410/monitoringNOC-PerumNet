@@ -46,7 +46,8 @@ const CATATAN = "Data CONTOH — backbone antar situs, dibuat seed-backbone-cont
  * `CONTOH-`.
  */
 const RANTAI: Array<[string, string]> = [
-  ["KCC", "NGB"],
+  // Tidak ada KCC↔NGB: Nagabasukih BUKAN POP tersendiri, ia bertempat di
+  // Kecicang. Kabel di antara keduanya berpanjang nol dan tidak bermakna.
   ["KCC", "ABG"],
   ["KCC", "PSG"],
   ["PSG", "SRYB"],
@@ -79,10 +80,24 @@ async function main() {
       .where(like(s.otb.code, `${AWALAN_OTB}%`));
     console.log(`[backbone] akan menghapus: ${kabel.length} kabel, ${otbs.length} OTB`);
     if (!TERAPKAN) return console.log("[backbone] tambahkan --terapkan untuk benar-benar menghapus.");
-    // Terminasi ikut terbawa `onDelete: cascade` dari kedua sisinya.
+
+    // Terminasi HARUS dibuang lebih dulu. FK dari `fiber_core_terminations`
+    // ke core dan ke port OTB sengaja RESTRICT, bukan CASCADE — itu pengaman
+    // Fase 11 yang mencegah port terpakai lenyap tanpa jejak. Versi pertama
+    // skrip ini mengira keduanya berantai, dan `--hapus` gagal total.
+    const coreIds = kabel.length
+      ? (await db
+          .select({ id: s.fiberCores.id })
+          .from(s.fiberCores)
+          .where(inArray(s.fiberCores.segmentId, kabel.map((k) => k.id)))
+        ).map((c) => c.id)
+      : [];
+    if (coreIds.length) {
+      await db.delete(s.fiberCoreTerminations).where(inArray(s.fiberCoreTerminations.coreId, coreIds));
+    }
     if (kabel.length) await db.delete(s.fiberCableSegments).where(inArray(s.fiberCableSegments.id, kabel.map((k) => k.id)));
     if (otbs.length) await db.delete(s.otb).where(inArray(s.otb.id, otbs.map((o) => o.id)));
-    return console.log("[backbone] terhapus.");
+    return console.log(`[backbone] terhapus (${coreIds.length ? "terminasi dibuang lebih dulu" : "tanpa terminasi"}).`);
   }
 
   const hilang = [...new Set(RANTAI.flat())].filter((k) => !perKode.has(k));
