@@ -1742,6 +1742,13 @@ Backend sekarang bisa menyimpan jalur sungguhannya.
 2. **Sebutkan artinya di legenda**, bukan hanya bedakan warnanya. Orang yang
    baru membuka peta tidak akan menebak arti garis putus-putus.
 
+**Keadaan hari ini, supaya tidak dikira bug:** kabel contoh backbone sudah
+dipasangi jalur `perkiraan-jalan` lewat mesin rute, jadi ia benar-benar
+menyusur jalan di peta — Kecicang–Pesagi misalnya jadi ~5 km menyusur jalan
+alih-alih ~3,8 km garis lurus. **Belum ada satu pun yang `tersurvei`.** Jadi
+kalau kamu hanya melihat dua gaya garis di layar, itu memang benar; gaya
+ketiga muncul begitu ada rekaman GPS lapangan yang dipasang.
+
 **KENAPA INI YANG PALING PENTING DI TUGAS INI.** Garis lurus jelas-jelas
 skematik — orang tidak akan menyusurinya. Garis yang **mengikuti jalan**
 terlihat seperti hasil survei, dan akan diikuti teknisi dengan percaya penuh.
