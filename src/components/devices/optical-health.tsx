@@ -2,6 +2,7 @@
 
 import { CircleCheck, CircleX, Zap } from "lucide-react";
 import type { OltOpticsResponse } from "@/lib/api/devices";
+import ReportSourceBanner from "@/components/reports/report-source-banner";
 import {
   RX_POWER_CRITICAL,
   RX_POWER_LOW,
@@ -22,6 +23,10 @@ function rxPowerColor(rxPower: number): string | undefined {
   if (rxPower < RX_POWER_CRITICAL) return "#d03b3b";
   if (rxPower < RX_POWER_LOW) return "#fab219";
   return undefined; // normal — pakai warna teks biasa
+}
+
+function formatTxPower(txPower: number | null) {
+  return txPower === null ? "—" : String(txPower);
 }
 
 export default function OpticalHealth({
@@ -50,9 +55,12 @@ export default function OpticalHealth({
           dBm
         </p>
       </div>
+      <div className="px-4 pt-4">
+        <ReportSourceBanner source={optics.sumber} />
+      </div>
       {ports.length === 0 && (
         <p className="px-4 py-8 text-center text-sm text-muted-foreground">
-          Belum ada data optik.
+          {optics.catatan ?? "Belum ada data optik."}
         </p>
       )}
       <div className="grid gap-4 p-4 md:grid-cols-2 xl:grid-cols-4">
@@ -70,7 +78,7 @@ export default function OpticalHealth({
                 </span>{" "}
                 · Tx{" "}
                 <span className="font-medium tabular-nums text-foreground">
-                  +{pon.txPower}
+                  {formatTxPower(pon.txPower)}
                 </span>{" "}
                 dBm
               </p>

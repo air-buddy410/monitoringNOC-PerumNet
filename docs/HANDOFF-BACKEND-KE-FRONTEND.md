@@ -1702,7 +1702,7 @@ pekerjaan tampilan — datanya sudah tersedia di endpoint yang disebut, tidak
 ada yang perlu ditunggu dari backend. Tandai ✅ dan pindahkan ke §Selesai
 kalau sudah dikerjakan.
 
-### T-36. Grid optik OLT: sebutkan sumbernya, dan tangani daya pancar kosong
+### ✅ T-36. Grid optik OLT: sebutkan sumbernya, dan tangani daya pancar kosong — frontend selesai 2026-08-22
 
 - **Layar:** `/devices/[id]` — `src/components/devices/optical-health.tsx`.
 - **Butuh:** `GET /api/devices/:id/olt-optics` dan `GET /api/devices/:id/live`,
@@ -1752,7 +1752,12 @@ terdaftar di sana. Jadi gridnya memang kosong, dan itu benar.
    PON yang sehat justru bernilai negatif (mis. −18,4 dBm). Biarkan tandanya
    ikut angkanya.
 
-### T-35. Kartu suhu: bedakan "tidak punya sensor" dari "memuat"
+**Implementasi frontend selesai:** grid memakai `ReportSourceBanner`, alasan
+`catatan` dari server terlihat saat port kosong, dan `txPower: null` tampil
+sebagai "—". Nilai daya pancar tidak lagi diberi awalan `+` secara paksa,
+sehingga tanda negatif dari respons server tetap benar.
+
+### ✅ T-35. Kartu suhu: bedakan "tidak punya sensor" dari "memuat" — frontend selesai 2026-08-22
 
 - **Layar:** `/devices/[id]` — `src/components/devices/temperature-card.tsx`.
 - **Butuh:** tidak ada endpoint baru. Yang berubah cuma tipenya.
@@ -1793,6 +1798,11 @@ sensornya" adalah dua keadaan berbeda dan harus terbaca berbeda.
 **Jangan** menutupnya dengan `?? 0` di frontend. Itu persis kesalahan yang
 baru saja dicabut dari backend, dan memindahkannya satu lapis ke atas membuat
 ia lebih sulit ditemukan, bukan hilang.
+
+**Implementasi frontend selesai:** kartu membedakan metrik yang belum tersedia
+(`Memuat metrik…`) dari respons `temperature: null` ("Perangkat ini tidak
+melaporkan sensor suhu."). Keadaan tanpa sensor tidak menampilkan angka,
+lencana status, atau ambang suhu.
 
 ### ✅ T-34. Grafik riwayat perangkat mengaku sumbernya — frontend selesai 2026-08-22
 
@@ -2482,6 +2492,10 @@ orang mengetik.
 
 ### Selesai
 
+- **T-36** — Grid optik OLT menampilkan sumber dan catatan server, serta tidak
+  mengubah `txPower: null` menjadi angka atau menambahkan tanda `+` yang salah.
+- **T-35** — Kartu suhu membedakan loading dari perangkat tanpa sensor; keadaan
+  tanpa sensor tidak menampilkan angka maupun status suhu.
 - **T-34** — Grafik riwayat perangkat dan CPU/RAM live membedakan data terukur,
   fixture, dan belum ada data; nilai `null` tetap menjadi jeda garis dan alasan
   dari server terlihat di layar.
@@ -2552,6 +2566,10 @@ orang mengetik.
 
 ## Riwayat
 
+- **2026-08-22** — **T-36 dan T-35 selesai di frontend.** Grid optik OLT kini
+  menampilkan sumber/catatan, mempertahankan tanda dBm, dan menunjukkan "—"
+  untuk `txPower` yang tidak terbaca. Kartu suhu membedakan loading dari
+  perangkat yang memang tidak memiliki sensor suhu.
 - **2026-08-22** — **T-34 selesai di frontend.** Grafik riwayat perangkat kini
   menampilkan `sumber`, `titikTerukur`, dan `catatan` dari endpoint; nilai
   `null` tidak diubah menjadi nol. Grafik CPU/RAM live menampilkan `—` dan

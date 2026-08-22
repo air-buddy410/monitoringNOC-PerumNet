@@ -21,14 +21,32 @@ const TEMP_STATUS: Record<
 export default function TemperatureCard({
   metrics,
 }: {
-  metrics: DeviceMetricsResponse;
+  metrics: DeviceMetricsResponse | null;
 }) {
+  if (!metrics) {
+    return (
+      <div className="flex h-full items-center justify-center rounded-lg border bg-card text-sm text-muted-foreground">
+        Memuat metrik…
+      </div>
+    );
+  }
+
   const reading = metrics.temperature;
 
   if (!reading) {
     return (
-      <div className="flex h-full items-center justify-center rounded-lg border bg-card text-sm text-muted-foreground">
-        Memuat metrik…
+      <div className="flex h-full flex-col rounded-lg border bg-card">
+        <div className="border-b px-4 py-3">
+          <p className="text-sm font-medium">Suhu Perangkat</p>
+        </div>
+        <div className="flex flex-1 flex-col items-center justify-center gap-2 px-4 py-4 text-center">
+          <p className="text-sm font-medium text-muted-foreground">
+            Perangkat ini tidak melaporkan sensor suhu.
+          </p>
+          <p className="text-xs text-muted-foreground">
+            Nilai suhu dan status tidak tersedia.
+          </p>
+        </div>
       </div>
     );
   }
