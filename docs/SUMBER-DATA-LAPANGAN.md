@@ -127,3 +127,96 @@ ketahuan dari satu paragraf dokumen, bukan dari telaah ulang skema.
 
 Langkah 4 itu ukurannya. Importir yang membereskan data buruk tanpa
 mengeluh menghasilkan database yang tampak rapi dan tidak bisa dipercaya.
+
+## Alokasi Core 144 — backbone Kecicang–Pesagi
+
+**Sumbernya Google Sheet, dan salinannya TIDAK ada di repo ini.**
+
+- Sheet: "Salinan dari Alokasi Core", tab **Alokasi Core 144**, milik
+  `budi.dharma.prabhawa@gmail.com`, tertanggal **14 Agustus 2026**.
+  (Ada juga sheet asal milik Dwi tertanggal 5 Juli 2026 — lebih tua; yang
+  dipakai salinan yang baru.)
+- Salinan CSV-nya: `<folder payung>/data-lapangan/alokasi-core-144.csv`,
+  **di luar seluruh repo**, sebelah `AKUN-TIM.md`.
+
+**Kenapa di luar repo.** `monitoringNOC-PerumNet` publik. Alokasi core
+backbone memetakan tulang punggung jaringan — serat mana menuju ke mana, dan
+port OLT mana yang dilayaninya. Itu bukan data pelanggan, tapi juga bukan
+sesuatu yang perlu terbaca siapa pun di internet. Aturan yang sama dengan
+daftar akun tim.
+
+### Bentuknya
+
+144 serat, 12 tabung × 12 serat, G.652. Tiap serat dinomori DUA KALI:
+
+| Kolom | Isi |
+|---|---|
+| `fo_id` | nomor serat se-kabel, 1–144 |
+| `label` | "TUBE 5 - CORE 3" — posisi di dalam tabungnya |
+| `warna_tube` | BLUE / ORANGE / GREEN / … (urutan TIA-598) |
+| `dari`, `next_hop` | ujung asal dan hop berikutnya |
+| `usage`, `service` | alokasi serat, mis. port OLT tujuannya |
+
+Warna tabungnya persis urutan TIA-598 dan cocok satu-satu dengan `WARNA_CORE`
+di `src/db/schema.ts`: BLUE=biru, GRAY=abu-abu, PURPLE=ungu, PINK=merah muda,
+TOSCA=tosca.
+
+### Delapan label yang keliru — jangan "dibetulkan" di database
+
+Pada berkas 14 Agustus 2026, label TUBE/CORE keliru di **delapan baris**, dan
+kekeliruannya sistematis:
+
+| FO ID | Tertulis | Seharusnya |
+|---|---|---|
+| 52 | TUBE 5 - CORE 5 | TUBE 5 - CORE 4 |
+| 64 | TUBE 6 - CORE 6 | TUBE 6 - CORE 4 |
+| 76 | TUBE 7 - CORE 7 | TUBE 7 - CORE 4 |
+| 88 | TUBE 8 - CORE 8 | TUBE 8 - CORE 4 |
+| 100 | TUBE 9 - CORE 9 | TUBE 9 - CORE 4 |
+| 112 | TUBE 10 - CORE 10 | TUBE 10 - CORE 4 |
+| 124 | TUBE 11 - CORE 11 | TUBE 11 - CORE 4 |
+| 136 | TUBE 12 - CORE 12 | TUBE 12 - CORE 4 |
+
+Tiap tabung 5–12, baris **CORE 4**-nya tertulis "CORE \<nomor tabung\>" — khas
+kesalahan tarik-isi spreadsheet. `FO ID`-nya sendiri utuh: 1–144, tanpa
+duplikat, tanpa lompatan.
+
+**Karena itu FO ID yang dipercaya.** Pengimpor menurunkan tabung dan posisi
+dari `fo_id`, menyimpan label sheet apa adanya di kolom `label`, dan
+**melaporkan** ketidakcocokannya. Ia tidak membetulkan sheet: pengimpor yang
+diam-diam memperbaiki catatan lapangan membuat sheet dan database perlahan
+berbeda, sementara yang di lapangan tetap membaca sheetnya.
+
+Kalau sheetnya kelak dibetulkan di Google, laporan itu akan menyusut sendiri —
+itu tandanya, bukan sesuatu yang perlu dimatikan.
+
+### Memuatnya
+
+```bash
+# periksa sheetnya saja — tidak butuh database
+npx tsx scripts/impor-alokasi-core.ts --berkas ../data-lapangan/alokasi-core-144.csv
+
+# benar-benar memuat
+DATABASE_URL=… npx tsx scripts/impor-alokasi-core.ts \
+  --berkas ../data-lapangan/alokasi-core-144.csv --terapkan
+
+# memuat ulang sesudah sheetnya berubah
+DATABASE_URL=… npx tsx scripts/impor-alokasi-core.ts \
+  --berkas ../data-lapangan/alokasi-core-144.csv --terapkan --ganti
+```
+
+Serat ganda atau hilang **menggagalkan** impor — kabel yang terlihat utuh
+dengan satu serat yang tidak pernah ada baru ketahuan saat seseorang
+mencarinya di lapangan.
+
+**Data contoh `CONTOH-` harus dibuang lebih dulu** kalau masih terpasang:
+`npx tsx scripts/seed-fiber-contoh.ts --hapus --terapkan`.
+
+### Isinya hari ini
+
+- 144 serat, **15 di antaranya beralokasi** (`usage`/`service` terisi)
+- 120 serat punya `next_hop`, menuju 7 tujuan berbeda
+
+Rinciannya sengaja tidak ditulis di sini — peta tujuan per-serat tinggal di
+CSV-nya, di luar repo. Repo ini publik, dan dokumen ini hanya perlu
+menjelaskan BENTUK datanya, bukan isinya.
