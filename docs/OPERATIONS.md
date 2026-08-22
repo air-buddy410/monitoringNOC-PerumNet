@@ -432,6 +432,31 @@ Dua hal yang harus diingat penguraiannya:
 - `Phase State` bernilai `working` atau `LOS`; `LOS` berarti ONU-nya kehilangan
   sinyal, dan itu yang dicari orang saat membuka layar ini.
 
+### Sisa `--More--`: 15 ONU yang raib tanpa galat
+
+Perangkat tidak sekadar melanjutkan sesudah `--More--` dijawab — ia
+**menghapus** promptnya dengan urutan backspace-spasi-backspace, satu set per
+karakter. Kode karakternya, diambil dari ZTE-C300-102-Pesagi:
+
+```
+8 32 8  8 32 8  8 32 8  8 32 8  8 32 8  8 32 8  8 32 8  8 32 8
+```
+
+Urutan itu tertinggal di **awal baris berikutnya**. Akibatnya baris itu tidak
+lagi diawali indeks ONU, dan `String.trim()` tidak menolong: `0x08` bukan
+whitespace menurut Unicode, jadi ia tidak ikut terpangkas.
+
+Terukur: dari **356 baris ONU, 15 di antaranya tidak terbaca.** Kehilangan 4%
+yang tidak menimbulkan satu galat pun — daftarnya terlihat utuh.
+
+`SISA_HAPUS` di `src/server/olt-cli.ts` membuangnya, dan pembersihannya
+dijalankan pada **setiap potongan data**, bukan hanya saat `--More--` terlihat:
+urutan hapusnya tiba SESUDAH kita menjawab spasi, ketika penandanya sendiri
+sudah dibuang dan cabang itu tidak akan pernah jalan lagi.
+
+Catat `\x08` di dalam regex, **bukan `\b`** — `\b` berarti batas kata, dan
+polanya akan diam-diam tidak cocok dengan apa pun.
+
 ### HSGQ-G008 — 3 perangkat
 
 **Tidak punya daftar ONU di vty sama sekali.** Ditanyakan langsung ke
