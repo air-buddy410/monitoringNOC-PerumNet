@@ -137,6 +137,13 @@ describe("baseline schema PostgreSQL", () => {
     );
   });
 
+  it("riwayat topologi punya index-nya — tabel append-only tidak pernah mengecil", () => {
+    // Tanpa index ini layar riwayat memindai seluruh audit_logs, dan ia
+    // melambat terus seiring umur sistem tanpa ada yang tahu kenapa.
+    expect(sql).toContain("audit_logs_entity_idx");
+    expect(sql).toContain("audit_logs_created_idx");
+  });
+
   it("larangan membagi ditegakkan index, bukan kode", () => {
     // Satu ujung core masuk hanya boleh punya satu sambungan aktif. Kalau
     // index ini hilang, satu feeder bisa "bercabang" di closure biasa tanpa

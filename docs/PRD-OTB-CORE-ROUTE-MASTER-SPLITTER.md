@@ -5,7 +5,7 @@
 | Produk | Portal NOC PerumNet (`monitoring-noc`) |
 | Stack | Next.js + **Drizzle ORM** + better-auth + PostgreSQL |
 | Versi | 2.0 — disesuaikan ke portal NOC, 21 Agustus 2026 |
-| Status | **Fase 11–15 selesai.** Fase 16 belum. |
+| Status | **Fase 11–16 selesai.** Peta fase modul ini habis. |
 | Sifat perubahan | Aditif; tidak ada tabel existing yang diubah bentuknya |
 
 > **Asal dokumen.** Kebutuhan di sini datang dari sebuah PRD yang ditulis untuk
@@ -150,10 +150,13 @@ sendiri:
 
 Alasan lengkapnya tertulis di komentar tabel `odps` pada `src/db/schema.ts`.
 
-### 4.3 Belum ada, dan memang harus dibangun
+### 4.3 Sudah lengkap
 
-Layar riwayat topologi (Fase 16). Mesin trace dan peta tidak menambah tabel
-apa pun — keduanya menurunkan hasilnya dari yang sudah dicatat.
+Tidak ada lagi tabel yang perlu dibangun untuk modul ini. Tiga fase terakhir —
+trace, peta, dan riwayat — **tidak menambah satu tabel pun**; ketiganya
+menurunkan hasilnya dari yang sudah dicatat Fase 11–13. Itu ukuran bahwa
+modelnya benar: kalau trace atau peta butuh tabelnya sendiri, artinya ada yang
+tidak terekam di tempat yang seharusnya.
 
 ### 4.4 Tidak ada di portal ini, dan tidak direncanakan
 
@@ -260,9 +263,10 @@ Semua di bawah `/api/v1/ftth/`, mengikuti keluarga yang sudah ada
 | `POST /api/v1/ftth/splices/:id/release` | `admin`, `noc` | Lepas silangan |
 | `GET /api/v1/ftth/trace` | `[]` | Telusur jalur dua arah + diagnosis |
 | `GET /api/v1/ftth/geo` | `[]` | Simpul & garis jalur untuk peta |
+| `GET /api/v1/ftth/riwayat` | `[]` | Riwayat perubahan topologi |
 
 Kontrak lengkapnya — bentuk respons, kode galat, dan larangan untuk frontend —
-ada di `docs/HANDOFF-BACKEND-KE-FRONTEND.md` §16 (OTB), §17 (kabel/core), §18 (closure), §19 (trace), dan §21 (peta). Dokumen itu yang mengikat;
+ada di `docs/HANDOFF-BACKEND-KE-FRONTEND.md` §16 (OTB), §17 (kabel/core), §18 (closure), §19 (trace), §21 (peta), dan §22 (riwayat). Dokumen itu yang mengikat;
 tabel di atas hanya ringkasan.
 
 ### 6.2 Direncanakan
@@ -319,7 +323,7 @@ tersendiri yang menyentuh better-auth dan seluruh endpoint yang ada.
 | 13 | Closure dan silangan core; larangan pembagian | ✅ **Selesai 21 Agustus 2026** |
 | 14 | Mesin trace feeder/distribution + diagnosis | ✅ **Selesai 21 Agustus 2026** |
 | 15 | Garis jalur di peta + fanout MS→ODP | ✅ **Selesai 22 Agustus 2026** |
-| 16 | Riwayat topologi di atas `audit_logs` | Belum |
+| 16 | Riwayat topologi di atas `audit_logs` | ✅ **Selesai 22 Agustus 2026** |
 
 ### 8.1 Fase 11 — apa yang benar-benar ada
 

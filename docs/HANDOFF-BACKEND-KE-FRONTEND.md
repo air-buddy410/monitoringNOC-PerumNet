@@ -1526,6 +1526,85 @@ memakai koordinat closure-nya. Tidak ada kolom geometri di database.
   mewakilinya.
 - Semua keputusan itu punya tesnya sendiri di `tests/fiber-geo.test.ts`.
 
+### 22. Riwayat topologi — Fase 16
+
+Tidak ada tabel baru. Seluruh riwayat sudah tertulis di `audit_logs` sejak
+Fase 11 — tiap mutasi topologi menulis barisnya **di dalam transaksi yang
+sama**, jadi kegagalan audit membatalkan mutasinya. Yang kurang selama ini
+cuma cara membacanya.
+
+Ini yang mengisi tab **"Riwayat (History)"** di layar OTB, yang sejak Fase 11
+sengaja dibiarkan kosong.
+
+#### GET /api/v1/ftth/riwayat — cukup login
+
+| Parameter | Isi |
+|---|---|
+| `jenis` + `id` | riwayat satu entitas **beserta yang menempel padanya** |
+| `limit` | 1–100, bawaan 30 |
+| `sesudah` | penanda halaman, dari `berikutnya` jawaban sebelumnya |
+
+`jenis`: `otb` · `otb_tray` · `otb_port` · `fiber_cable` · `fiber_core` ·
+`fiber_termination` · `fiber_closure` · `fiber_splice` · `olt_device`.
+Tanpa `jenis`/`id`, jawabannya riwayat **seluruh** topologi.
+
+```jsonc
+{
+  "baris": [{
+    "id": "…",
+    "waktu": "2026-08-22T03:11:04.000Z",
+    "action": "otb.port.terminated",
+    "ringkas": "Core dipasang ke port",   // kalimat siap tampil
+    "entityType": "otb_port", "entityId": "…",
+    "oleh": "Budi",                        // atau "sistem"
+    "detail": { "sebelum": { "status": "kosong" }, "sesudah": { … } }
+  }],
+  "berikutnya": "2026-08-22T03:10:00.000Z|abc"   // null kalau sudah habis
+}
+```
+
+`400` untuk `jenis` tak dikenal, `jenis` tanpa `id` (atau sebaliknya), dan
+`limit` di luar 1–100.
+
+#### Enam hal yang WAJIB benar
+
+1. **Ruang lingkupnya sudah dikembangkan di server.** `jenis=otb` membawa
+   peristiwa tray dan port-nya juga; `jenis=fiber_cable` membawa core,
+   terminasi, dan silangannya. Jangan menyaring ulang di klien per
+   `entityId` — hasilnya akan menyusut jadi satu baris, dan layar riwayat
+   yang selalu berisi satu baris terlihat berfungsi padahal tidak berguna.
+
+2. **`ringkas` sudah kalimat siap tampil.** Jangan menerjemahkan `action`
+   sendiri. Kalau tiap layar punya terjemahannya sendiri, dua layar akan
+   menjelaskan peristiwa yang sama dengan dua cara — dan yang satu akan salah
+   lebih dulu. Kalau ada `action` baru yang belum punya kalimat, ia tampil apa
+   adanya; laporkan lewat `PERMINTAAN-FRONTEND-KE-BACKEND.md`, jangan ditambal
+   di klien.
+
+3. **Aksi yang tidak dikenal TIDAK disembunyikan** — dan jangan disembunyikan
+   di layar juga. Riwayat yang diam-diam membuang peristiwa asing terlihat
+   lengkap, dan itu lebih buruk daripada menampilkan kode mentah.
+
+4. **Halaman memakai `sesudah`, bukan nomor halaman.** Penandanya berisi waktu
+   **dan** id, karena pemasangan silangan massal menulis beberapa baris pada
+   milidetik yang sama — penanda berbasis waktu saja akan melewatkan
+   sebagiannya. Kirim `berikutnya` apa adanya; jangan menguraikannya.
+
+5. **`oleh` bisa berbunyi `"sistem"`** untuk aksi worker atau webhook, dan
+   `"pengguna terhapus"` kalau akunnya sudah tidak ada. Keduanya bukan galat.
+
+6. **`detail` bentuknya berbeda-beda per `action`.** Ia `jsonb` apa adanya —
+   tampilkan sebagai pasangan kunci-nilai, jangan mengandaikan ada
+   `sebelum`/`sesudah` pada semua baris.
+
+#### Yang sudah diurus backend
+
+- **Index sudah ada** (`audit_logs_entity_idx`, `audit_logs_created_idx`).
+  `audit_logs` append-only dan tidak pernah mengecil; tanpa index, layar
+  riwayat melambat terus seiring umur sistem tanpa ada yang tahu kenapa.
+- **Riwayat tidak pernah dihapus**, dan tidak ada endpoint yang bisa
+  menghapusnya. Terminasi dan silangan yang dilepas pun tetap ada barisnya.
+
 ## Jebakan nama & bentuk
 
 Yang paling sering salah tebak, dikumpulkan di satu tempat:
@@ -1603,6 +1682,23 @@ Papan permintaan Opus → Luna (`WORKFLOW-TIM.md` §5). Semua di sini murni
 pekerjaan tampilan — datanya sudah tersedia di endpoint yang disebut, tidak
 ada yang perlu ditunggu dari backend. Tandai ✅ dan pindahkan ke §Selesai
 kalau sudah dikerjakan.
+
+### T-33. Tab Riwayat — layar OTB, kabel, dan closure
+
+- **Layar:** tab **"Riwayat (History)"** di `/ftth/otb/[id]` yang sejak Fase 11
+  berbunyi *"belum tersedia pada kontrak endpoint OTB"*. Sekarang tersedia.
+  Panel serupa layak juga di `/ftth/cables/[id]` dan `/ftth/closures/[id]`.
+- **Butuh:** §22 — satu endpoint, `GET /api/v1/ftth/riwayat?jenis=otb&id=…`.
+- **Bentuknya:** garis waktu terbalik — terbaru di atas. Tiap baris: waktu,
+  `ringkas`, pelakunya, dan `detail` yang bisa dibuka.
+- **Halaman:** tombol "muat lebih banyak" memakai `berikutnya`. **Jangan**
+  nomor halaman — riwayat bertambah dari atas, jadi nomor halaman menggeser
+  isinya di antara dua klik.
+- **Jangan menyaring ulang per `entityId` di klien.** Server sudah
+  mengembangkan ruang lingkupnya; menyaring lagi akan menyisakan satu baris.
+- **Jangan menerjemahkan `action` sendiri** — pakai `ringkas`.
+- **Kenapa sekarang:** ini tab terakhir yang masih berbunyi "belum tersedia",
+  dan riwayatnya sudah terisi sejak OTB contoh dibuat.
 
 ### ✅ T-32. Lapisan jalur fiber di peta — frontend selesai 2026-08-22
 
@@ -2266,6 +2362,16 @@ orang mengetik.
 
 ## Riwayat
 
+- **2026-08-22** — **Fase 16: riwayat topologi (§22).** Fase terakhir modul
+  ini, dan tanpa satu pun tabel baru — seluruh riwayat sudah tertulis di
+  `audit_logs` sejak Fase 11, di dalam transaksi yang sama dengan mutasinya.
+  Yang kurang cuma cara membacanya. Dua hal yang menentukan bentuknya: ruang
+  lingkup dikembangkan di server (riwayat OTB membawa tray dan portnya, kalau
+  tidak ia cuma berisi satu baris dan terlihat berfungsi padahal tidak
+  berguna), dan penanda halaman memakai waktu DAN id — pemasangan silangan
+  massal menulis beberapa baris pada milidetik yang sama, dan penanda berbasis
+  waktu saja akan melewatkan sebagiannya tanpa ada yang menyadari. Tugas T-33
+  mengisi tab "Riwayat" yang sejak Fase 11 sengaja dibiarkan kosong.
 - **2026-08-22** — **Fase 15: garis jalur fiber di peta (§21).** Letak kabel
   diturunkan dari tempat core-nya menempel — tidak ada kolom geometri, dan
   tidak akan ada. Aturan yang menentukan seluruh bentuknya: kabel yang
